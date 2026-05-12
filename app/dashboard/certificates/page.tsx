@@ -9,6 +9,7 @@ import QRCode from 'qrcode'
 export default function CertificatesPage() {
   const [certificates, setCertificates] = useState<any[]>([])
   const [completedBookings, setCompletedBookings] = useState<any[]>([])
+  const [organisation, setOrganisation] = useState<any>(null)
   const [organisationId, setOrganisationId] = useState('')
 
   const [bookingId, setBookingId] = useState('')
@@ -20,6 +21,12 @@ export default function CertificatesPage() {
     const profile = await getOrCreateAccount()
 
     setOrganisationId(profile.organisation_id)
+
+    const { data: organisationData } = await supabase
+      .from('organisations')
+      .select('*')
+      .eq('id', profile.organisation_id)
+      .single()
 
     const { data: bookingsData } = await supabase
       .from('bookings')
@@ -34,6 +41,7 @@ export default function CertificatesPage() {
       .eq('organisation_id', profile.organisation_id)
       .order('created_at', { ascending: false })
 
+    setOrganisation(organisationData || null)
     setCompletedBookings(bookingsData || [])
     setCertificates(certificatesData || [])
   }
@@ -107,39 +115,80 @@ export default function CertificatesPage() {
   }
 
   const generatePDF = async (certificate: any) => {
-    const doc = new jsPDF()
+    const doc = new jsPDF('landscape', 'mm', 'a4')
+
+    const businessName = organisation?.name || 'Training Provider'
+    const businessEmail = organisation?.email || ''
+    const businessPhone = organisation?.phone || ''
+    const businessWebsite = organisation?.website || ''
+    const businessAddress = organisation?.address || ''
 
     const verificationUrl =
       `${window.location.origin}/verify/${certificate.verification_id}`
 
     const qrDataUrl = await QRCode.toDataURL(verificationUrl)
 
-    doc.setFontSize(24)
-    doc.text('First Aid Certificate', 60, 30)
+    // Border
+    doc.setLineWidth(1)
+    doc.rect(10, 10, 277, 190)
 
-    doc.line(20, 40, 190, 40)
+    doc.setLineWidth(0.3)
+    doc.rect(16, 16, 265, 178)
 
-    doc.setFontSize(14)
-    doc.text(`Certificate No: ${certificate.certificate_number}`, 20, 55)
-
-    doc.setFontSize(16)
-    doc.text('This certifies that', 20, 80)
-
-    doc.setFontSize(22)
-    doc.text(certificate.learner_name, 20, 105)
-
-    doc.setFontSize(16)
-    doc.text('has successfully completed:', 20, 130)
-
-    doc.text(certificate.course_name, 20, 150)
-
-    doc.text(`Issue Date: ${certificate.issue_date}`, 20, 180)
-    doc.text(`Expiry Date: ${certificate.expiry_date}`, 20, 195)
-
-    doc.addImage(qrDataUrl, 'PNG', 150, 230, 35, 35)
+    // Provider name
+    doc.setFontSize(18)
+    doc.text(businessName, 148.5, 30, { align: 'center' })
 
     doc.setFontSize(10)
-    doc.text('Scan to verify', 150, 270)
+
+    let contactLine = ''
+
+    if (businessEmail) contactLine += businessEmail
+    if (businessPhone) contactLine += contactLine ? ` | ${businessPhone}` : businessPhone
+    if (businessWebsite) contactLine += contactLine ? ` | ${businessWebsite}` : businessWebsite
+
+    if (contactLine) {
+      doc.text(contactLine, 148.5, 38, { align: 'center' })
+    }
+
+    // Main title
+    doc.setFontSize(30)
+    doc.text('Certificate of Completion', 148.5, 60, { align: 'center' })
+
+    doc.setFontSize(14)
+    doc.text('This certifies that', 148.5, 78, { align: 'center' })
+
+    // Learner
+    doc.setFontSize(28)
+    doc.text(certificate.learner_name, 148.5, 98, { align: 'center' })
+
+    doc.setFontSize(14)
+    doc.text('has successfully completed', 148.5, 115, { align: 'center' })
+
+    // Course
+    doc.setFontSize(20)
+    doc.text(certificate.course_name, 148.5, 132, { align: 'center' })
+
+    // Dates
+    doc.setFontSize(12)
+    doc.text(`Issue Date: ${certificate.issue_date}`, 70, 155)
+    doc.text(`Expiry Date: ${certificate.expiry_date}`, 70, 165)
+
+    // Certificate number
+    doc.text(`Certificate No: ${certificate.certificate_number}`, 70, 175)
+
+    // QR
+    doc.addImage(qrDataUrl, 'PNG', 220, 145, 35, 35)
+    doc.setFontSize(9)
+    doc.text('Scan to verify', 237.5, 184, { align: 'center' })
+
+    // Address/footer
+    doc.setFontSize(8)
+
+    if (businessAddress) {
+      const addressLines = doc.splitTextToSize(businessAddress, 180)
+      doc.text(addressLines, 148.5, 188, { align: 'center' })
+    }
 
     doc.save(`${certificate.learner_name}-certificate.pdf`)
   }
