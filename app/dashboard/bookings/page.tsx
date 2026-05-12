@@ -25,6 +25,19 @@ export default function BookingsPage() {
   const [sendingId, setSendingId] = useState('')
   const [remindingId, setRemindingId] = useState('')
 
+  const [editingId, setEditingId] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  const [editClientId, setEditClientId] = useState('')
+  const [editTrainerId, setEditTrainerId] = useState('')
+  const [editCourseName, setEditCourseName] = useState('')
+  const [editDate, setEditDate] = useState('')
+  const [editStartTime, setEditStartTime] = useState('')
+  const [editEndTime, setEditEndTime] = useState('')
+  const [editLocation, setEditLocation] = useState('')
+  const [editPrice, setEditPrice] = useState('')
+  const [editNotes, setEditNotes] = useState('')
+
   const load = async () => {
     const profile = await getOrCreateAccount()
 
@@ -106,6 +119,69 @@ export default function BookingsPage() {
     load()
   }
 
+  const startEditing = (booking: any) => {
+    setEditingId(booking.id)
+    setEditClientId(booking.client_id || '')
+    setEditTrainerId(booking.trainer_id || '')
+    setEditCourseName(booking.course_name || '')
+    setEditDate(booking.date || '')
+    setEditStartTime(booking.start_time || '')
+    setEditEndTime(booking.end_time || '')
+    setEditLocation(booking.location || '')
+    setEditPrice(booking.price ? String(booking.price) : '')
+    setEditNotes(booking.notes || '')
+  }
+
+  const cancelEditing = () => {
+    setEditingId('')
+    setEditClientId('')
+    setEditTrainerId('')
+    setEditCourseName('')
+    setEditDate('')
+    setEditStartTime('')
+    setEditEndTime('')
+    setEditLocation('')
+    setEditPrice('')
+    setEditNotes('')
+  }
+
+  const saveBookingEdit = async (bookingId: string) => {
+    if (!editClientId || !editCourseName || !editDate) {
+      alert('Client, course and date are required')
+      return
+    }
+
+    setSavingEdit(true)
+
+    const selectedClient = clients.find((c) => c.id === editClientId)
+
+    const { error } = await supabase
+      .from('bookings')
+      .update({
+        client_id: editClientId,
+        trainer_id: editTrainerId || null,
+        client_name: selectedClient?.name,
+        course_name: editCourseName,
+        date: editDate,
+        start_time: editStartTime || null,
+        end_time: editEndTime || null,
+        location: editLocation,
+        price: editPrice ? Number(editPrice) : null,
+        notes: editNotes,
+      })
+      .eq('id', bookingId)
+
+    setSavingEdit(false)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    cancelEditing()
+    load()
+  }
+
   const updateBookingStatus = async (
     bookingId: string,
     newStatus: string
@@ -155,7 +231,6 @@ export default function BookingsPage() {
   }
 
   const sendBookingConfirmation = async (booking: any) => {
-    const client = getClientForBooking(booking)
     const trainer = getTrainerForBooking(booking)
 
     const recipientEmail = getRecipientEmailForBooking(booking)
@@ -289,7 +364,7 @@ export default function BookingsPage() {
         </h1>
 
         <p className="text-gray-500 mt-1">
-          Schedule, manage, confirm and remind clients about training sessions
+          Schedule, edit, manage, confirm and remind clients about training sessions
         </p>
       </div>
 
@@ -426,147 +501,268 @@ export default function BookingsPage() {
             const trainer = getTrainerForBooking(booking)
             const client = getClientForBooking(booking)
             const savedClientEmail = client?.email || ''
+            const isEditing = editingId === booking.id
 
             return (
               <div
                 key={booking.id}
                 className="bg-white border rounded-2xl p-5 shadow-sm"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-xl font-semibold">
-                      {booking.course_name}
-                    </h2>
+                {!isEditing ? (
+                  <>
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-xl font-semibold">
+                          {booking.course_name}
+                        </h2>
 
-                    <p className="text-gray-500 mt-1">
-                      {booking.client_name}
-                    </p>
-                  </div>
+                        <p className="text-gray-500 mt-1">
+                          {booking.client_name}
+                        </p>
+                      </div>
 
-                  <div
-                    className={`px-3 py-1 rounded-full text-sm ${getStatusStyle(
-                      booking.status
-                    )}`}
-                  >
-                    {booking.status}
-                  </div>
-                </div>
-
-                <div className="mt-4 text-sm text-gray-600 space-y-1">
-                  <p>Date: {booking.date}</p>
-                  <p>
-                    Time: {booking.start_time || 'Not set'} -{' '}
-                    {booking.end_time || 'Not set'}
-                  </p>
-                  <p>
-                    Location: {booking.location || 'Not set'}
-                  </p>
-                  <p>
-                    Trainer: {trainer?.name || 'Unassigned'}
-                  </p>
-                  <p>
-                    Price: £{Number(booking.price || 0).toFixed(2)}
-                  </p>
-
-                  {savedClientEmail && (
-                    <p>Client Email: {savedClientEmail}</p>
-                  )}
-
-                  {booking.notes && (
-                    <p>Notes: {booking.notes}</p>
-                  )}
-                </div>
-
-                <div className="mt-5 flex flex-col gap-3">
-                  <input
-                    className="border p-3 rounded-lg"
-                    placeholder={savedClientEmail || 'Recipient email'}
-                    value={recipientEmails[booking.id] || ''}
-                    onChange={(e) =>
-                      setRecipientEmails((previous) => ({
-                        ...previous,
-                        [booking.id]: e.target.value,
-                      }))
-                    }
-                  />
-
-                  {savedClientEmail && (
-                    <p className="text-sm text-gray-500">
-                      Leave blank to send to saved client email.
-                    </p>
-                  )}
-
-                  <div className="flex flex-wrap gap-3">
-                    <button
-                      className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
-                      onClick={() => sendBookingConfirmation(booking)}
-                      disabled={sendingId === booking.id}
-                    >
-                      {sendingId === booking.id
-                        ? 'Sending...'
-                        : 'Send Confirmation'}
-                    </button>
-
-                    <button
-                      className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
-                      onClick={() => sendBookingReminder(booking)}
-                      disabled={remindingId === booking.id}
-                    >
-                      {remindingId === booking.id
-                        ? 'Sending...'
-                        : 'Send Reminder'}
-                    </button>
-
-                    {booking.status !== 'scheduled' && (
-                      <button
-                        className="border px-4 py-2 rounded-lg"
-                        onClick={() =>
-                          updateBookingStatus(
-                            booking.id,
-                            'scheduled'
-                          )
-                        }
+                      <div
+                        className={`px-3 py-1 rounded-full text-sm ${getStatusStyle(
+                          booking.status
+                        )}`}
                       >
-                        Mark Scheduled
-                      </button>
-                    )}
+                        {booking.status}
+                      </div>
+                    </div>
 
-                    {booking.status !== 'completed' && (
-                      <button
-                        className="border px-4 py-2 rounded-lg"
-                        onClick={() =>
-                          updateBookingStatus(
-                            booking.id,
-                            'completed'
-                          )
+                    <div className="mt-4 text-sm text-gray-600 space-y-1">
+                      <p>Date: {booking.date}</p>
+                      <p>
+                        Time: {booking.start_time || 'Not set'} -{' '}
+                        {booking.end_time || 'Not set'}
+                      </p>
+                      <p>
+                        Location: {booking.location || 'Not set'}
+                      </p>
+                      <p>
+                        Trainer: {trainer?.name || 'Unassigned'}
+                      </p>
+                      <p>
+                        Price: £{Number(booking.price || 0).toFixed(2)}
+                      </p>
+
+                      {savedClientEmail && (
+                        <p>Client Email: {savedClientEmail}</p>
+                      )}
+
+                      {booking.notes && (
+                        <p>Notes: {booking.notes}</p>
+                      )}
+                    </div>
+
+                    <div className="mt-5 flex flex-col gap-3">
+                      <input
+                        className="border p-3 rounded-lg"
+                        placeholder={savedClientEmail || 'Recipient email'}
+                        value={recipientEmails[booking.id] || ''}
+                        onChange={(e) =>
+                          setRecipientEmails((previous) => ({
+                            ...previous,
+                            [booking.id]: e.target.value,
+                          }))
                         }
+                      />
+
+                      {savedClientEmail && (
+                        <p className="text-sm text-gray-500">
+                          Leave blank to send to saved client email.
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
+                          onClick={() => sendBookingConfirmation(booking)}
+                          disabled={sendingId === booking.id}
+                        >
+                          {sendingId === booking.id
+                            ? 'Sending...'
+                            : 'Send Confirmation'}
+                        </button>
+
+                        <button
+                          className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
+                          onClick={() => sendBookingReminder(booking)}
+                          disabled={remindingId === booking.id}
+                        >
+                          {remindingId === booking.id
+                            ? 'Sending...'
+                            : 'Send Reminder'}
+                        </button>
+
+                        <button
+                          className="border px-4 py-2 rounded-lg"
+                          onClick={() => startEditing(booking)}
+                        >
+                          Edit
+                        </button>
+
+                        {booking.status !== 'scheduled' && (
+                          <button
+                            className="border px-4 py-2 rounded-lg"
+                            onClick={() =>
+                              updateBookingStatus(
+                                booking.id,
+                                'scheduled'
+                              )
+                            }
+                          >
+                            Mark Scheduled
+                          </button>
+                        )}
+
+                        {booking.status !== 'completed' && (
+                          <button
+                            className="border px-4 py-2 rounded-lg"
+                            onClick={() =>
+                              updateBookingStatus(
+                                booking.id,
+                                'completed'
+                              )
+                            }
+                          >
+                            Mark Completed
+                          </button>
+                        )}
+
+                        {booking.status !== 'cancelled' && (
+                          <button
+                            className="border px-4 py-2 rounded-lg"
+                            onClick={() =>
+                              updateBookingStatus(
+                                booking.id,
+                                'cancelled'
+                              )
+                            }
+                          >
+                            Cancel
+                          </button>
+                        )}
+
+                        <button
+                          className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
+                          onClick={() => deleteBooking(booking.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mb-5">
+                      <h2 className="text-xl font-semibold">
+                        Edit Booking
+                      </h2>
+
+                      <p className="text-gray-500 mt-1">
+                        Update training session details
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <select
+                        className="border p-3 rounded-lg"
+                        value={editClientId}
+                        onChange={(e) => setEditClientId(e.target.value)}
                       >
-                        Mark Completed
-                      </button>
-                    )}
+                        <option value="">Select Client</option>
 
-                    {booking.status !== 'cancelled' && (
+                        {clients.map((client) => (
+                          <option key={client.id} value={client.id}>
+                            {client.company} - {client.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        className="border p-3 rounded-lg"
+                        value={editTrainerId}
+                        onChange={(e) => setEditTrainerId(e.target.value)}
+                      >
+                        <option value="">Assign Trainer</option>
+
+                        {trainers.map((trainer) => (
+                          <option key={trainer.id} value={trainer.id}>
+                            {trainer.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <input
+                        className="border p-3 rounded-lg"
+                        placeholder="Course name"
+                        value={editCourseName}
+                        onChange={(e) => setEditCourseName(e.target.value)}
+                      />
+
+                      <input
+                        className="border p-3 rounded-lg"
+                        type="date"
+                        value={editDate}
+                        onChange={(e) => setEditDate(e.target.value)}
+                      />
+
+                      <input
+                        className="border p-3 rounded-lg"
+                        type="time"
+                        value={editStartTime}
+                        onChange={(e) => setEditStartTime(e.target.value)}
+                      />
+
+                      <input
+                        className="border p-3 rounded-lg"
+                        type="time"
+                        value={editEndTime}
+                        onChange={(e) => setEditEndTime(e.target.value)}
+                      />
+
+                      <input
+                        className="border p-3 rounded-lg"
+                        placeholder="Location"
+                        value={editLocation}
+                        onChange={(e) => setEditLocation(e.target.value)}
+                      />
+
+                      <input
+                        className="border p-3 rounded-lg"
+                        placeholder="Price"
+                        value={editPrice}
+                        onChange={(e) => setEditPrice(e.target.value)}
+                      />
+
+                      <textarea
+                        className="border p-3 rounded-lg md:col-span-2"
+                        placeholder="Notes"
+                        value={editNotes}
+                        onChange={(e) => setEditNotes(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-3 mt-5">
+                      <button
+                        className="bg-black text-white px-4 py-2 rounded-lg disabled:bg-gray-400"
+                        onClick={() => saveBookingEdit(booking.id)}
+                        disabled={savingEdit}
+                      >
+                        {savingEdit ? 'Saving...' : 'Save Changes'}
+                      </button>
+
                       <button
                         className="border px-4 py-2 rounded-lg"
-                        onClick={() =>
-                          updateBookingStatus(
-                            booking.id,
-                            'cancelled'
-                          )
-                        }
+                        onClick={cancelEditing}
+                        disabled={savingEdit}
                       >
                         Cancel
                       </button>
-                    )}
-
-                    <button
-                      className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
-                      onClick={() => deleteBooking(booking.id)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
+                    </div>
+                  </>
+                )}
               </div>
             )
           })}
