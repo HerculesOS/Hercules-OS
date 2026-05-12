@@ -9,6 +9,7 @@ import QRCode from 'qrcode'
 export default function CertificatesPage() {
   const [certificates, setCertificates] = useState<any[]>([])
   const [completedBookings, setCompletedBookings] = useState<any[]>([])
+  const [clients, setClients] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
   const [organisationId, setOrganisationId] = useState('')
 
@@ -31,6 +32,11 @@ export default function CertificatesPage() {
       .eq('id', profile.organisation_id)
       .single()
 
+    const { data: clientsData } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('organisation_id', profile.organisation_id)
+
     const { data: bookingsData } = await supabase
       .from('bookings')
       .select('*')
@@ -45,6 +51,7 @@ export default function CertificatesPage() {
       .order('created_at', { ascending: false })
 
     setOrganisation(organisationData || null)
+    setClients(clientsData || [])
     setCompletedBookings(bookingsData || [])
     setCertificates(certificatesData || [])
   }
@@ -115,6 +122,22 @@ export default function CertificatesPage() {
     }
 
     load()
+  }
+
+  const getBookingForCertificate = (certificate: any) => {
+    return completedBookings.find(
+      (booking) => booking.id === certificate.booking_id
+    )
+  }
+
+  const getClientEmailForCertificate = (certificate: any) => {
+    const booking = getBookingForCertificate(certificate)
+
+    if (!booking) return ''
+
+    const client = clients.find((c) => c.id === booking.client_id)
+
+    return client?.email || ''
   }
 
   const generatePDF = async (certificate: any) => {
@@ -188,7 +211,10 @@ export default function CertificatesPage() {
   }
 
   const sendCertificateEmail = async (certificate: any) => {
-    const recipientEmail = recipientEmails[certificate.id]
+    const savedClientEmail = getClientEmailForCertificate(certificate)
+
+    const recipientEmail =
+      recipientEmails[certificate.id] || savedClientEmail
 
     if (!recipientEmail) {
       alert('Enter a recipient email first')
@@ -347,78 +373,92 @@ export default function CertificatesPage() {
         </div>
 
         <div className="lg:col-span-2 grid gap-4">
-          {certificates.map((certificate) => (
-            <div
-              key={certificate.id}
-              className="bg-white border rounded-2xl p-5 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold">
-                    {certificate.learner_name}
-                  </h2>
+          {certificates.map((certificate) => {
+            const savedClientEmail = getClientEmailForCertificate(certificate)
 
-                  <p className="text-gray-500 mt-1">
-                    {certificate.course_name}
-                  </p>
+            return (
+              <div
+                key={certificate.id}
+                className="bg-white border rounded-2xl p-5 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-semibold">
+                      {certificate.learner_name}
+                    </h2>
+
+                    <p className="text-gray-500 mt-1">
+                      {certificate.course_name}
+                    </p>
+                  </div>
+
+                  <div
+                    className={`px-3 py-1 rounded-full text-sm ${getStatusStyle(
+                      certificate.status
+                    )}`}
+                  >
+                    {certificate.status}
+                  </div>
                 </div>
 
-                <div
-                  className={`px-3 py-1 rounded-full text-sm ${getStatusStyle(
-                    certificate.status
-                  )}`}
-                >
-                  {certificate.status}
-                </div>
-              </div>
+                <div className="mt-4 text-sm text-gray-600 space-y-1">
+                  <p>Certificate No: {certificate.certificate_number}</p>
+                  <p>Issued: {certificate.issue_date}</p>
+                  <p>Expires: {certificate.expiry_date}</p>
 
-              <div className="mt-4 text-sm text-gray-600 space-y-1">
-                <p>Certificate No: {certificate.certificate_number}</p>
-                <p>Issued: {certificate.issue_date}</p>
-                <p>Expires: {certificate.expiry_date}</p>
-              </div>
-
-              <div className="mt-5 flex flex-col gap-3">
-                <input
-                  className="border p-3 rounded-lg"
-                  placeholder="Recipient email"
-                  value={recipientEmails[certificate.id] || ''}
-                  onChange={(e) =>
-                    setRecipientEmails((previous) => ({
-                      ...previous,
-                      [certificate.id]: e.target.value,
-                    }))
-                  }
-                />
-
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    className="bg-black text-white px-4 py-2 rounded-lg"
-                    onClick={() => generatePDF(certificate)}
-                  >
-                    Download PDF
-                  </button>
-
-                  <button
-                    className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
-                    onClick={() => sendCertificateEmail(certificate)}
-                    disabled={sendingId === certificate.id}
-                  >
-                    {sendingId === certificate.id ? 'Sending...' : 'Send Email'}
-                  </button>
-
-                  {certificate.status !== 'revoked' && (
-                    <button
-                      className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
-                      onClick={() => revokeCertificate(certificate.id)}
-                    >
-                      Revoke
-                    </button>
+                  {savedClientEmail && (
+                    <p>Client Email: {savedClientEmail}</p>
                   )}
                 </div>
+
+                <div className="mt-5 flex flex-col gap-3">
+                  <input
+                    className="border p-3 rounded-lg"
+                    placeholder={savedClientEmail || 'Recipient email'}
+                    value={recipientEmails[certificate.id] || ''}
+                    onChange={(e) =>
+                      setRecipientEmails((previous) => ({
+                        ...previous,
+                        [certificate.id]: e.target.value,
+                      }))
+                    }
+                  />
+
+                  {savedClientEmail && (
+                    <p className="text-sm text-gray-500">
+                      Leave blank to send to saved client email.
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      className="bg-black text-white px-4 py-2 rounded-lg"
+                      onClick={() => generatePDF(certificate)}
+                    >
+                      Download PDF
+                    </button>
+
+                    <button
+                      className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
+                      onClick={() => sendCertificateEmail(certificate)}
+                      disabled={sendingId === certificate.id}
+                    >
+                      {sendingId === certificate.id ? 'Sending...' : 'Send Email'}
+                    </button>
+
+                    {certificate.status !== 'revoked' && (
+                      <button
+                        className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
+                        onClick={() => revokeCertificate(certificate.id)}
+                      >
+                        Revoke
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
 
           {certificates.length === 0 && (
             <div className="bg-white border rounded-2xl p-6 shadow-sm text-gray-500">
