@@ -20,6 +20,7 @@ export default function CertificatesPage() {
 
   const [recipientEmails, setRecipientEmails] = useState<Record<string, string>>({})
   const [sendingId, setSendingId] = useState('')
+  const [expirySendingId, setExpirySendingId] = useState('')
 
   const load = async () => {
     const profile = await getOrCreateAccount()
@@ -138,6 +139,28 @@ export default function CertificatesPage() {
     const client = clients.find((c) => c.id === booking.client_id)
 
     return client?.email || ''
+  }
+
+  const getDaysUntilExpiry = (expiryDateValue: string) => {
+    const expiry = new Date(expiryDateValue)
+    const today = new Date()
+
+    expiry.setHours(0, 0, 0, 0)
+    today.setHours(0, 0, 0, 0)
+
+    const diff = expiry.getTime() - today.getTime()
+
+    return Math.ceil(diff / (1000 * 60 * 60 * 24))
+  }
+
+  const isExpiringSoon = (certificate: any) => {
+    const days = getDaysUntilExpiry(certificate.expiry_date)
+
+    return (
+      days <= 60 &&
+      days >= 0 &&
+      certificate.status === 'valid'
+    )
   }
 
   const generatePDF = async (certificate: any) => {
@@ -260,14 +283,60 @@ export default function CertificatesPage() {
     }))
   }
 
-  const expiringSoon = certificates.filter((certificate) => {
-    const expiry = new Date(certificate.expiry_date)
-    const today = new Date()
-    const diff = expiry.getTime() - today.getTime()
-    const days = diff / (1000 * 60 * 60 * 24)
+  const sendExpiryReminder = async (certificate: any) => {
+    const savedClientEmail = getClientEmailForCertificate(certificate)
 
-    return days <= 60 && days >= 0 && certificate.status === 'valid'
-  })
+    const recipientEmail =
+      recipientEmails[certificate.id] || savedClientEmail
+
+    if (!recipientEmail) {
+      alert('Enter a recipient email first')
+      return
+    }
+
+    setExpirySendingId(certificate.id)
+
+    const verificationUrl =
+      `${window.location.origin}/verify/${certificate.verification_id}`
+
+    const response = await fetch('/api/send-expiry-reminder', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: recipientEmail,
+        learnerName: certificate.learner_name,
+        courseName: certificate.course_name,
+        expiryDate: certificate.expiry_date,
+        certificateNumber: certificate.certificate_number,
+        verificationUrl,
+        businessName: organisation?.name || 'Hercules OS',
+        businessEmail: organisation?.email || '',
+        businessPhone: organisation?.phone || '',
+      }),
+    })
+
+    const result = await response.json()
+
+    setExpirySendingId('')
+
+    if (!response.ok) {
+      alert(result.error?.message || result.error || 'Expiry reminder failed')
+      return
+    }
+
+    alert('Expiry reminder sent')
+
+    setRecipientEmails((previous) => ({
+      ...previous,
+      [certificate.id]: '',
+    }))
+  }
+
+  const expiringSoon = certificates.filter((certificate) =>
+    isExpiringSoon(certificate)
+  )
 
   const validCertificates = certificates.filter(
     (certificate) => certificate.status === 'valid'
@@ -293,7 +362,7 @@ export default function CertificatesPage() {
         </h1>
 
         <p className="text-gray-500 mt-1">
-          Issue, download, email and verify learner certificates
+          Issue, download, email, verify and renew learner certificates
         </p>
       </div>
 
@@ -375,6 +444,8 @@ export default function CertificatesPage() {
         <div className="lg:col-span-2 grid gap-4">
           {certificates.map((certificate) => {
             const savedClientEmail = getClientEmailForCertificate(certificate)
+            const daysUntilExpiry = getDaysUntilExpiry(certificate.expiry_date)
+            const expiring = isExpiringSoon(certificate)
 
             return (
               <div
@@ -392,12 +463,26 @@ export default function CertificatesPage() {
                     </p>
                   </div>
 
-                  <div
-                    className={`px-3 py-1 rounded-full text-sm ${getStatusStyle(
-                      certificate.status
-                    )}`}
-                  >
-                    {certificate.status}
+                  <div className="flex flex-col items-end gap-2">
+                    <div
+                      className={`px-3 py-1 rounded-full text-sm ${getStatusStyle(
+                        certificate.status
+                      )}`}
+                    >
+                      {certificate.status}
+                    </div>
+
+                    {expiring && (
+                      <div className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-sm">
+                        Expires in {daysUntilExpiry} days
+                      </div>
+                    )}
+
+                    {daysUntilExpiry < 0 && certificate.status === 'valid' && (
+                      <div className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm">
+                        Expired
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -445,6 +530,18 @@ export default function CertificatesPage() {
                     >
                       {sendingId === certificate.id ? 'Sending...' : 'Send Email'}
                     </button>
+
+                    {expiring && (
+                      <button
+                        className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
+                        onClick={() => sendExpiryReminder(certificate)}
+                        disabled={expirySendingId === certificate.id}
+                      >
+                        {expirySendingId === certificate.id
+                          ? 'Sending...'
+                          : 'Send Expiry Reminder'}
+                      </button>
+                    )}
 
                     {certificate.status !== 'revoked' && (
                       <button
