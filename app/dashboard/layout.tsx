@@ -1,4 +1,8 @@
+'use client'
+
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabaseClient'
 
 import {
   LayoutDashboard,
@@ -8,6 +12,7 @@ import {
   Award,
   UserCog,
   Settings,
+  LogOut,
 } from 'lucide-react'
 
 export default function DashboardLayout({
@@ -15,6 +20,18 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    const confirmLogout = confirm('Are you sure you want to log out?')
+
+    if (!confirmLogout) return
+
+    await supabase.auth.signOut()
+
+    router.push('/login')
+  }
+
   return (
     <div className="flex min-h-screen bg-gray-100">
 
@@ -103,7 +120,7 @@ export default function DashboardLayout({
 
         {/* Bottom section */}
         <div className="mt-auto p-4 border-t">
-          <div className="bg-gray-100 rounded-xl p-4">
+          <div className="bg-gray-100 rounded-xl p-4 mb-4">
             <p className="font-semibold">
               Hercules OS
             </p>
@@ -112,6 +129,14 @@ export default function DashboardLayout({
               Manage training, invoices and certificates in one place.
             </p>
           </div>
+
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 p-3 rounded-xl border hover:bg-gray-100 transition text-left"
+          >
+            <LogOut size={20} />
+            Log out
+          </button>
         </div>
 
       </aside>
