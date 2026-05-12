@@ -38,6 +38,11 @@ export default function BookingsPage() {
   const [editPrice, setEditPrice] = useState('')
   const [editNotes, setEditNotes] = useState('')
 
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [trainerFilter, setTrainerFilter] = useState('all')
+  const [dateSort, setDateSort] = useState('ascending')
+
   const load = async () => {
     const profile = await getOrCreateAccount()
 
@@ -327,6 +332,13 @@ export default function BookingsPage() {
     }))
   }
 
+  const clearFilters = () => {
+    setSearch('')
+    setStatusFilter('all')
+    setTrainerFilter('all')
+    setDateSort('ascending')
+  }
+
   const scheduledBookings = bookings.filter(
     (booking) => booking.status === 'scheduled'
   )
@@ -343,6 +355,39 @@ export default function BookingsPage() {
     (sum, booking) => sum + Number(booking.price || 0),
     0
   )
+
+  const filteredBookings = bookings
+    .filter((booking) => {
+      const trainer = getTrainerForBooking(booking)
+
+      const searchableText = `
+        ${booking.client_name || ''}
+        ${booking.course_name || ''}
+        ${booking.location || ''}
+        ${booking.notes || ''}
+        ${trainer?.name || ''}
+      `.toLowerCase()
+
+      const matchesSearch = searchableText.includes(search.toLowerCase())
+
+      const matchesStatus =
+        statusFilter === 'all' || booking.status === statusFilter
+
+      const matchesTrainer =
+        trainerFilter === 'all' || booking.trainer_id === trainerFilter
+
+      return matchesSearch && matchesStatus && matchesTrainer
+    })
+    .sort((a, b) => {
+      const dateA = new Date(a.date).getTime()
+      const dateB = new Date(b.date).getTime()
+
+      if (dateSort === 'descending') {
+        return dateB - dateA
+      }
+
+      return dateA - dateB
+    })
 
   const getStatusStyle = (status: string) => {
     if (status === 'completed') {
@@ -364,7 +409,7 @@ export default function BookingsPage() {
         </h1>
 
         <p className="text-gray-500 mt-1">
-          Schedule, edit, manage, confirm and remind clients about training sessions
+          Schedule, edit, filter, confirm and remind clients about training sessions
         </p>
       </div>
 
@@ -396,6 +441,65 @@ export default function BookingsPage() {
           <h2 className="text-3xl font-bold mt-2">
             £{estimatedValue.toFixed(2)}
           </h2>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white border rounded-2xl p-5 shadow-sm mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <input
+            className="border p-3 rounded-lg md:col-span-2"
+            placeholder="Search bookings..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+
+          <select
+            className="border p-3 rounded-lg"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">All Statuses</option>
+            <option value="scheduled">Scheduled</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+
+          <select
+            className="border p-3 rounded-lg"
+            value={trainerFilter}
+            onChange={(e) => setTrainerFilter(e.target.value)}
+          >
+            <option value="all">All Trainers</option>
+
+            {trainers.map((trainer) => (
+              <option key={trainer.id} value={trainer.id}>
+                {trainer.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="border p-3 rounded-lg"
+            value={dateSort}
+            onChange={(e) => setDateSort(e.target.value)}
+          >
+            <option value="ascending">Oldest First</option>
+            <option value="descending">Newest First</option>
+          </select>
+        </div>
+
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-sm text-gray-500">
+            Showing {filteredBookings.length} of {bookings.length} bookings
+          </p>
+
+          <button
+            className="border px-4 py-2 rounded-lg text-sm"
+            onClick={clearFilters}
+          >
+            Clear Filters
+          </button>
         </div>
       </div>
 
@@ -497,7 +601,7 @@ export default function BookingsPage() {
 
         {/* Booking list */}
         <div className="lg:col-span-2 grid gap-4">
-          {bookings.map((booking) => {
+          {filteredBookings.map((booking) => {
             const trainer = getTrainerForBooking(booking)
             const client = getClientForBooking(booking)
             const savedClientEmail = client?.email || ''
@@ -767,9 +871,9 @@ export default function BookingsPage() {
             )
           })}
 
-          {bookings.length === 0 && (
+          {filteredBookings.length === 0 && (
             <div className="bg-white border rounded-2xl p-6 shadow-sm text-gray-500">
-              No bookings yet. Create your first training session.
+              No bookings match your filters.
             </div>
           )}
 
