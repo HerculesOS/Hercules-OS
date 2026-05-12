@@ -1,0 +1,320 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabaseClient'
+import { getOrCreateAccount } from '@/lib/account'
+import jsPDF from 'jspdf'
+import QRCode from 'qrcode'
+
+export default function CertificatesPage() {
+  const [certificates, setCertificates] = useState<any[]>([])
+  const [completedBookings, setCompletedBookings] = useState<any[]>([])
+  const [organisationId, setOrganisationId] = useState('')
+
+  const [bookingId, setBookingId] = useState('')
+  const [learnerName, setLearnerName] = useState('')
+  const [issueDate, setIssueDate] = useState('')
+  const [expiryDate, setExpiryDate] = useState('')
+
+  const load = async () => {
+    const profile = await getOrCreateAccount()
+
+    setOrganisationId(profile.organisation_id)
+
+    const { data: bookingsData } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('organisation_id', profile.organisation_id)
+      .eq('status', 'completed')
+      .order('date', { ascending: false })
+
+    const { data: certificatesData } = await supabase
+      .from('certificates')
+      .select('*')
+      .eq('organisation_id', profile.organisation_id)
+      .order('created_at', { ascending: false })
+
+    setCompletedBookings(bookingsData || [])
+    setCertificates(certificatesData || [])
+  }
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  const addCertificate = async () => {
+    if (!bookingId || !learnerName || !issueDate || !expiryDate) {
+      alert('All certificate fields are required')
+      return
+    }
+
+    const { data: userData } = await supabase.auth.getUser()
+
+    const selectedBooking = completedBookings.find(
+      (b) => b.id === bookingId
+    )
+
+    if (!selectedBooking) {
+      alert('Please select a completed booking.')
+      return
+    }
+
+    const certificateNumber = `CERT-${String(certificates.length + 1).padStart(5, '0')}`
+
+    const { error } = await supabase.from('certificates').insert({
+      user_id: userData.user?.id,
+      organisation_id: organisationId,
+      booking_id: bookingId,
+      learner_name: learnerName,
+      course_name: selectedBooking.course_name,
+      issue_date: issueDate,
+      expiry_date: expiryDate,
+      certificate_number: certificateNumber,
+      status: 'valid',
+    })
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    setBookingId('')
+    setLearnerName('')
+    setIssueDate('')
+    setExpiryDate('')
+
+    load()
+  }
+
+  const revokeCertificate = async (certificateId: string) => {
+    const confirmRevoke = confirm(
+      'Are you sure you want to revoke this certificate?'
+    )
+
+    if (!confirmRevoke) return
+
+    const { error } = await supabase
+      .from('certificates')
+      .update({ status: 'revoked' })
+      .eq('id', certificateId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    load()
+  }
+
+  const generatePDF = async (certificate: any) => {
+    const doc = new jsPDF()
+
+    const verificationUrl =
+      `${window.location.origin}/verify/${certificate.verification_id}`
+
+    const qrDataUrl = await QRCode.toDataURL(verificationUrl)
+
+    doc.setFontSize(24)
+    doc.text('First Aid Certificate', 60, 30)
+
+    doc.line(20, 40, 190, 40)
+
+    doc.setFontSize(14)
+    doc.text(`Certificate No: ${certificate.certificate_number}`, 20, 55)
+
+    doc.setFontSize(16)
+    doc.text('This certifies that', 20, 80)
+
+    doc.setFontSize(22)
+    doc.text(certificate.learner_name, 20, 105)
+
+    doc.setFontSize(16)
+    doc.text('has successfully completed:', 20, 130)
+
+    doc.text(certificate.course_name, 20, 150)
+
+    doc.text(`Issue Date: ${certificate.issue_date}`, 20, 180)
+    doc.text(`Expiry Date: ${certificate.expiry_date}`, 20, 195)
+
+    doc.addImage(qrDataUrl, 'PNG', 150, 230, 35, 35)
+
+    doc.setFontSize(10)
+    doc.text('Scan to verify', 150, 270)
+
+    doc.save(`${certificate.learner_name}-certificate.pdf`)
+  }
+
+  const expiringSoon = certificates.filter((certificate) => {
+    const expiry = new Date(certificate.expiry_date)
+    const today = new Date()
+    const diff = expiry.getTime() - today.getTime()
+    const days = diff / (1000 * 60 * 60 * 24)
+
+    return days <= 60 && days >= 0 && certificate.status === 'valid'
+  })
+
+  const validCertificates = certificates.filter(
+    (certificate) => certificate.status === 'valid'
+  )
+
+  const getStatusStyle = (status: string) => {
+    if (status === 'revoked') {
+      return 'bg-red-100 text-red-700'
+    }
+
+    if (status === 'expired') {
+      return 'bg-yellow-100 text-yellow-700'
+    }
+
+    return 'bg-green-100 text-green-700'
+  }
+
+  return (
+    <div>
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold">
+          Certificates
+        </h1>
+
+        <p className="text-gray-500 mt-1">
+          Issue certificates only after completed training sessions
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="bg-white border rounded-2xl p-6 shadow-sm">
+          <p className="text-gray-500">Total Certificates</p>
+          <h2 className="text-3xl font-bold mt-2">{certificates.length}</h2>
+        </div>
+
+        <div className="bg-white border rounded-2xl p-6 shadow-sm">
+          <p className="text-gray-500">Valid Certificates</p>
+          <h2 className="text-3xl font-bold mt-2">{validCertificates.length}</h2>
+        </div>
+
+        <div className="bg-white border rounded-2xl p-6 shadow-sm">
+          <p className="text-gray-500">Expiring Soon</p>
+          <h2 className="text-3xl font-bold mt-2">{expiringSoon.length}</h2>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="bg-white border rounded-2xl p-6 shadow-sm">
+          <h2 className="text-xl font-semibold mb-4">
+            Create Certificate
+          </h2>
+
+          {completedBookings.length === 0 && (
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-xl mb-4 text-sm">
+              No completed bookings available. Mark a booking as completed before issuing a certificate.
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3">
+            <select
+              className="border p-3 rounded-lg"
+              value={bookingId}
+              onChange={(e) => setBookingId(e.target.value)}
+            >
+              <option value="">Select Completed Booking</option>
+
+              {completedBookings.map((booking) => (
+                <option key={booking.id} value={booking.id}>
+                  {booking.client_name} - {booking.course_name}
+                </option>
+              ))}
+            </select>
+
+            <input
+              className="border p-3 rounded-lg"
+              placeholder="Learner name"
+              value={learnerName}
+              onChange={(e) => setLearnerName(e.target.value)}
+            />
+
+            <input
+              className="border p-3 rounded-lg"
+              type="date"
+              value={issueDate}
+              onChange={(e) => setIssueDate(e.target.value)}
+            />
+
+            <input
+              className="border p-3 rounded-lg"
+              type="date"
+              value={expiryDate}
+              onChange={(e) => setExpiryDate(e.target.value)}
+            />
+
+            <button
+              className="bg-black text-white p-3 rounded-lg disabled:bg-gray-300"
+              onClick={addCertificate}
+              disabled={completedBookings.length === 0}
+            >
+              Create Certificate
+            </button>
+          </div>
+        </div>
+
+        <div className="lg:col-span-2 grid gap-4">
+          {certificates.map((certificate) => (
+            <div
+              key={certificate.id}
+              className="bg-white border rounded-2xl p-5 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold">
+                    {certificate.learner_name}
+                  </h2>
+
+                  <p className="text-gray-500 mt-1">
+                    {certificate.course_name}
+                  </p>
+                </div>
+
+                <div
+                  className={`px-3 py-1 rounded-full text-sm ${getStatusStyle(
+                    certificate.status
+                  )}`}
+                >
+                  {certificate.status}
+                </div>
+              </div>
+
+              <div className="mt-4 text-sm text-gray-600 space-y-1">
+                <p>Certificate No: {certificate.certificate_number}</p>
+                <p>Issued: {certificate.issue_date}</p>
+                <p>Expires: {certificate.expiry_date}</p>
+              </div>
+
+              <div className="flex flex-wrap gap-3 mt-5">
+                <button
+                  className="bg-black text-white px-4 py-2 rounded-lg"
+                  onClick={() => generatePDF(certificate)}
+                >
+                  Download PDF
+                </button>
+
+                {certificate.status !== 'revoked' && (
+                  <button
+                    className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
+                    onClick={() => revokeCertificate(certificate.id)}
+                  >
+                    Revoke
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {certificates.length === 0 && (
+            <div className="bg-white border rounded-2xl p-6 shadow-sm text-gray-500">
+              No certificates yet. Complete a booking first, then issue a certificate.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
