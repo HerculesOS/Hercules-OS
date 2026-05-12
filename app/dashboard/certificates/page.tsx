@@ -22,6 +22,14 @@ export default function CertificatesPage() {
   const [sendingId, setSendingId] = useState('')
   const [expirySendingId, setExpirySendingId] = useState('')
 
+  const [editingId, setEditingId] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  const [editBookingId, setEditBookingId] = useState('')
+  const [editLearnerName, setEditLearnerName] = useState('')
+  const [editIssueDate, setEditIssueDate] = useState('')
+  const [editExpiryDate, setEditExpiryDate] = useState('')
+
   const load = async () => {
     const profile = await getOrCreateAccount()
 
@@ -105,6 +113,77 @@ export default function CertificatesPage() {
     load()
   }
 
+  const startEditing = (certificate: any) => {
+    if (certificate.status === 'revoked') {
+      alert('Revoked certificates cannot be edited.')
+      return
+    }
+
+    setEditingId(certificate.id)
+    setEditBookingId(certificate.booking_id || '')
+    setEditLearnerName(certificate.learner_name || '')
+    setEditIssueDate(certificate.issue_date || '')
+    setEditExpiryDate(certificate.expiry_date || '')
+  }
+
+  const cancelEditing = () => {
+    setEditingId('')
+    setEditBookingId('')
+    setEditLearnerName('')
+    setEditIssueDate('')
+    setEditExpiryDate('')
+  }
+
+  const saveCertificateEdit = async (certificateId: string) => {
+    const certificateToEdit = certificates.find(
+      (certificate) => certificate.id === certificateId
+    )
+
+    if (certificateToEdit?.status === 'revoked') {
+      alert('Revoked certificates cannot be edited.')
+      cancelEditing()
+      return
+    }
+
+    if (!editBookingId || !editLearnerName || !editIssueDate || !editExpiryDate) {
+      alert('All certificate fields are required')
+      return
+    }
+
+    setSavingEdit(true)
+
+    const selectedBooking = completedBookings.find(
+      (booking) => booking.id === editBookingId
+    )
+
+    if (!selectedBooking) {
+      setSavingEdit(false)
+      alert('Please select a completed booking.')
+      return
+    }
+
+    const { error } = await supabase
+      .from('certificates')
+      .update({
+        booking_id: editBookingId,
+        learner_name: editLearnerName,
+        course_name: selectedBooking.course_name,
+        issue_date: editIssueDate,
+        expiry_date: editExpiryDate,
+      })
+      .eq('id', certificateId)
+
+    setSavingEdit(false)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    cancelEditing()
+    load()
+  }
+
   const revokeCertificate = async (certificateId: string) => {
     const confirmRevoke = confirm(
       'Are you sure you want to revoke this certificate?'
@@ -120,6 +199,10 @@ export default function CertificatesPage() {
     if (error) {
       alert(error.message)
       return
+    }
+
+    if (editingId === certificateId) {
+      cancelEditing()
     }
 
     load()
@@ -342,6 +425,10 @@ export default function CertificatesPage() {
     (certificate) => certificate.status === 'valid'
   )
 
+  const revokedCertificates = certificates.filter(
+    (certificate) => certificate.status === 'revoked'
+  )
+
   const getStatusStyle = (status: string) => {
     if (status === 'revoked') {
       return 'bg-red-100 text-red-700'
@@ -362,11 +449,11 @@ export default function CertificatesPage() {
         </h1>
 
         <p className="text-gray-500 mt-1">
-          Issue, download, email, verify and renew learner certificates
+          Issue, edit, download, email, verify and renew learner certificates
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <p className="text-gray-500">Total Certificates</p>
           <h2 className="text-3xl font-bold mt-2">{certificates.length}</h2>
@@ -380,6 +467,11 @@ export default function CertificatesPage() {
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <p className="text-gray-500">Expiring Soon</p>
           <h2 className="text-3xl font-bold mt-2">{expiringSoon.length}</h2>
+        </div>
+
+        <div className="bg-white border rounded-2xl p-6 shadow-sm">
+          <p className="text-gray-500">Revoked</p>
+          <h2 className="text-3xl font-bold mt-2">{revokedCertificates.length}</h2>
         </div>
       </div>
 
@@ -446,113 +538,223 @@ export default function CertificatesPage() {
             const savedClientEmail = getClientEmailForCertificate(certificate)
             const daysUntilExpiry = getDaysUntilExpiry(certificate.expiry_date)
             const expiring = isExpiringSoon(certificate)
+            const isEditing = editingId === certificate.id
+            const isRevoked = certificate.status === 'revoked'
 
             return (
               <div
                 key={certificate.id}
                 className="bg-white border rounded-2xl p-5 shadow-sm"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-xl font-semibold">
-                      {certificate.learner_name}
-                    </h2>
+                {!isEditing ? (
+                  <>
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-xl font-semibold">
+                          {certificate.learner_name}
+                        </h2>
 
-                    <p className="text-gray-500 mt-1">
-                      {certificate.course_name}
-                    </p>
-                  </div>
+                        <p className="text-gray-500 mt-1">
+                          {certificate.course_name}
+                        </p>
+                      </div>
 
-                  <div className="flex flex-col items-end gap-2">
-                    <div
-                      className={`px-3 py-1 rounded-full text-sm ${getStatusStyle(
-                        certificate.status
-                      )}`}
-                    >
-                      {certificate.status}
+                      <div className="flex flex-col items-end gap-2">
+                        <div
+                          className={`px-3 py-1 rounded-full text-sm ${getStatusStyle(
+                            certificate.status
+                          )}`}
+                        >
+                          {certificate.status}
+                        </div>
+
+                        {expiring && (
+                          <div className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-sm">
+                            Expires in {daysUntilExpiry} days
+                          </div>
+                        )}
+
+                        {daysUntilExpiry < 0 && certificate.status === 'valid' && (
+                          <div className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm">
+                            Expired
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    {expiring && (
-                      <div className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-sm">
-                        Expires in {daysUntilExpiry} days
+                    <div className="mt-4 text-sm text-gray-600 space-y-1">
+                      <p>Certificate No: {certificate.certificate_number}</p>
+                      <p>Issued: {certificate.issue_date}</p>
+                      <p>Expires: {certificate.expiry_date}</p>
+
+                      {savedClientEmail && (
+                        <p>Client Email: {savedClientEmail}</p>
+                      )}
+
+                      {isRevoked && (
+                        <p className="text-red-600">
+                          This certificate has been revoked and cannot be edited.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-5 flex flex-col gap-3">
+                      <input
+                        className="border p-3 rounded-lg"
+                        placeholder={savedClientEmail || 'Recipient email'}
+                        value={recipientEmails[certificate.id] || ''}
+                        onChange={(e) =>
+                          setRecipientEmails((previous) => ({
+                            ...previous,
+                            [certificate.id]: e.target.value,
+                          }))
+                        }
+                      />
+
+                      {savedClientEmail && (
+                        <p className="text-sm text-gray-500">
+                          Leave blank to send to saved client email.
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          className="bg-black text-white px-4 py-2 rounded-lg"
+                          onClick={() => generatePDF(certificate)}
+                        >
+                          Download PDF
+                        </button>
+
+                        <button
+                          className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
+                          onClick={() => sendCertificateEmail(certificate)}
+                          disabled={sendingId === certificate.id}
+                        >
+                          {sendingId === certificate.id ? 'Sending...' : 'Send Email'}
+                        </button>
+
+                        {!isRevoked && (
+                          <button
+                            className="border px-4 py-2 rounded-lg"
+                            onClick={() => startEditing(certificate)}
+                          >
+                            Edit
+                          </button>
+                        )}
+
+                        {expiring && (
+                          <button
+                            className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
+                            onClick={() => sendExpiryReminder(certificate)}
+                            disabled={expirySendingId === certificate.id}
+                          >
+                            {expirySendingId === certificate.id
+                              ? 'Sending...'
+                              : 'Send Expiry Reminder'}
+                          </button>
+                        )}
+
+                        {!isRevoked && (
+                          <button
+                            className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
+                            onClick={() => revokeCertificate(certificate.id)}
+                          >
+                            Revoke
+                          </button>
+                        )}
                       </div>
-                    )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mb-5">
+                      <h2 className="text-xl font-semibold">
+                        Edit Certificate
+                      </h2>
 
-                    {daysUntilExpiry < 0 && certificate.status === 'valid' && (
-                      <div className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm">
-                        Expired
+                      <p className="text-gray-500 mt-1">
+                        Update learner, course and certificate dates
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <select
+                        className="border p-3 rounded-lg md:col-span-2"
+                        value={editBookingId}
+                        onChange={(e) => setEditBookingId(e.target.value)}
+                      >
+                        <option value="">Select Completed Booking</option>
+
+                        {completedBookings.map((booking) => (
+                          <option key={booking.id} value={booking.id}>
+                            {booking.client_name} - {booking.course_name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <input
+                        className="border p-3 rounded-lg md:col-span-2"
+                        placeholder="Learner name"
+                        value={editLearnerName}
+                        onChange={(e) => setEditLearnerName(e.target.value)}
+                      />
+
+                      <div>
+                        <label className="text-sm text-gray-500">
+                          Issue Date
+                        </label>
+
+                        <input
+                          className="border p-3 rounded-lg w-full mt-1"
+                          type="date"
+                          value={editIssueDate}
+                          onChange={(e) => setEditIssueDate(e.target.value)}
+                        />
                       </div>
-                    )}
-                  </div>
-                </div>
 
-                <div className="mt-4 text-sm text-gray-600 space-y-1">
-                  <p>Certificate No: {certificate.certificate_number}</p>
-                  <p>Issued: {certificate.issue_date}</p>
-                  <p>Expires: {certificate.expiry_date}</p>
+                      <div>
+                        <label className="text-sm text-gray-500">
+                          Expiry Date
+                        </label>
 
-                  {savedClientEmail && (
-                    <p>Client Email: {savedClientEmail}</p>
-                  )}
-                </div>
+                        <input
+                          className="border p-3 rounded-lg w-full mt-1"
+                          type="date"
+                          value={editExpiryDate}
+                          onChange={(e) => setEditExpiryDate(e.target.value)}
+                        />
+                      </div>
+                    </div>
 
-                <div className="mt-5 flex flex-col gap-3">
-                  <input
-                    className="border p-3 rounded-lg"
-                    placeholder={savedClientEmail || 'Recipient email'}
-                    value={recipientEmails[certificate.id] || ''}
-                    onChange={(e) =>
-                      setRecipientEmails((previous) => ({
-                        ...previous,
-                        [certificate.id]: e.target.value,
-                      }))
-                    }
-                  />
+                    <div className="bg-gray-50 rounded-xl p-4 mt-4 text-sm text-gray-700">
+                      <p>
+                        Certificate number will stay the same.
+                      </p>
 
-                  {savedClientEmail && (
-                    <p className="text-sm text-gray-500">
-                      Leave blank to send to saved client email.
-                    </p>
-                  )}
+                      <p className="mt-1">
+                        Verification QR/link will continue to work.
+                      </p>
+                    </div>
 
-                  <div className="flex flex-wrap gap-3">
-                    <button
-                      className="bg-black text-white px-4 py-2 rounded-lg"
-                      onClick={() => generatePDF(certificate)}
-                    >
-                      Download PDF
-                    </button>
-
-                    <button
-                      className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
-                      onClick={() => sendCertificateEmail(certificate)}
-                      disabled={sendingId === certificate.id}
-                    >
-                      {sendingId === certificate.id ? 'Sending...' : 'Send Email'}
-                    </button>
-
-                    {expiring && (
+                    <div className="flex flex-wrap gap-3 mt-5">
                       <button
-                        className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
-                        onClick={() => sendExpiryReminder(certificate)}
-                        disabled={expirySendingId === certificate.id}
+                        className="bg-black text-white px-4 py-2 rounded-lg disabled:bg-gray-400"
+                        onClick={() => saveCertificateEdit(certificate.id)}
+                        disabled={savingEdit}
                       >
-                        {expirySendingId === certificate.id
-                          ? 'Sending...'
-                          : 'Send Expiry Reminder'}
+                        {savingEdit ? 'Saving...' : 'Save Changes'}
                       </button>
-                    )}
 
-                    {certificate.status !== 'revoked' && (
                       <button
-                        className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
-                        onClick={() => revokeCertificate(certificate.id)}
+                        className="border px-4 py-2 rounded-lg"
+                        onClick={cancelEditing}
+                        disabled={savingEdit}
                       >
-                        Revoke
+                        Cancel
                       </button>
-                    )}
-                  </div>
-                </div>
+                    </div>
+                  </>
+                )}
               </div>
             )
           })}
