@@ -8,6 +8,7 @@ import jsPDF from 'jspdf'
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<any[]>([])
   const [bookings, setBookings] = useState<any[]>([])
+  const [clients, setClients] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
   const [organisationId, setOrganisationId] = useState('')
 
@@ -30,6 +31,11 @@ export default function InvoicesPage() {
       .eq('id', profile.organisation_id)
       .single()
 
+    const { data: clientsData } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('organisation_id', profile.organisation_id)
+
     const { data: bookingsData } = await supabase
       .from('bookings')
       .select('*')
@@ -42,6 +48,7 @@ export default function InvoicesPage() {
       .order('created_at', { ascending: false })
 
     setOrganisation(organisationData || null)
+    setClients(clientsData || [])
     setBookings(bookingsData || [])
     setInvoices(invoicesData || [])
   }
@@ -66,7 +73,7 @@ export default function InvoicesPage() {
 
     const invoiceNumber = `INV-${String(invoices.length + 1).padStart(4, '0')}`
 
-    await supabase.from('invoices').insert({
+    const { error } = await supabase.from('invoices').insert({
       user_id: userData.user?.id,
       organisation_id: organisationId,
       booking_id: bookingId,
@@ -79,6 +86,11 @@ export default function InvoicesPage() {
       due_date: dueDate || null,
       status: 'draft',
     })
+
+    if (error) {
+      alert(error.message)
+      return
+    }
 
     setBookingId('')
     setAmount('')
@@ -110,6 +122,16 @@ export default function InvoicesPage() {
       .eq('id', invoiceId)
 
     load()
+  }
+
+  const getClientEmailForInvoice = (invoice: any) => {
+    const booking = bookings.find((b) => b.id === invoice.booking_id)
+
+    if (!booking) return ''
+
+    const client = clients.find((c) => c.id === booking.client_id)
+
+    return client?.email || ''
   }
 
   const generateInvoicePDF = (invoice: any) => {
@@ -211,7 +233,8 @@ export default function InvoicesPage() {
   }
 
   const sendInvoiceEmail = async (invoice: any) => {
-    const recipientEmail = recipientEmails[invoice.id]
+    const recipientEmail =
+      recipientEmails[invoice.id] || getClientEmailForInvoice(invoice)
 
     if (!recipientEmail) {
       alert('Enter a recipient email first')
@@ -360,6 +383,7 @@ export default function InvoicesPage() {
             const netAmount = Number(invoice.amount || 0)
             const vatAmount = Number(invoice.vat_amount || 0)
             const totalAmount = Number(invoice.total_amount || invoice.amount || 0)
+            const savedClientEmail = getClientEmailForInvoice(invoice)
 
             return (
               <div
@@ -396,6 +420,10 @@ export default function InvoicesPage() {
                   <p>Total: £{totalAmount.toFixed(2)}</p>
                   <p>Due: {invoice.due_date || 'Not set'}</p>
 
+                  {savedClientEmail && (
+                    <p>Client Email: {savedClientEmail}</p>
+                  )}
+
                   {invoice.paid_at && (
                     <p>
                       Paid: {new Date(invoice.paid_at).toLocaleDateString()}
@@ -406,7 +434,7 @@ export default function InvoicesPage() {
                 <div className="mt-5 flex flex-col gap-3">
                   <input
                     className="border p-3 rounded-lg"
-                    placeholder="Recipient email"
+                    placeholder={savedClientEmail || 'Recipient email'}
                     value={recipientEmails[invoice.id] || ''}
                     onChange={(e) =>
                       setRecipientEmails((previous) => ({
@@ -415,6 +443,12 @@ export default function InvoicesPage() {
                       }))
                     }
                   />
+
+                  {savedClientEmail && (
+                    <p className="text-sm text-gray-500">
+                      Leave blank to send to saved client email.
+                    </p>
+                  )}
 
                   <div className="flex flex-wrap gap-3">
                     <button
