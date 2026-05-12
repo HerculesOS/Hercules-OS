@@ -28,6 +28,12 @@ export default function InvoicesPage() {
   const [editVatRate, setEditVatRate] = useState('0')
   const [editDueDate, setEditDueDate] = useState('')
 
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [securedFilter, setSecuredFilter] = useState('all')
+  const [unpaidOnly, setUnpaidOnly] = useState(false)
+  const [sortBy, setSortBy] = useState('newest')
+
   const load = async () => {
     const profile = await getOrCreateAccount()
 
@@ -420,6 +426,14 @@ export default function InvoicesPage() {
     }))
   }
 
+  const clearFilters = () => {
+    setSearch('')
+    setStatusFilter('all')
+    setSecuredFilter('all')
+    setUnpaidOnly(false)
+    setSortBy('newest')
+  }
+
   const totalRevenue = invoices.reduce(
     (sum, invoice) => sum + Number(invoice.total_amount || invoice.amount || 0),
     0
@@ -431,6 +445,48 @@ export default function InvoicesPage() {
 
   const securedInvoices = invoices.filter(
     (invoice) => invoice.secured_at
+  )
+
+  const filteredInvoices = invoices
+    .filter((invoice) => {
+      const searchableText = `
+        ${invoice.invoice_number || ''}
+        ${invoice.client_name || ''}
+        ${invoice.status || ''}
+      `.toLowerCase()
+
+      const matchesSearch = searchableText.includes(search.toLowerCase())
+
+      const matchesStatus =
+        statusFilter === 'all' || invoice.status === statusFilter
+
+      const matchesSecured =
+        securedFilter === 'all' ||
+        (securedFilter === 'secured' && invoice.secured_at) ||
+        (securedFilter === 'unsecured' && !invoice.secured_at)
+
+      const matchesUnpaid =
+        !unpaidOnly || invoice.status !== 'paid'
+
+      return matchesSearch && matchesStatus && matchesSecured && matchesUnpaid
+    })
+    .sort((a, b) => {
+      const totalA = Number(a.total_amount || a.amount || 0)
+      const totalB = Number(b.total_amount || b.amount || 0)
+
+      const createdA = new Date(a.created_at).getTime()
+      const createdB = new Date(b.created_at).getTime()
+
+      if (sortBy === 'oldest') return createdA - createdB
+      if (sortBy === 'highest') return totalB - totalA
+      if (sortBy === 'lowest') return totalA - totalB
+
+      return createdB - createdA
+    })
+
+  const filteredTotalValue = filteredInvoices.reduce(
+    (sum, invoice) => sum + Number(invoice.total_amount || invoice.amount || 0),
+    0
   )
 
   const getStatusStyle = (status: string) => {
@@ -453,7 +509,7 @@ export default function InvoicesPage() {
         </h1>
 
         <p className="text-gray-500 mt-1">
-          Create, edit, secure, download, email and track client invoices
+          Create, edit, secure, filter, download, email and track client invoices
         </p>
       </div>
 
@@ -484,6 +540,71 @@ export default function InvoicesPage() {
           <h2 className="text-3xl font-bold mt-2">
             {securedInvoices.length}
           </h2>
+        </div>
+      </div>
+
+      <div className="bg-white border rounded-2xl p-5 shadow-sm mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+          <input
+            className="border p-3 rounded-lg md:col-span-2"
+            placeholder="Search invoices..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+
+          <select
+            className="border p-3 rounded-lg"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">All Statuses</option>
+            <option value="draft">Draft</option>
+            <option value="sent">Sent</option>
+            <option value="paid">Paid</option>
+          </select>
+
+          <select
+            className="border p-3 rounded-lg"
+            value={securedFilter}
+            onChange={(e) => setSecuredFilter(e.target.value)}
+          >
+            <option value="all">All Security</option>
+            <option value="secured">Secured</option>
+            <option value="unsecured">Unsecured</option>
+          </select>
+
+          <select
+            className="border p-3 rounded-lg"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+          >
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+            <option value="highest">Highest Value</option>
+            <option value="lowest">Lowest Value</option>
+          </select>
+
+          <button
+            className={`border p-3 rounded-lg ${
+              unpaidOnly ? 'bg-black text-white' : ''
+            }`}
+            onClick={() => setUnpaidOnly(!unpaidOnly)}
+          >
+            Unpaid Only
+          </button>
+        </div>
+
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-4">
+          <p className="text-sm text-gray-500">
+            Showing {filteredInvoices.length} of {invoices.length} invoices · Filtered value £{filteredTotalValue.toFixed(2)}
+          </p>
+
+          <button
+            className="border px-4 py-2 rounded-lg text-sm w-fit"
+            onClick={clearFilters}
+          >
+            Clear Filters
+          </button>
         </div>
       </div>
 
@@ -539,7 +660,7 @@ export default function InvoicesPage() {
         </div>
 
         <div className="lg:col-span-2 grid gap-4">
-          {invoices.map((invoice) => {
+          {filteredInvoices.map((invoice) => {
             const netAmount = Number(invoice.amount || 0)
             const vatAmount = Number(invoice.vat_amount || 0)
             const totalAmount = Number(invoice.total_amount || invoice.amount || 0)
@@ -780,9 +901,9 @@ export default function InvoicesPage() {
             )
           })}
 
-          {invoices.length === 0 && (
+          {filteredInvoices.length === 0 && (
             <div className="bg-white border rounded-2xl p-6 shadow-sm text-gray-500">
-              No invoices yet. Create your first invoice from a booking.
+              No invoices match your filters.
             </div>
           )}
         </div>
