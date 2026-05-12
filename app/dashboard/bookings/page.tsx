@@ -23,6 +23,7 @@ export default function BookingsPage() {
 
   const [recipientEmails, setRecipientEmails] = useState<Record<string, string>>({})
   const [sendingId, setSendingId] = useState('')
+  const [remindingId, setRemindingId] = useState('')
 
   const load = async () => {
     const profile = await getOrCreateAccount()
@@ -148,14 +149,16 @@ export default function BookingsPage() {
     return trainers.find((trainer) => trainer.id === booking.trainer_id)
   }
 
+  const getRecipientEmailForBooking = (booking: any) => {
+    const client = getClientForBooking(booking)
+    return recipientEmails[booking.id] || client?.email || ''
+  }
+
   const sendBookingConfirmation = async (booking: any) => {
     const client = getClientForBooking(booking)
     const trainer = getTrainerForBooking(booking)
 
-    const savedClientEmail = client?.email || ''
-
-    const recipientEmail =
-      recipientEmails[booking.id] || savedClientEmail
+    const recipientEmail = getRecipientEmailForBooking(booking)
 
     if (!recipientEmail) {
       alert('Enter a recipient email first')
@@ -201,6 +204,54 @@ export default function BookingsPage() {
     }))
   }
 
+  const sendBookingReminder = async (booking: any) => {
+    const trainer = getTrainerForBooking(booking)
+    const recipientEmail = getRecipientEmailForBooking(booking)
+
+    if (!recipientEmail) {
+      alert('Enter a recipient email first')
+      return
+    }
+
+    setRemindingId(booking.id)
+
+    const response = await fetch('/api/send-booking-reminder', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: recipientEmail,
+        clientName: booking.client_name,
+        courseName: booking.course_name,
+        date: booking.date,
+        startTime: booking.start_time,
+        endTime: booking.end_time,
+        location: booking.location,
+        trainerName: trainer?.name || '',
+        businessName: organisation?.name || 'Hercules OS',
+        businessEmail: organisation?.email || '',
+        businessPhone: organisation?.phone || '',
+      }),
+    })
+
+    const result = await response.json()
+
+    setRemindingId('')
+
+    if (!response.ok) {
+      alert(result.error?.message || result.error || 'Reminder email failed')
+      return
+    }
+
+    alert('Booking reminder sent')
+
+    setRecipientEmails((previous) => ({
+      ...previous,
+      [booking.id]: '',
+    }))
+  }
+
   const scheduledBookings = bookings.filter(
     (booking) => booking.status === 'scheduled'
   )
@@ -238,7 +289,7 @@ export default function BookingsPage() {
         </h1>
 
         <p className="text-gray-500 mt-1">
-          Schedule, manage and confirm training sessions
+          Schedule, manage, confirm and remind clients about training sessions
         </p>
       </div>
 
@@ -454,6 +505,16 @@ export default function BookingsPage() {
                       {sendingId === booking.id
                         ? 'Sending...'
                         : 'Send Confirmation'}
+                    </button>
+
+                    <button
+                      className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
+                      onClick={() => sendBookingReminder(booking)}
+                      disabled={remindingId === booking.id}
+                    >
+                      {remindingId === booking.id
+                        ? 'Sending...'
+                        : 'Send Reminder'}
                     </button>
 
                     {booking.status !== 'scheduled' && (
