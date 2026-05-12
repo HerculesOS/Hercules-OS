@@ -30,6 +30,11 @@ export default function CertificatesPage() {
   const [editIssueDate, setEditIssueDate] = useState('')
   const [editExpiryDate, setEditExpiryDate] = useState('')
 
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [expiryFilter, setExpiryFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('newest')
+
   const load = async () => {
     const profile = await getOrCreateAccount()
 
@@ -246,6 +251,13 @@ export default function CertificatesPage() {
     )
   }
 
+  const isExpired = (certificate: any) => {
+    return (
+      getDaysUntilExpiry(certificate.expiry_date) < 0 &&
+      certificate.status === 'valid'
+    )
+  }
+
   const generatePDF = async (certificate: any) => {
     const doc = new jsPDF('landscape', 'mm', 'a4')
 
@@ -417,8 +429,19 @@ export default function CertificatesPage() {
     }))
   }
 
+  const clearFilters = () => {
+    setSearch('')
+    setStatusFilter('all')
+    setExpiryFilter('all')
+    setSortBy('newest')
+  }
+
   const expiringSoon = certificates.filter((certificate) =>
     isExpiringSoon(certificate)
+  )
+
+  const expiredCertificates = certificates.filter((certificate) =>
+    isExpired(certificate)
   )
 
   const validCertificates = certificates.filter(
@@ -428,6 +451,44 @@ export default function CertificatesPage() {
   const revokedCertificates = certificates.filter(
     (certificate) => certificate.status === 'revoked'
   )
+
+  const filteredCertificates = certificates
+    .filter((certificate) => {
+      const searchableText = `
+        ${certificate.learner_name || ''}
+        ${certificate.course_name || ''}
+        ${certificate.certificate_number || ''}
+        ${certificate.status || ''}
+      `.toLowerCase()
+
+      const matchesSearch = searchableText.includes(search.toLowerCase())
+
+      const matchesStatus =
+        statusFilter === 'all' || certificate.status === statusFilter
+
+      const matchesExpiry =
+        expiryFilter === 'all' ||
+        (expiryFilter === 'expiring' && isExpiringSoon(certificate)) ||
+        (expiryFilter === 'expired' && isExpired(certificate)) ||
+        (expiryFilter === 'not_expiring' &&
+          !isExpiringSoon(certificate) &&
+          !isExpired(certificate))
+
+      return matchesSearch && matchesStatus && matchesExpiry
+    })
+    .sort((a, b) => {
+      const createdA = new Date(a.created_at).getTime()
+      const createdB = new Date(b.created_at).getTime()
+
+      const expiryA = new Date(a.expiry_date).getTime()
+      const expiryB = new Date(b.expiry_date).getTime()
+
+      if (sortBy === 'oldest') return createdA - createdB
+      if (sortBy === 'expiry_soonest') return expiryA - expiryB
+      if (sortBy === 'expiry_latest') return expiryB - expiryA
+
+      return createdB - createdA
+    })
 
   const getStatusStyle = (status: string) => {
     if (status === 'revoked') {
@@ -449,7 +510,7 @@ export default function CertificatesPage() {
         </h1>
 
         <p className="text-gray-500 mt-1">
-          Issue, edit, download, email, verify and renew learner certificates
+          Issue, edit, filter, download, email, verify and renew learner certificates
         </p>
       </div>
 
@@ -472,6 +533,62 @@ export default function CertificatesPage() {
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <p className="text-gray-500">Revoked</p>
           <h2 className="text-3xl font-bold mt-2">{revokedCertificates.length}</h2>
+        </div>
+      </div>
+
+      <div className="bg-white border rounded-2xl p-5 shadow-sm mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <input
+            className="border p-3 rounded-lg md:col-span-2"
+            placeholder="Search certificates..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+
+          <select
+            className="border p-3 rounded-lg"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">All Statuses</option>
+            <option value="valid">Valid</option>
+            <option value="revoked">Revoked</option>
+          </select>
+
+          <select
+            className="border p-3 rounded-lg"
+            value={expiryFilter}
+            onChange={(e) => setExpiryFilter(e.target.value)}
+          >
+            <option value="all">All Expiry</option>
+            <option value="expiring">Expiring Soon</option>
+            <option value="expired">Expired</option>
+            <option value="not_expiring">Not Expiring Soon</option>
+          </select>
+
+          <select
+            className="border p-3 rounded-lg"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+          >
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+            <option value="expiry_soonest">Expiry Soonest</option>
+            <option value="expiry_latest">Expiry Latest</option>
+          </select>
+        </div>
+
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-4">
+          <p className="text-sm text-gray-500">
+            Showing {filteredCertificates.length} of {certificates.length} certificates · {expiredCertificates.length} already expired
+          </p>
+
+          <button
+            className="border px-4 py-2 rounded-lg text-sm w-fit"
+            onClick={clearFilters}
+          >
+            Clear Filters
+          </button>
         </div>
       </div>
 
@@ -534,10 +651,11 @@ export default function CertificatesPage() {
         </div>
 
         <div className="lg:col-span-2 grid gap-4">
-          {certificates.map((certificate) => {
+          {filteredCertificates.map((certificate) => {
             const savedClientEmail = getClientEmailForCertificate(certificate)
             const daysUntilExpiry = getDaysUntilExpiry(certificate.expiry_date)
             const expiring = isExpiringSoon(certificate)
+            const expired = isExpired(certificate)
             const isEditing = editingId === certificate.id
             const isRevoked = certificate.status === 'revoked'
 
@@ -574,7 +692,7 @@ export default function CertificatesPage() {
                           </div>
                         )}
 
-                        {daysUntilExpiry < 0 && certificate.status === 'valid' && (
+                        {expired && (
                           <div className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm">
                             Expired
                           </div>
@@ -759,9 +877,9 @@ export default function CertificatesPage() {
             )
           })}
 
-          {certificates.length === 0 && (
+          {filteredCertificates.length === 0 && (
             <div className="bg-white border rounded-2xl p-6 shadow-sm text-gray-500">
-              No certificates yet. Complete a booking first, then issue a certificate.
+              No certificates match your filters.
             </div>
           )}
         </div>
