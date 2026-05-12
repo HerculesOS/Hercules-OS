@@ -16,6 +16,9 @@ export default function InvoicesPage() {
   const [vatRate, setVatRate] = useState('0')
   const [dueDate, setDueDate] = useState('')
 
+  const [recipientEmails, setRecipientEmails] = useState<Record<string, string>>({})
+  const [sendingId, setSendingId] = useState('')
+
   const load = async () => {
     const profile = await getOrCreateAccount()
 
@@ -207,6 +210,56 @@ export default function InvoicesPage() {
     doc.save(`${invoice.invoice_number || 'invoice'}.pdf`)
   }
 
+  const sendInvoiceEmail = async (invoice: any) => {
+    const recipientEmail = recipientEmails[invoice.id]
+
+    if (!recipientEmail) {
+      alert('Enter a recipient email first')
+      return
+    }
+
+    setSendingId(invoice.id)
+
+    const response = await fetch('/api/send-invoice-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: recipientEmail,
+        invoiceNumber: invoice.invoice_number || invoice.id,
+        clientName: invoice.client_name,
+        amount: invoice.amount,
+        vatAmount: invoice.vat_amount,
+        totalAmount: invoice.total_amount || invoice.amount,
+        dueDate: invoice.due_date,
+        status: invoice.status,
+        businessName: organisation?.name || 'Hercules OS',
+        businessEmail: organisation?.email || '',
+        businessPhone: organisation?.phone || '',
+        paymentDetails: organisation?.invoice_payment_details || '',
+      }),
+    })
+
+    const result = await response.json()
+
+    setSendingId('')
+
+    if (!response.ok) {
+      alert(result.error?.message || result.error || 'Email failed')
+      return
+    }
+
+    await markAsSent(invoice.id)
+
+    alert('Invoice email sent')
+
+    setRecipientEmails((previous) => ({
+      ...previous,
+      [invoice.id]: '',
+    }))
+  }
+
   const totalRevenue = invoices.reduce(
     (sum, invoice) => sum + Number(invoice.total_amount || invoice.amount || 0),
     0
@@ -224,7 +277,7 @@ export default function InvoicesPage() {
         </h1>
 
         <p className="text-gray-500 mt-1">
-          Create, download and track client invoices
+          Create, download, email and track client invoices
         </p>
       </div>
 
@@ -350,31 +403,53 @@ export default function InvoicesPage() {
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-3 mt-5">
-                  <button
-                    className="bg-black text-white px-4 py-2 rounded-lg"
-                    onClick={() => generateInvoicePDF(invoice)}
-                  >
-                    Download PDF
-                  </button>
+                <div className="mt-5 flex flex-col gap-3">
+                  <input
+                    className="border p-3 rounded-lg"
+                    placeholder="Recipient email"
+                    value={recipientEmails[invoice.id] || ''}
+                    onChange={(e) =>
+                      setRecipientEmails((previous) => ({
+                        ...previous,
+                        [invoice.id]: e.target.value,
+                      }))
+                    }
+                  />
 
-                  {invoice.status === 'draft' && (
+                  <div className="flex flex-wrap gap-3">
                     <button
-                      className="border px-4 py-2 rounded-lg"
-                      onClick={() => markAsSent(invoice.id)}
+                      className="bg-black text-white px-4 py-2 rounded-lg"
+                      onClick={() => generateInvoicePDF(invoice)}
                     >
-                      Mark Sent
+                      Download PDF
                     </button>
-                  )}
 
-                  {invoice.status !== 'paid' && (
                     <button
-                      className="border px-4 py-2 rounded-lg"
-                      onClick={() => markAsPaid(invoice.id)}
+                      className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
+                      onClick={() => sendInvoiceEmail(invoice)}
+                      disabled={sendingId === invoice.id}
                     >
-                      Mark Paid
+                      {sendingId === invoice.id ? 'Sending...' : 'Send Email'}
                     </button>
-                  )}
+
+                    {invoice.status === 'draft' && (
+                      <button
+                        className="border px-4 py-2 rounded-lg"
+                        onClick={() => markAsSent(invoice.id)}
+                      >
+                        Mark Sent
+                      </button>
+                    )}
+
+                    {invoice.status !== 'paid' && (
+                      <button
+                        className="border px-4 py-2 rounded-lg"
+                        onClick={() => markAsPaid(invoice.id)}
+                      >
+                        Mark Paid
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )
