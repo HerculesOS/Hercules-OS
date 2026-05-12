@@ -20,6 +20,14 @@ export default function InvoicesPage() {
   const [recipientEmails, setRecipientEmails] = useState<Record<string, string>>({})
   const [sendingId, setSendingId] = useState('')
 
+  const [editingId, setEditingId] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  const [editBookingId, setEditBookingId] = useState('')
+  const [editAmount, setEditAmount] = useState('')
+  const [editVatRate, setEditVatRate] = useState('0')
+  const [editDueDate, setEditDueDate] = useState('')
+
   const load = async () => {
     const profile = await getOrCreateAccount()
 
@@ -100,26 +108,151 @@ export default function InvoicesPage() {
     load()
   }
 
+  const startEditing = (invoice: any) => {
+    if (invoice.secured_at || invoice.status === 'paid') {
+      alert('This invoice is secured or paid and cannot be edited.')
+      return
+    }
+
+    setEditingId(invoice.id)
+    setEditBookingId(invoice.booking_id || '')
+    setEditAmount(invoice.amount ? String(invoice.amount) : '')
+    setEditVatRate(invoice.vat_rate ? String(invoice.vat_rate) : '0')
+    setEditDueDate(invoice.due_date || '')
+  }
+
+  const cancelEditing = () => {
+    setEditingId('')
+    setEditBookingId('')
+    setEditAmount('')
+    setEditVatRate('0')
+    setEditDueDate('')
+  }
+
+  const saveInvoiceEdit = async (invoiceId: string) => {
+    const invoiceToEdit = invoices.find((invoice) => invoice.id === invoiceId)
+
+    if (invoiceToEdit?.secured_at || invoiceToEdit?.status === 'paid') {
+      alert('This invoice is secured or paid and cannot be edited.')
+      cancelEditing()
+      return
+    }
+
+    if (!editBookingId || !editAmount) {
+      alert('Booking and amount are required')
+      return
+    }
+
+    setSavingEdit(true)
+
+    const selectedBooking = bookings.find((b) => b.id === editBookingId)
+
+    const net = Number(editAmount)
+    const vat = net * (Number(editVatRate) / 100)
+    const total = net + vat
+
+    const { error } = await supabase
+      .from('invoices')
+      .update({
+        booking_id: editBookingId,
+        client_name: selectedBooking?.client_name,
+        amount: net,
+        vat_rate: Number(editVatRate),
+        vat_amount: vat,
+        total_amount: total,
+        due_date: editDueDate || null,
+      })
+      .eq('id', invoiceId)
+
+    setSavingEdit(false)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    cancelEditing()
+    load()
+  }
+
+  const secureInvoice = async (invoiceId: string) => {
+    const confirmSecure = confirm(
+      'Are you sure you want to secure this invoice? Once secured, it cannot be edited.'
+    )
+
+    if (!confirmSecure) return
+
+    const { error } = await supabase
+      .from('invoices')
+      .update({
+        secured_at: new Date().toISOString(),
+      })
+      .eq('id', invoiceId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    load()
+  }
+
   const markAsPaid = async (invoiceId: string) => {
-    await supabase
+    const { error } = await supabase
       .from('invoices')
       .update({
         status: 'paid',
         paid_at: new Date().toISOString(),
+        secured_at: new Date().toISOString(),
       })
       .eq('id', invoiceId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
 
     load()
   }
 
   const markAsSent = async (invoiceId: string) => {
-    await supabase
+    const { error } = await supabase
       .from('invoices')
       .update({
         status: 'sent',
         sent_at: new Date().toISOString(),
       })
       .eq('id', invoiceId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    load()
+  }
+
+  const markAsDraft = async (invoiceId: string) => {
+    const invoiceToUpdate = invoices.find((invoice) => invoice.id === invoiceId)
+
+    if (invoiceToUpdate?.secured_at || invoiceToUpdate?.status === 'paid') {
+      alert('This invoice is secured or paid and cannot be moved back to draft.')
+      return
+    }
+
+    const { error } = await supabase
+      .from('invoices')
+      .update({
+        status: 'draft',
+        sent_at: null,
+        paid_at: null,
+      })
+      .eq('id', invoiceId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
 
     load()
   }
@@ -184,6 +317,10 @@ export default function InvoicesPage() {
     doc.text(`Date: ${new Date(invoice.created_at).toLocaleDateString()}`, 130, 48)
     doc.text(`Due Date: ${invoice.due_date || 'Not set'}`, 130, 56)
     doc.text(`Status: ${invoice.status}`, 130, 64)
+
+    if (invoice.secured_at) {
+      doc.text(`Secured: ${new Date(invoice.secured_at).toLocaleDateString()}`, 130, 72)
+    }
 
     doc.line(20, 80, 190, 80)
 
@@ -292,6 +429,22 @@ export default function InvoicesPage() {
     (invoice) => invoice.status !== 'paid'
   )
 
+  const securedInvoices = invoices.filter(
+    (invoice) => invoice.secured_at
+  )
+
+  const getStatusStyle = (status: string) => {
+    if (status === 'paid') {
+      return 'bg-green-100 text-green-700'
+    }
+
+    if (status === 'sent') {
+      return 'bg-blue-100 text-blue-700'
+    }
+
+    return 'bg-yellow-100 text-yellow-700'
+  }
+
   return (
     <div>
       <div className="mb-8">
@@ -300,11 +453,11 @@ export default function InvoicesPage() {
         </h1>
 
         <p className="text-gray-500 mt-1">
-          Create, download, email and track client invoices
+          Create, edit, secure, download, email and track client invoices
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <p className="text-gray-500">Total Invoice Value</p>
           <h2 className="text-3xl font-bold mt-2">
@@ -323,6 +476,13 @@ export default function InvoicesPage() {
           <p className="text-gray-500">Outstanding</p>
           <h2 className="text-3xl font-bold mt-2">
             {unpaidInvoices.length}
+          </h2>
+        </div>
+
+        <div className="bg-white border rounded-2xl p-6 shadow-sm">
+          <p className="text-gray-500">Secured</p>
+          <h2 className="text-3xl font-bold mt-2">
+            {securedInvoices.length}
           </h2>
         </div>
       </div>
@@ -384,107 +544,238 @@ export default function InvoicesPage() {
             const vatAmount = Number(invoice.vat_amount || 0)
             const totalAmount = Number(invoice.total_amount || invoice.amount || 0)
             const savedClientEmail = getClientEmailForInvoice(invoice)
+            const isEditing = editingId === invoice.id
+            const isLocked = Boolean(invoice.secured_at) || invoice.status === 'paid'
 
             return (
               <div
                 key={invoice.id}
                 className="bg-white border rounded-2xl p-5 shadow-sm"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-xl font-semibold">
-                      {invoice.invoice_number || 'Invoice'}
-                    </h2>
+                {!isEditing ? (
+                  <>
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-xl font-semibold">
+                          {invoice.invoice_number || 'Invoice'}
+                        </h2>
 
-                    <p className="text-gray-500 mt-1">
-                      {invoice.client_name}
-                    </p>
-                  </div>
+                        <p className="text-gray-500 mt-1">
+                          {invoice.client_name}
+                        </p>
+                      </div>
 
-                  <div
-                    className={`px-3 py-1 rounded-full text-sm ${
-                      invoice.status === 'paid'
-                        ? 'bg-green-100 text-green-700'
-                        : invoice.status === 'sent'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'bg-yellow-100 text-yellow-700'
-                    }`}
-                  >
-                    {invoice.status}
-                  </div>
-                </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <div
+                          className={`px-3 py-1 rounded-full text-sm ${getStatusStyle(
+                            invoice.status
+                          )}`}
+                        >
+                          {invoice.status}
+                        </div>
 
-                <div className="mt-4 text-sm text-gray-600 space-y-1">
-                  <p>Net: £{netAmount.toFixed(2)}</p>
-                  <p>VAT: £{vatAmount.toFixed(2)}</p>
-                  <p>Total: £{totalAmount.toFixed(2)}</p>
-                  <p>Due: {invoice.due_date || 'Not set'}</p>
+                        {invoice.secured_at && (
+                          <div className="bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-sm">
+                            Secured
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
-                  {savedClientEmail && (
-                    <p>Client Email: {savedClientEmail}</p>
-                  )}
+                    <div className="mt-4 text-sm text-gray-600 space-y-1">
+                      <p>Net: £{netAmount.toFixed(2)}</p>
+                      <p>VAT: £{vatAmount.toFixed(2)}</p>
+                      <p>Total: £{totalAmount.toFixed(2)}</p>
+                      <p>Due: {invoice.due_date || 'Not set'}</p>
 
-                  {invoice.paid_at && (
-                    <p>
-                      Paid: {new Date(invoice.paid_at).toLocaleDateString()}
-                    </p>
-                  )}
-                </div>
+                      {invoice.secured_at && (
+                        <p>
+                          Secured: {new Date(invoice.secured_at).toLocaleDateString()}
+                        </p>
+                      )}
 
-                <div className="mt-5 flex flex-col gap-3">
-                  <input
-                    className="border p-3 rounded-lg"
-                    placeholder={savedClientEmail || 'Recipient email'}
-                    value={recipientEmails[invoice.id] || ''}
-                    onChange={(e) =>
-                      setRecipientEmails((previous) => ({
-                        ...previous,
-                        [invoice.id]: e.target.value,
-                      }))
-                    }
-                  />
+                      {savedClientEmail && (
+                        <p>Client Email: {savedClientEmail}</p>
+                      )}
 
-                  {savedClientEmail && (
-                    <p className="text-sm text-gray-500">
-                      Leave blank to send to saved client email.
-                    </p>
-                  )}
+                      {invoice.paid_at && (
+                        <p>
+                          Paid: {new Date(invoice.paid_at).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
 
-                  <div className="flex flex-wrap gap-3">
-                    <button
-                      className="bg-black text-white px-4 py-2 rounded-lg"
-                      onClick={() => generateInvoicePDF(invoice)}
-                    >
-                      Download PDF
-                    </button>
+                    <div className="mt-5 flex flex-col gap-3">
+                      <input
+                        className="border p-3 rounded-lg"
+                        placeholder={savedClientEmail || 'Recipient email'}
+                        value={recipientEmails[invoice.id] || ''}
+                        onChange={(e) =>
+                          setRecipientEmails((previous) => ({
+                            ...previous,
+                            [invoice.id]: e.target.value,
+                          }))
+                        }
+                      />
 
-                    <button
-                      className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
-                      onClick={() => sendInvoiceEmail(invoice)}
-                      disabled={sendingId === invoice.id}
-                    >
-                      {sendingId === invoice.id ? 'Sending...' : 'Send Email'}
-                    </button>
+                      {savedClientEmail && (
+                        <p className="text-sm text-gray-500">
+                          Leave blank to send to saved client email.
+                        </p>
+                      )}
 
-                    {invoice.status === 'draft' && (
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          className="bg-black text-white px-4 py-2 rounded-lg"
+                          onClick={() => generateInvoicePDF(invoice)}
+                        >
+                          Download PDF
+                        </button>
+
+                        <button
+                          className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
+                          onClick={() => sendInvoiceEmail(invoice)}
+                          disabled={sendingId === invoice.id}
+                        >
+                          {sendingId === invoice.id ? 'Sending...' : 'Send Email'}
+                        </button>
+
+                        {!isLocked && (
+                          <button
+                            className="border px-4 py-2 rounded-lg"
+                            onClick={() => startEditing(invoice)}
+                          >
+                            Edit
+                          </button>
+                        )}
+
+                        {!invoice.secured_at && invoice.status !== 'paid' && (
+                          <button
+                            className="border px-4 py-2 rounded-lg"
+                            onClick={() => secureInvoice(invoice.id)}
+                          >
+                            Secure Invoice
+                          </button>
+                        )}
+
+                        {invoice.status !== 'draft' && !invoice.secured_at && invoice.status !== 'paid' && (
+                          <button
+                            className="border px-4 py-2 rounded-lg"
+                            onClick={() => markAsDraft(invoice.id)}
+                          >
+                            Mark Draft
+                          </button>
+                        )}
+
+                        {invoice.status === 'draft' && (
+                          <button
+                            className="border px-4 py-2 rounded-lg"
+                            onClick={() => markAsSent(invoice.id)}
+                          >
+                            Mark Sent
+                          </button>
+                        )}
+
+                        {invoice.status !== 'paid' && (
+                          <button
+                            className="border px-4 py-2 rounded-lg"
+                            onClick={() => markAsPaid(invoice.id)}
+                          >
+                            Mark Paid
+                          </button>
+                        )}
+                      </div>
+
+                      {isLocked && (
+                        <p className="text-sm text-gray-500">
+                          This invoice is locked because it is secured or paid.
+                        </p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mb-5">
+                      <h2 className="text-xl font-semibold">
+                        Edit Invoice
+                      </h2>
+
+                      <p className="text-gray-500 mt-1">
+                        Update invoice details and totals
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <select
+                        className="border p-3 rounded-lg md:col-span-2"
+                        value={editBookingId}
+                        onChange={(e) => setEditBookingId(e.target.value)}
+                      >
+                        <option value="">Select Booking</option>
+
+                        {bookings.map((booking) => (
+                          <option key={booking.id} value={booking.id}>
+                            {booking.client_name} - {booking.course_name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <input
+                        className="border p-3 rounded-lg"
+                        placeholder="Net amount"
+                        value={editAmount}
+                        onChange={(e) => setEditAmount(e.target.value)}
+                      />
+
+                      <input
+                        className="border p-3 rounded-lg"
+                        placeholder="VAT rate %"
+                        value={editVatRate}
+                        onChange={(e) => setEditVatRate(e.target.value)}
+                      />
+
+                      <input
+                        className="border p-3 rounded-lg md:col-span-2"
+                        type="date"
+                        value={editDueDate}
+                        onChange={(e) => setEditDueDate(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="bg-gray-50 rounded-xl p-4 mt-4 text-sm text-gray-700">
+                      <p>
+                        New VAT: £
+                        {(Number(editAmount || 0) * (Number(editVatRate || 0) / 100)).toFixed(2)}
+                      </p>
+
+                      <p className="font-semibold mt-1">
+                        New Total: £
+                        {(
+                          Number(editAmount || 0) +
+                          Number(editAmount || 0) * (Number(editVatRate || 0) / 100)
+                        ).toFixed(2)}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3 mt-5">
+                      <button
+                        className="bg-black text-white px-4 py-2 rounded-lg disabled:bg-gray-400"
+                        onClick={() => saveInvoiceEdit(invoice.id)}
+                        disabled={savingEdit}
+                      >
+                        {savingEdit ? 'Saving...' : 'Save Changes'}
+                      </button>
+
                       <button
                         className="border px-4 py-2 rounded-lg"
-                        onClick={() => markAsSent(invoice.id)}
+                        onClick={cancelEditing}
+                        disabled={savingEdit}
                       >
-                        Mark Sent
+                        Cancel
                       </button>
-                    )}
-
-                    {invoice.status !== 'paid' && (
-                      <button
-                        className="border px-4 py-2 rounded-lg"
-                        onClick={() => markAsPaid(invoice.id)}
-                      >
-                        Mark Paid
-                      </button>
-                    )}
-                  </div>
-                </div>
+                    </div>
+                  </>
+                )}
               </div>
             )
           })}
