@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 
@@ -23,6 +24,7 @@ export default function ClientsPage() {
       .from('clients')
       .select('*')
       .eq('organisation_id', profile.organisation_id)
+      .order('created_at', { ascending: false })
 
     setClients(data || [])
   }
@@ -39,7 +41,7 @@ export default function ClientsPage() {
 
     const { data: userData } = await supabase.auth.getUser()
 
-    await supabase.from('clients').insert({
+    const { error } = await supabase.from('clients').insert({
       name,
       email,
       company,
@@ -47,6 +49,11 @@ export default function ClientsPage() {
       user_id: userData.user?.id,
       organisation_id: organisationId,
     })
+
+    if (error) {
+      alert(error.message)
+      return
+    }
 
     setName('')
     setEmail('')
@@ -113,12 +120,38 @@ export default function ClientsPage() {
           </h2>
 
           <div className="flex flex-col gap-3">
-            <input className="border p-3 rounded-lg" placeholder="Contact name" value={name} onChange={(e) => setName(e.target.value)} />
-            <input className="border p-3 rounded-lg" placeholder="Company" value={company} onChange={(e) => setCompany(e.target.value)} />
-            <input className="border p-3 rounded-lg" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <input className="border p-3 rounded-lg" placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <input
+              className="border p-3 rounded-lg"
+              placeholder="Contact name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
 
-            <button className="bg-black text-white p-3 rounded-lg" onClick={addClient}>
+            <input
+              className="border p-3 rounded-lg"
+              placeholder="Company"
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+            />
+
+            <input
+              className="border p-3 rounded-lg"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+
+            <input
+              className="border p-3 rounded-lg"
+              placeholder="Phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+
+            <button
+              className="bg-black text-white p-3 rounded-lg"
+              onClick={addClient}
+            >
               Add Client
             </button>
           </div>
@@ -136,7 +169,11 @@ export default function ClientsPage() {
 
           <div className="grid gap-4">
             {filteredClients.map((client) => (
-              <div key={client.id} className="bg-white border rounded-2xl p-5 shadow-sm">
+              <Link
+                href={`/dashboard/clients/${client.id}`}
+                key={client.id}
+                className="bg-white border rounded-2xl p-5 shadow-sm hover:shadow-md transition block"
+              >
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-xl font-semibold">
@@ -157,8 +194,18 @@ export default function ClientsPage() {
                   <p>{client.email}</p>
                   <p>{client.phone}</p>
                 </div>
-              </div>
+
+                <p className="text-sm text-gray-400 mt-4">
+                  Click to view client profile
+                </p>
+              </Link>
             ))}
+
+            {filteredClients.length === 0 && (
+              <div className="bg-white border rounded-2xl p-6 shadow-sm text-gray-500">
+                No clients found.
+              </div>
+            )}
           </div>
         </div>
       </div>
