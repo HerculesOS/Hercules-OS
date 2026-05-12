@@ -17,6 +17,9 @@ export default function CertificatesPage() {
   const [issueDate, setIssueDate] = useState('')
   const [expiryDate, setExpiryDate] = useState('')
 
+  const [recipientEmails, setRecipientEmails] = useState<Record<string, string>>({})
+  const [sendingId, setSendingId] = useState('')
+
   const load = async () => {
     const profile = await getOrCreateAccount()
 
@@ -128,14 +131,12 @@ export default function CertificatesPage() {
 
     const qrDataUrl = await QRCode.toDataURL(verificationUrl)
 
-    // Border
     doc.setLineWidth(1)
     doc.rect(10, 10, 277, 190)
 
     doc.setLineWidth(0.3)
     doc.rect(16, 16, 265, 178)
 
-    // Provider name
     doc.setFontSize(18)
     doc.text(businessName, 148.5, 30, { align: 'center' })
 
@@ -151,38 +152,31 @@ export default function CertificatesPage() {
       doc.text(contactLine, 148.5, 38, { align: 'center' })
     }
 
-    // Main title
     doc.setFontSize(30)
     doc.text('Certificate of Completion', 148.5, 60, { align: 'center' })
 
     doc.setFontSize(14)
     doc.text('This certifies that', 148.5, 78, { align: 'center' })
 
-    // Learner
     doc.setFontSize(28)
     doc.text(certificate.learner_name, 148.5, 98, { align: 'center' })
 
     doc.setFontSize(14)
     doc.text('has successfully completed', 148.5, 115, { align: 'center' })
 
-    // Course
     doc.setFontSize(20)
     doc.text(certificate.course_name, 148.5, 132, { align: 'center' })
 
-    // Dates
     doc.setFontSize(12)
     doc.text(`Issue Date: ${certificate.issue_date}`, 70, 155)
     doc.text(`Expiry Date: ${certificate.expiry_date}`, 70, 165)
-
-    // Certificate number
     doc.text(`Certificate No: ${certificate.certificate_number}`, 70, 175)
 
-    // QR
     doc.addImage(qrDataUrl, 'PNG', 220, 145, 35, 35)
+
     doc.setFontSize(9)
     doc.text('Scan to verify', 237.5, 184, { align: 'center' })
 
-    // Address/footer
     doc.setFontSize(8)
 
     if (businessAddress) {
@@ -191,6 +185,53 @@ export default function CertificatesPage() {
     }
 
     doc.save(`${certificate.learner_name}-certificate.pdf`)
+  }
+
+  const sendCertificateEmail = async (certificate: any) => {
+    const recipientEmail = recipientEmails[certificate.id]
+
+    if (!recipientEmail) {
+      alert('Enter a recipient email first')
+      return
+    }
+
+    setSendingId(certificate.id)
+
+    const verificationUrl =
+      `${window.location.origin}/verify/${certificate.verification_id}`
+
+    const response = await fetch('/api/send-certificate-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: recipientEmail,
+        learnerName: certificate.learner_name,
+        courseName: certificate.course_name,
+        issueDate: certificate.issue_date,
+        expiryDate: certificate.expiry_date,
+        certificateNumber: certificate.certificate_number,
+        verificationUrl,
+        businessName: organisation?.name || 'Hercules OS',
+      }),
+    })
+
+    const result = await response.json()
+
+    setSendingId('')
+
+    if (!response.ok) {
+      alert(result.error?.message || result.error || 'Email failed')
+      return
+    }
+
+    alert('Certificate email sent')
+
+    setRecipientEmails((previous) => ({
+      ...previous,
+      [certificate.id]: '',
+    }))
   }
 
   const expiringSoon = certificates.filter((certificate) => {
@@ -226,7 +267,7 @@ export default function CertificatesPage() {
         </h1>
 
         <p className="text-gray-500 mt-1">
-          Issue certificates only after completed training sessions
+          Issue, download, email and verify learner certificates
         </p>
       </div>
 
@@ -337,22 +378,44 @@ export default function CertificatesPage() {
                 <p>Expires: {certificate.expiry_date}</p>
               </div>
 
-              <div className="flex flex-wrap gap-3 mt-5">
-                <button
-                  className="bg-black text-white px-4 py-2 rounded-lg"
-                  onClick={() => generatePDF(certificate)}
-                >
-                  Download PDF
-                </button>
+              <div className="mt-5 flex flex-col gap-3">
+                <input
+                  className="border p-3 rounded-lg"
+                  placeholder="Recipient email"
+                  value={recipientEmails[certificate.id] || ''}
+                  onChange={(e) =>
+                    setRecipientEmails((previous) => ({
+                      ...previous,
+                      [certificate.id]: e.target.value,
+                    }))
+                  }
+                />
 
-                {certificate.status !== 'revoked' && (
+                <div className="flex flex-wrap gap-3">
                   <button
-                    className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
-                    onClick={() => revokeCertificate(certificate.id)}
+                    className="bg-black text-white px-4 py-2 rounded-lg"
+                    onClick={() => generatePDF(certificate)}
                   >
-                    Revoke
+                    Download PDF
                   </button>
-                )}
+
+                  <button
+                    className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
+                    onClick={() => sendCertificateEmail(certificate)}
+                    disabled={sendingId === certificate.id}
+                  >
+                    {sendingId === certificate.id ? 'Sending...' : 'Send Email'}
+                  </button>
+
+                  {certificate.status !== 'revoked' && (
+                    <button
+                      className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
+                      onClick={() => revokeCertificate(certificate.id)}
+                    >
+                      Revoke
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}
