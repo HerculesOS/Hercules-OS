@@ -8,6 +8,7 @@ export default function BookingsPage() {
   const [bookings, setBookings] = useState<any[]>([])
   const [clients, setClients] = useState<any[]>([])
   const [trainers, setTrainers] = useState<any[]>([])
+  const [organisation, setOrganisation] = useState<any>(null)
   const [organisationId, setOrganisationId] = useState('')
 
   const [clientId, setClientId] = useState('')
@@ -20,10 +21,19 @@ export default function BookingsPage() {
   const [price, setPrice] = useState('')
   const [notes, setNotes] = useState('')
 
+  const [recipientEmails, setRecipientEmails] = useState<Record<string, string>>({})
+  const [sendingId, setSendingId] = useState('')
+
   const load = async () => {
     const profile = await getOrCreateAccount()
 
     setOrganisationId(profile.organisation_id)
+
+    const { data: organisationData } = await supabase
+      .from('organisations')
+      .select('*')
+      .eq('id', profile.organisation_id)
+      .single()
 
     const { data: clientsData } = await supabase
       .from('clients')
@@ -41,6 +51,7 @@ export default function BookingsPage() {
       .eq('organisation_id', profile.organisation_id)
       .order('date', { ascending: true })
 
+    setOrganisation(organisationData || null)
     setClients(clientsData || [])
     setTrainers(trainersData || [])
     setBookings(bookingsData || [])
@@ -60,7 +71,7 @@ export default function BookingsPage() {
 
     const selectedClient = clients.find((c) => c.id === clientId)
 
-    await supabase.from('bookings').insert({
+    const { error } = await supabase.from('bookings').insert({
       user_id: userData.user?.id,
       organisation_id: organisationId,
       client_id: clientId,
@@ -75,6 +86,11 @@ export default function BookingsPage() {
       notes,
       status: 'scheduled',
     })
+
+    if (error) {
+      alert(error.message)
+      return
+    }
 
     setClientId('')
     setTrainerId('')
@@ -103,26 +119,87 @@ export default function BookingsPage() {
     load()
   }
 
-const deleteBooking = async (bookingId: string) => {
-  const confirmDelete = confirm(
-    'Are you sure you want to delete this booking? This cannot be undone.'
-  )
+  const deleteBooking = async (bookingId: string) => {
+    const confirmDelete = confirm(
+      'Are you sure you want to delete this booking? This cannot be undone.'
+    )
 
-  if (!confirmDelete) return
+    if (!confirmDelete) return
 
-  const { error } = await supabase
-    .from('bookings')
-    .delete()
-    .eq('id', bookingId)
+    const { error } = await supabase
+      .from('bookings')
+      .delete()
+      .eq('id', bookingId)
 
-  if (error) {
-    alert(`Could not delete booking: ${error.message}`)
-    console.error(error)
-    return
+    if (error) {
+      alert(`Could not delete booking: ${error.message}`)
+      console.error(error)
+      return
+    }
+
+    load()
   }
 
-  load()
-} 
+  const getClientForBooking = (booking: any) => {
+    return clients.find((client) => client.id === booking.client_id)
+  }
+
+  const getTrainerForBooking = (booking: any) => {
+    return trainers.find((trainer) => trainer.id === booking.trainer_id)
+  }
+
+  const sendBookingConfirmation = async (booking: any) => {
+    const client = getClientForBooking(booking)
+    const trainer = getTrainerForBooking(booking)
+
+    const savedClientEmail = client?.email || ''
+
+    const recipientEmail =
+      recipientEmails[booking.id] || savedClientEmail
+
+    if (!recipientEmail) {
+      alert('Enter a recipient email first')
+      return
+    }
+
+    setSendingId(booking.id)
+
+    const response = await fetch('/api/send-booking-confirmation', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: recipientEmail,
+        clientName: booking.client_name,
+        courseName: booking.course_name,
+        date: booking.date,
+        startTime: booking.start_time,
+        endTime: booking.end_time,
+        location: booking.location,
+        trainerName: trainer?.name || '',
+        businessName: organisation?.name || 'Hercules OS',
+        businessEmail: organisation?.email || '',
+        businessPhone: organisation?.phone || '',
+      }),
+    })
+
+    const result = await response.json()
+
+    setSendingId('')
+
+    if (!response.ok) {
+      alert(result.error?.message || result.error || 'Email failed')
+      return
+    }
+
+    alert('Booking confirmation sent')
+
+    setRecipientEmails((previous) => ({
+      ...previous,
+      [booking.id]: '',
+    }))
+  }
 
   const scheduledBookings = bookings.filter(
     (booking) => booking.status === 'scheduled'
@@ -161,7 +238,7 @@ const deleteBooking = async (bookingId: string) => {
         </h1>
 
         <p className="text-gray-500 mt-1">
-          Schedule, manage and complete training sessions
+          Schedule, manage and confirm training sessions
         </p>
       </div>
 
@@ -295,9 +372,9 @@ const deleteBooking = async (bookingId: string) => {
         {/* Booking list */}
         <div className="lg:col-span-2 grid gap-4">
           {bookings.map((booking) => {
-            const trainer = trainers.find(
-              (t) => t.id === booking.trainer_id
-            )
+            const trainer = getTrainerForBooking(booking)
+            const client = getClientForBooking(booking)
+            const savedClientEmail = client?.email || ''
 
             return (
               <div
@@ -340,60 +417,94 @@ const deleteBooking = async (bookingId: string) => {
                     Price: £{Number(booking.price || 0).toFixed(2)}
                   </p>
 
+                  {savedClientEmail && (
+                    <p>Client Email: {savedClientEmail}</p>
+                  )}
+
                   {booking.notes && (
                     <p>Notes: {booking.notes}</p>
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-3 mt-5">
-                  {booking.status !== 'scheduled' && (
-                    <button
-                      className="border px-4 py-2 rounded-lg"
-                      onClick={() =>
-                        updateBookingStatus(
-                          booking.id,
-                          'scheduled'
-                        )
-                      }
-                    >
-                      Mark Scheduled
-                    </button>
+                <div className="mt-5 flex flex-col gap-3">
+                  <input
+                    className="border p-3 rounded-lg"
+                    placeholder={savedClientEmail || 'Recipient email'}
+                    value={recipientEmails[booking.id] || ''}
+                    onChange={(e) =>
+                      setRecipientEmails((previous) => ({
+                        ...previous,
+                        [booking.id]: e.target.value,
+                      }))
+                    }
+                  />
+
+                  {savedClientEmail && (
+                    <p className="text-sm text-gray-500">
+                      Leave blank to send to saved client email.
+                    </p>
                   )}
 
-                  {booking.status !== 'completed' && (
+                  <div className="flex flex-wrap gap-3">
                     <button
-                      className="border px-4 py-2 rounded-lg"
-                      onClick={() =>
-                        updateBookingStatus(
-                          booking.id,
-                          'completed'
-                        )
-                      }
+                      className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
+                      onClick={() => sendBookingConfirmation(booking)}
+                      disabled={sendingId === booking.id}
                     >
-                      Mark Completed
+                      {sendingId === booking.id
+                        ? 'Sending...'
+                        : 'Send Confirmation'}
                     </button>
-                  )}
 
-                  {booking.status !== 'cancelled' && (
+                    {booking.status !== 'scheduled' && (
+                      <button
+                        className="border px-4 py-2 rounded-lg"
+                        onClick={() =>
+                          updateBookingStatus(
+                            booking.id,
+                            'scheduled'
+                          )
+                        }
+                      >
+                        Mark Scheduled
+                      </button>
+                    )}
+
+                    {booking.status !== 'completed' && (
+                      <button
+                        className="border px-4 py-2 rounded-lg"
+                        onClick={() =>
+                          updateBookingStatus(
+                            booking.id,
+                            'completed'
+                          )
+                        }
+                      >
+                        Mark Completed
+                      </button>
+                    )}
+
+                    {booking.status !== 'cancelled' && (
+                      <button
+                        className="border px-4 py-2 rounded-lg"
+                        onClick={() =>
+                          updateBookingStatus(
+                            booking.id,
+                            'cancelled'
+                          )
+                        }
+                      >
+                        Cancel
+                      </button>
+                    )}
+
                     <button
-                      className="border px-4 py-2 rounded-lg"
-                      onClick={() =>
-                        updateBookingStatus(
-                          booking.id,
-                          'cancelled'
-                        )
-                      }
+                      className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
+                      onClick={() => deleteBooking(booking.id)}
                     >
-                      Cancel
+                      Delete
                     </button>
-                  )}
-
-                  <button
-                    className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
-                    onClick={() => deleteBooking(booking.id)}
-                  >
-                    Delete
-                  </button>
+                  </div>
                 </div>
               </div>
             )
