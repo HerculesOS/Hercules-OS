@@ -9,11 +9,13 @@ export default function BookingsPage() {
   const [bookings, setBookings] = useState<any[]>([])
   const [clients, setClients] = useState<any[]>([])
   const [trainers, setTrainers] = useState<any[]>([])
+  const [courseTemplates, setCourseTemplates] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
   const [organisationId, setOrganisationId] = useState('')
 
   const [clientId, setClientId] = useState('')
   const [trainerId, setTrainerId] = useState('')
+  const [courseTemplateId, setCourseTemplateId] = useState('')
   const [courseName, setCourseName] = useState('')
   const [date, setDate] = useState('')
   const [startTime, setStartTime] = useState('')
@@ -31,6 +33,7 @@ export default function BookingsPage() {
 
   const [editClientId, setEditClientId] = useState('')
   const [editTrainerId, setEditTrainerId] = useState('')
+  const [editCourseTemplateId, setEditCourseTemplateId] = useState('')
   const [editCourseName, setEditCourseName] = useState('')
   const [editDate, setEditDate] = useState('')
   const [editStartTime, setEditStartTime] = useState('')
@@ -67,6 +70,12 @@ export default function BookingsPage() {
       .eq('organisation_id', profile.organisation_id)
       .order('name', { ascending: true })
 
+    const { data: courseTemplatesData } = await supabase
+      .from('course_templates')
+      .select('*')
+      .eq('organisation_id', profile.organisation_id)
+      .order('name', { ascending: true })
+
     const { data: bookingsData } = await supabase
       .from('bookings')
       .select('*')
@@ -76,12 +85,53 @@ export default function BookingsPage() {
     setOrganisation(organisationData || null)
     setClients(clientsData || [])
     setTrainers(trainersData || [])
+    setCourseTemplates(courseTemplatesData || [])
     setBookings(bookingsData || [])
   }
 
   useEffect(() => {
     load()
   }, [])
+
+  const applyCourseTemplate = (templateId: string) => {
+    setCourseTemplateId(templateId)
+
+    const selectedCourse = courseTemplates.find(
+      (course) => course.id === templateId
+    )
+
+    if (!selectedCourse) return
+
+    setCourseName(selectedCourse.name || '')
+
+    if (selectedCourse.default_price) {
+      setPrice(String(selectedCourse.default_price))
+    }
+
+    if (selectedCourse.notes && !notes) {
+      setNotes(selectedCourse.notes)
+    }
+  }
+
+  const applyEditCourseTemplate = (templateId: string) => {
+    setEditCourseTemplateId(templateId)
+
+    const selectedCourse = courseTemplates.find(
+      (course) => course.id === templateId
+    )
+
+    if (!selectedCourse) return
+
+    setEditCourseName(selectedCourse.name || '')
+
+    if (selectedCourse.default_price) {
+      setEditPrice(String(selectedCourse.default_price))
+    }
+
+    if (selectedCourse.notes && !editNotes) {
+      setEditNotes(selectedCourse.notes)
+    }
+  }
 
   const addBooking = async () => {
     if (!clientId || !courseName || !date) {
@@ -116,6 +166,7 @@ export default function BookingsPage() {
 
     setClientId('')
     setTrainerId('')
+    setCourseTemplateId('')
     setCourseName('')
     setDate('')
     setStartTime('')
@@ -131,6 +182,7 @@ export default function BookingsPage() {
     setEditingId(booking.id)
     setEditClientId(booking.client_id || '')
     setEditTrainerId(booking.trainer_id || '')
+    setEditCourseTemplateId('')
     setEditCourseName(booking.course_name || '')
     setEditDate(booking.date || '')
     setEditStartTime(booking.start_time || '')
@@ -144,6 +196,7 @@ export default function BookingsPage() {
     setEditingId('')
     setEditClientId('')
     setEditTrainerId('')
+    setEditCourseTemplateId('')
     setEditCourseName('')
     setEditDate('')
     setEditStartTime('')
@@ -548,6 +601,21 @@ export default function BookingsPage() {
               ))}
             </select>
 
+            <select
+              className="border p-3 rounded-lg"
+              value={courseTemplateId}
+              onChange={(e) => applyCourseTemplate(e.target.value)}
+            >
+              <option value="">Select Course Template</option>
+
+              {courseTemplates.map((course) => (
+                <option key={course.id} value={course.id}>
+                  {course.code ? `${course.code} - ` : ''}
+                  {course.name}
+                </option>
+              ))}
+            </select>
+
             <input
               className="border p-3 rounded-lg"
               placeholder="Course name"
@@ -598,6 +666,12 @@ export default function BookingsPage() {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
+
+            {courseTemplateId && (
+              <div className="bg-gray-50 border rounded-xl p-3 text-sm text-gray-600">
+                Course template applied. You can still edit the course name, price or notes before saving.
+              </div>
+            )}
 
             <button
               className="bg-black text-white p-3 rounded-lg"
@@ -819,6 +893,21 @@ export default function BookingsPage() {
                         ))}
                       </select>
 
+                      <select
+                        className="border p-3 rounded-lg md:col-span-2"
+                        value={editCourseTemplateId}
+                        onChange={(e) => applyEditCourseTemplate(e.target.value)}
+                      >
+                        <option value="">Apply Course Template</option>
+
+                        {courseTemplates.map((course) => (
+                          <option key={course.id} value={course.id}>
+                            {course.code ? `${course.code} - ` : ''}
+                            {course.name}
+                          </option>
+                        ))}
+                      </select>
+
                       <input
                         className="border p-3 rounded-lg"
                         placeholder="Course name"
@@ -868,6 +957,12 @@ export default function BookingsPage() {
                         onChange={(e) => setEditNotes(e.target.value)}
                       />
                     </div>
+
+                    {editCourseTemplateId && (
+                      <div className="bg-gray-50 border rounded-xl p-3 text-sm text-gray-600 mt-4">
+                        Course template applied. You can still edit the course name, price or notes before saving.
+                      </div>
+                    )}
 
                     <div className="flex flex-wrap gap-3 mt-5">
                       <button
