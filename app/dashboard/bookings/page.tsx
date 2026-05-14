@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 
@@ -58,11 +59,13 @@ export default function BookingsPage() {
       .from('clients')
       .select('*')
       .eq('organisation_id', profile.organisation_id)
+      .order('company', { ascending: true })
 
     const { data: trainersData } = await supabase
       .from('trainers')
       .select('*')
       .eq('organisation_id', profile.organisation_id)
+      .order('name', { ascending: true })
 
     const { data: bookingsData } = await supabase
       .from('bookings')
@@ -191,12 +194,17 @@ export default function BookingsPage() {
     bookingId: string,
     newStatus: string
   ) => {
-    await supabase
+    const { error } = await supabase
       .from('bookings')
       .update({
         status: newStatus,
       })
       .eq('id', bookingId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
 
     load()
   }
@@ -215,7 +223,6 @@ export default function BookingsPage() {
 
     if (error) {
       alert(`Could not delete booking: ${error.message}`)
-      console.error(error)
       return
     }
 
@@ -237,7 +244,6 @@ export default function BookingsPage() {
 
   const sendBookingConfirmation = async (booking: any) => {
     const trainer = getTrainerForBooking(booking)
-
     const recipientEmail = getRecipientEmailForBooking(booking)
 
     if (!recipientEmail) {
@@ -359,13 +365,19 @@ export default function BookingsPage() {
   const filteredBookings = bookings
     .filter((booking) => {
       const trainer = getTrainerForBooking(booking)
+      const client = getClientForBooking(booking)
 
       const searchableText = `
         ${booking.client_name || ''}
+        ${client?.company || ''}
+        ${client?.name || ''}
+        ${client?.email || ''}
         ${booking.course_name || ''}
         ${booking.location || ''}
         ${booking.notes || ''}
+        ${booking.date || ''}
         ${trainer?.name || ''}
+        ${booking.status || ''}
       `.toLowerCase()
 
       const matchesSearch = searchableText.includes(search.toLowerCase())
@@ -413,7 +425,6 @@ export default function BookingsPage() {
         </p>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <p className="text-gray-500">Total Bookings</p>
@@ -444,12 +455,11 @@ export default function BookingsPage() {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="bg-white border rounded-2xl p-5 shadow-sm mb-8">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <input
             className="border p-3 rounded-lg md:col-span-2"
-            placeholder="Search bookings..."
+            placeholder="Search by company, contact, course, date, trainer, location..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -504,7 +514,6 @@ export default function BookingsPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Create booking form */}
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <h2 className="text-xl font-semibold mb-4">
             Create Booking
@@ -599,7 +608,6 @@ export default function BookingsPage() {
           </div>
         </div>
 
-        {/* Booking list */}
         <div className="lg:col-span-2 grid gap-4">
           {filteredBookings.map((booking) => {
             const trainer = getTrainerForBooking(booking)
@@ -621,8 +629,14 @@ export default function BookingsPage() {
                         </h2>
 
                         <p className="text-gray-500 mt-1">
-                          {booking.client_name}
+                          {client?.company || booking.client_name}
                         </p>
+
+                        {client?.name && (
+                          <p className="text-sm text-gray-400 mt-1">
+                            Primary contact: {client.name}
+                          </p>
+                        )}
                       </div>
 
                       <div
@@ -679,6 +693,13 @@ export default function BookingsPage() {
                       )}
 
                       <div className="flex flex-wrap gap-3">
+                        <Link
+                          href={`/dashboard/bookings/${booking.id}`}
+                          className="bg-black text-white px-4 py-2 rounded-lg"
+                        >
+                          View Booking
+                        </Link>
+
                         <button
                           className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
                           onClick={() => sendBookingConfirmation(booking)}
