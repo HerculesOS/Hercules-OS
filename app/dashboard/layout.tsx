@@ -19,6 +19,7 @@ import {
   Menu,
   X,
   Inbox,
+  BookOpen,
 } from 'lucide-react'
 
 const navItems = [
@@ -37,6 +38,11 @@ const navItems = [
     href: '/dashboard/clients',
     label: 'Clients',
     icon: Users,
+  },
+  {
+    href: '/dashboard/courses',
+    label: 'Courses',
+    icon: BookOpen,
   },
   {
     href: '/dashboard/trainers',
@@ -159,7 +165,6 @@ export default function DashboardLayout({
   return (
     <AuthGuard>
       <div className="min-h-screen bg-gray-100">
-        {/* Mobile top bar */}
         <header className="lg:hidden h-16 bg-white border-b flex items-center justify-between px-4 sticky top-0 z-40">
           <div>
             <h1 className="text-xl font-bold">
@@ -190,7 +195,6 @@ export default function DashboardLayout({
           </div>
         </header>
 
-        {/* Mobile menu overlay */}
         {mobileMenuOpen && (
           <div className="lg:hidden fixed inset-0 z-50 bg-black/40">
             <div className="bg-white w-80 max-w-[85%] min-h-screen shadow-xl flex flex-col">
@@ -229,8 +233,7 @@ export default function DashboardLayout({
         )}
 
         <div className="flex">
-          {/* Desktop sidebar */}
-          <aside className="hidden lg:flex w-72 bg-white border-r shadow-sm flex-col fixed left-0 top-0 h-screen">
+          <aside className="hidden lg:flex w-72 bg-white border-r shadow-sm flex-col fixed left-0 top-0 h-screen overflow-y-auto">
             <div className="p-6 border-b">
               <h1 className="text-2xl font-bold">
                 Hercules OS
@@ -264,9 +267,7 @@ export default function DashboardLayout({
             </div>
           </aside>
 
-          {/* Main area */}
           <div className="flex-1 lg:ml-72">
-            {/* Desktop topbar */}
             <header className="hidden lg:flex h-20 bg-white border-b items-center justify-between px-8 sticky top-0 z-30">
               <div>
                 <h2 className="text-2xl font-bold">
@@ -281,6 +282,7 @@ export default function DashboardLayout({
                     className="relative border rounded-xl px-4 py-2 flex items-center gap-2 hover:bg-gray-100"
                   >
                     <Inbox size={18} />
+
                     <span className="text-sm">
                       New requests
                     </span>
