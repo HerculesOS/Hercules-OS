@@ -258,75 +258,133 @@ export default function CertificatesPage() {
     )
   }
 
-  const generatePDF = async (certificate: any) => {
-    const doc = new jsPDF('landscape', 'mm', 'a4')
+const generatePDF = async (certificate: any) => {
+  const doc = new jsPDF('landscape', 'mm', 'a4')
 
-    const businessName = organisation?.name || 'Training Provider'
-    const businessEmail = organisation?.email || ''
-    const businessPhone = organisation?.phone || ''
-    const businessWebsite = organisation?.website || ''
-    const businessAddress = organisation?.address || ''
+  const businessName = organisation?.name || 'Training Provider'
+  const businessEmail = organisation?.email || ''
+  const businessPhone = organisation?.phone || ''
+  const businessWebsite = organisation?.website || ''
+  const businessAddress = organisation?.address || ''
 
-    const verificationUrl =
-      `${window.location.origin}/verify/${certificate.verification_id}`
+  const verificationUrl =
+    `${window.location.origin}/verify/${certificate.verification_id}`
 
-    const qrDataUrl = await QRCode.toDataURL(verificationUrl)
+  const qrDataUrl = await QRCode.toDataURL(verificationUrl)
 
-    doc.setLineWidth(1)
-    doc.rect(10, 10, 277, 190)
+  // Background
+  doc.setFillColor(250, 250, 250)
+  doc.rect(0, 0, 297, 210, 'F')
 
-    doc.setLineWidth(0.3)
-    doc.rect(16, 16, 265, 178)
+  // Main white certificate panel
+  doc.setFillColor(255, 255, 255)
+  doc.setDrawColor(17, 24, 39)
+  doc.setLineWidth(1.2)
+  doc.roundedRect(12, 12, 273, 186, 3, 3, 'FD')
 
-    doc.setFontSize(18)
-    doc.text(businessName, 148.5, 30, { align: 'center' })
+  // Inner border
+  doc.setDrawColor(209, 213, 219)
+  doc.setLineWidth(0.4)
+  doc.roundedRect(20, 20, 257, 170, 2, 2, 'D')
 
-    doc.setFontSize(10)
+  // Provider name
+  doc.setTextColor(17, 24, 39)
+  doc.setFontSize(18)
+  doc.text(businessName, 148.5, 35, { align: 'center' })
 
-    let contactLine = ''
+  let contactLine = ''
 
-    if (businessEmail) contactLine += businessEmail
-    if (businessPhone) contactLine += contactLine ? ` | ${businessPhone}` : businessPhone
-    if (businessWebsite) contactLine += contactLine ? ` | ${businessWebsite}` : businessWebsite
+  if (businessEmail) contactLine += businessEmail
+  if (businessPhone) contactLine += contactLine ? ` | ${businessPhone}` : businessPhone
+  if (businessWebsite) contactLine += contactLine ? ` | ${businessWebsite}` : businessWebsite
 
-    if (contactLine) {
-      doc.text(contactLine, 148.5, 38, { align: 'center' })
-    }
-
-    doc.setFontSize(30)
-    doc.text('Certificate of Completion', 148.5, 60, { align: 'center' })
-
-    doc.setFontSize(14)
-    doc.text('This certifies that', 148.5, 78, { align: 'center' })
-
-    doc.setFontSize(28)
-    doc.text(certificate.learner_name, 148.5, 98, { align: 'center' })
-
-    doc.setFontSize(14)
-    doc.text('has successfully completed', 148.5, 115, { align: 'center' })
-
-    doc.setFontSize(20)
-    doc.text(certificate.course_name, 148.5, 132, { align: 'center' })
-
-    doc.setFontSize(12)
-    doc.text(`Issue Date: ${certificate.issue_date}`, 70, 155)
-    doc.text(`Expiry Date: ${certificate.expiry_date}`, 70, 165)
-    doc.text(`Certificate No: ${certificate.certificate_number}`, 70, 175)
-
-    doc.addImage(qrDataUrl, 'PNG', 220, 145, 35, 35)
-
+  if (contactLine) {
     doc.setFontSize(9)
-    doc.text('Scan to verify', 237.5, 184, { align: 'center' })
-
-    doc.setFontSize(8)
-
-    if (businessAddress) {
-      const addressLines = doc.splitTextToSize(businessAddress, 180)
-      doc.text(addressLines, 148.5, 188, { align: 'center' })
-    }
-
-    doc.save(`${certificate.learner_name}-certificate.pdf`)
+    doc.setTextColor(107, 114, 128)
+    doc.text(contactLine, 148.5, 43, { align: 'center' })
   }
+
+  // Title
+  doc.setTextColor(17, 24, 39)
+  doc.setFontSize(30)
+  doc.text('Certificate of Completion', 148.5, 65, { align: 'center' })
+
+  doc.setFontSize(12)
+  doc.setTextColor(107, 114, 128)
+  doc.text('This certifies that', 148.5, 80, { align: 'center' })
+
+  // Learner name
+  doc.setFontSize(28)
+  doc.setTextColor(17, 24, 39)
+
+  const learnerLines = doc.splitTextToSize(certificate.learner_name, 210)
+  doc.text(learnerLines, 148.5, 98, { align: 'center' })
+
+  // Divider
+  doc.setDrawColor(17, 24, 39)
+  doc.setLineWidth(0.4)
+  doc.line(75, 108, 222, 108)
+
+  // Course
+  doc.setFontSize(12)
+  doc.setTextColor(107, 114, 128)
+  doc.text('has successfully completed', 148.5, 122, { align: 'center' })
+
+  doc.setFontSize(20)
+  doc.setTextColor(17, 24, 39)
+
+  const courseLines = doc.splitTextToSize(certificate.course_name, 210)
+  doc.text(courseLines, 148.5, 137, { align: 'center' })
+
+  // Details box - left
+  doc.setFillColor(249, 250, 251)
+  doc.setDrawColor(229, 231, 235)
+  doc.roundedRect(35, 155, 115, 28, 3, 3, 'FD')
+
+  doc.setFontSize(9)
+  doc.setTextColor(107, 114, 128)
+  doc.text('CERTIFICATE DETAILS', 42, 163)
+
+  doc.setFontSize(10)
+  doc.setTextColor(17, 24, 39)
+  doc.text(`Certificate No: ${certificate.certificate_number}`, 42, 170)
+  doc.text(`Issue Date: ${certificate.issue_date}`, 42, 176)
+  doc.text(`Expiry Date: ${certificate.expiry_date}`, 42, 182)
+
+  // Signature area - centre/right
+  doc.setDrawColor(156, 163, 175)
+  doc.line(165, 171, 225, 171)
+
+  doc.setFontSize(9)
+  doc.setTextColor(75, 85, 99)
+  doc.text('Authorised Training Provider', 195, 178, { align: 'center' })
+
+  // QR box - far right
+  doc.setFillColor(249, 250, 251)
+  doc.setDrawColor(229, 231, 235)
+  doc.roundedRect(235, 150, 34, 38, 3, 3, 'FD')
+
+  doc.addImage(qrDataUrl, 'PNG', 241, 154, 22, 22)
+
+  doc.setFontSize(7)
+  doc.setTextColor(75, 85, 99)
+  doc.text('Scan to verify', 252, 180, { align: 'center' })
+
+  doc.setFontSize(6)
+  doc.setTextColor(107, 114, 128)
+  doc.text('Hercules OS', 252, 185, { align: 'center' })
+
+  // Footer address
+  if (businessAddress) {
+    doc.setFontSize(7)
+    doc.setTextColor(107, 114, 128)
+
+    const addressLines = doc.splitTextToSize(businessAddress, 220)
+    doc.text(addressLines, 148.5, 193, { align: 'center' })
+  }
+
+  doc.save(`${certificate.learner_name}-certificate.pdf`)
+}
 
   const sendCertificateEmail = async (certificate: any) => {
     const savedClientEmail = getClientEmailForCertificate(certificate)
