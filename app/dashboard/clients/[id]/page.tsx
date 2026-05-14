@@ -18,10 +18,12 @@ export default function ClientDetailPage() {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const [editName, setEditName] = useState('')
   const [editCompany, setEditCompany] = useState('')
+  const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
   const [editPhone, setEditPhone] = useState('')
+  const [editAddress, setEditAddress] = useState('')
+  const [editNotes, setEditNotes] = useState('')
 
   const load = async () => {
     const profile = await getOrCreateAccount()
@@ -77,10 +79,12 @@ export default function ClientDetailPage() {
     setInvoices(invoicesData)
     setCertificates(certificatesData)
 
-    setEditName(clientData.name || '')
     setEditCompany(clientData.company || '')
+    setEditName(clientData.name || '')
     setEditEmail(clientData.email || '')
     setEditPhone(clientData.phone || '')
+    setEditAddress(clientData.address || '')
+    setEditNotes(clientData.notes || '')
 
     setLoading(false)
   }
@@ -90,24 +94,28 @@ export default function ClientDetailPage() {
   }, [])
 
   const startEditing = () => {
-    setEditName(client.name || '')
     setEditCompany(client.company || '')
+    setEditName(client.name || '')
     setEditEmail(client.email || '')
     setEditPhone(client.phone || '')
+    setEditAddress(client.address || '')
+    setEditNotes(client.notes || '')
     setEditing(true)
   }
 
   const cancelEditing = () => {
-    setEditName(client.name || '')
     setEditCompany(client.company || '')
+    setEditName(client.name || '')
     setEditEmail(client.email || '')
     setEditPhone(client.phone || '')
+    setEditAddress(client.address || '')
+    setEditNotes(client.notes || '')
     setEditing(false)
   }
 
   const saveClient = async () => {
-    if (!editName || !editCompany) {
-      alert('Contact name and company are required')
+    if (!editCompany || !editName) {
+      alert('Company and primary contact name are required')
       return
     }
 
@@ -116,10 +124,12 @@ export default function ClientDetailPage() {
     const { error } = await supabase
       .from('clients')
       .update({
-        name: editName,
         company: editCompany,
+        name: editName,
         email: editEmail,
         phone: editPhone,
+        address: editAddress,
+        notes: editNotes,
       })
       .eq('id', client.id)
 
@@ -145,6 +155,20 @@ export default function ClientDetailPage() {
 
   const validCertificates = certificates.filter(
     (certificate) => certificate.status === 'valid'
+  )
+
+  const upcomingBookings = bookings.filter((booking) => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const bookingDate = new Date(booking.date)
+    bookingDate.setHours(0, 0, 0, 0)
+
+    return bookingDate >= today && booking.status !== 'cancelled'
+  })
+
+  const completedBookings = bookings.filter(
+    (booking) => booking.status === 'completed'
   )
 
   const getBookingForInvoice = (invoice: any) => {
@@ -176,7 +200,7 @@ export default function ClientDetailPage() {
   if (loading) {
     return (
       <div className="bg-white border rounded-2xl p-6 shadow-sm">
-        Loading client profile...
+        Loading company profile...
       </div>
     )
   }
@@ -211,21 +235,21 @@ export default function ClientDetailPage() {
         <div className="mt-4 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <div>
             <h1 className="text-4xl font-bold">
-              {client.company}
+              {client.company || 'Unnamed company'}
             </h1>
 
             <p className="text-gray-500 mt-2">
-              {client.name}
+              Company profile and training history
             </p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             {!editing && (
               <button
                 className="bg-black text-white px-4 py-2 rounded-lg"
                 onClick={startEditing}
               >
-                Edit Client
+                Edit Company
               </button>
             )}
 
@@ -236,11 +260,10 @@ export default function ClientDetailPage() {
         </div>
       </div>
 
-      {/* Client Info / Edit Form */}
       <div className="bg-white border rounded-2xl p-6 shadow-sm mb-8">
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
           <h2 className="text-2xl font-semibold">
-            Client Details
+            Company Details
           </h2>
 
           {editing && (
@@ -265,65 +288,102 @@ export default function ClientDetailPage() {
         </div>
 
         {!editing ? (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-sm text-gray-700">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 text-sm text-gray-700">
             <div>
               <p className="text-gray-500">Company</p>
               <p className="font-medium mt-1">{client.company || 'Not set'}</p>
             </div>
 
             <div>
-              <p className="text-gray-500">Contact</p>
+              <p className="text-gray-500">Primary contact</p>
               <p className="font-medium mt-1">{client.name || 'Not set'}</p>
             </div>
 
             <div>
               <p className="text-gray-500">Email</p>
-              <p className="font-medium mt-1">{client.email || 'Not set'}</p>
+              <p className="font-medium mt-1 break-all">{client.email || 'Not set'}</p>
             </div>
 
             <div>
               <p className="text-gray-500">Phone</p>
               <p className="font-medium mt-1">{client.phone || 'Not set'}</p>
             </div>
+
+            <div className="md:col-span-2">
+              <p className="text-gray-500">Address</p>
+              <p className="font-medium mt-1 whitespace-pre-line">
+                {client.address || 'Not set'}
+              </p>
+            </div>
+
+            <div className="md:col-span-2">
+              <p className="text-gray-500">Notes</p>
+              <p className="font-medium mt-1 whitespace-pre-line">
+                {client.notes || 'No notes'}
+              </p>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <input
               className="border p-3 rounded-lg"
-              placeholder="Company"
+              placeholder="Company / school name"
               value={editCompany}
               onChange={(e) => setEditCompany(e.target.value)}
             />
 
             <input
               className="border p-3 rounded-lg"
-              placeholder="Contact name"
+              placeholder="Primary contact name"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
             />
 
             <input
               className="border p-3 rounded-lg"
-              placeholder="Email"
+              placeholder="Primary contact email"
               value={editEmail}
               onChange={(e) => setEditEmail(e.target.value)}
             />
 
             <input
               className="border p-3 rounded-lg"
-              placeholder="Phone"
+              placeholder="Primary contact phone"
               value={editPhone}
               onChange={(e) => setEditPhone(e.target.value)}
+            />
+
+            <textarea
+              className="border p-3 rounded-lg md:col-span-2"
+              placeholder="Address"
+              value={editAddress}
+              onChange={(e) => setEditAddress(e.target.value)}
+            />
+
+            <textarea
+              className="border p-3 rounded-lg md:col-span-2"
+              placeholder="Notes"
+              value={editNotes}
+              onChange={(e) => setEditNotes(e.target.value)}
             />
           </div>
         )}
       </div>
 
-      {/* Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <p className="text-gray-500">Bookings</p>
           <h2 className="text-3xl font-bold mt-2">{bookings.length}</h2>
+        </div>
+
+        <div className="bg-white border rounded-2xl p-6 shadow-sm">
+          <p className="text-gray-500">Upcoming</p>
+          <h2 className="text-3xl font-bold mt-2">{upcomingBookings.length}</h2>
+        </div>
+
+        <div className="bg-white border rounded-2xl p-6 shadow-sm">
+          <p className="text-gray-500">Completed</p>
+          <h2 className="text-3xl font-bold mt-2">{completedBookings.length}</h2>
         </div>
 
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
@@ -334,23 +394,14 @@ export default function ClientDetailPage() {
         </div>
 
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Unpaid Invoices</p>
-          <h2 className="text-3xl font-bold mt-2">
-            {unpaidInvoices.length}
-          </h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Valid Certificates</p>
+          <p className="text-gray-500">Valid Certs</p>
           <h2 className="text-3xl font-bold mt-2">
             {validCertificates.length}
           </h2>
         </div>
       </div>
 
-      {/* Main Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        {/* Bookings */}
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-2xl font-semibold">
@@ -366,10 +417,11 @@ export default function ClientDetailPage() {
           </div>
 
           <div className="flex flex-col gap-4">
-            {bookings.slice(0, 8).map((booking) => (
-              <div
+            {bookings.slice(0, 10).map((booking) => (
+              <Link
                 key={booking.id}
-                className="bg-gray-50 p-4 rounded-xl"
+                href={`/dashboard/bookings/${booking.id}`}
+                className="bg-gray-50 p-4 rounded-xl hover:bg-gray-100 transition block"
               >
                 <p className="font-semibold">{booking.course_name}</p>
 
@@ -385,18 +437,21 @@ export default function ClientDetailPage() {
                 <div className={`mt-3 px-3 py-1 rounded-full text-xs w-fit ${getBookingStatusStyle(booking.status)}`}>
                   {booking.status}
                 </div>
-              </div>
+
+                <p className="text-xs text-gray-400 mt-3">
+                  View booking →
+                </p>
+              </Link>
             ))}
 
             {bookings.length === 0 && (
               <p className="text-gray-500">
-                No bookings for this client yet.
+                No bookings for this company yet.
               </p>
             )}
           </div>
         </div>
 
-        {/* Invoices */}
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-2xl font-semibold">
@@ -412,7 +467,7 @@ export default function ClientDetailPage() {
           </div>
 
           <div className="flex flex-col gap-4">
-            {invoices.slice(0, 8).map((invoice) => {
+            {invoices.slice(0, 10).map((invoice) => {
               const booking = getBookingForInvoice(invoice)
 
               return (
@@ -449,13 +504,12 @@ export default function ClientDetailPage() {
 
             {invoices.length === 0 && (
               <p className="text-gray-500">
-                No invoices for this client yet.
+                No invoices for this company yet.
               </p>
             )}
           </div>
         </div>
 
-        {/* Certificates */}
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-2xl font-semibold">
@@ -471,7 +525,7 @@ export default function ClientDetailPage() {
           </div>
 
           <div className="flex flex-col gap-4">
-            {certificates.slice(0, 8).map((certificate) => {
+            {certificates.slice(0, 10).map((certificate) => {
               const booking = getBookingForCertificate(certificate)
 
               return (
@@ -500,7 +554,7 @@ export default function ClientDetailPage() {
 
             {certificates.length === 0 && (
               <p className="text-gray-500">
-                No certificates for this client yet.
+                No certificates for this company yet.
               </p>
             )}
           </div>

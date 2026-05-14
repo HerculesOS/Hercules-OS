@@ -9,10 +9,12 @@ export default function ClientsPage() {
   const [clients, setClients] = useState<any[]>([])
   const [organisationId, setOrganisationId] = useState('')
 
+  const [company, setCompany] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [company, setCompany] = useState('')
   const [phone, setPhone] = useState('')
+  const [address, setAddress] = useState('')
+  const [notes, setNotes] = useState('')
   const [search, setSearch] = useState('')
 
   const load = async () => {
@@ -34,18 +36,20 @@ export default function ClientsPage() {
   }, [])
 
   const addClient = async () => {
-    if (!name || !company) {
-      alert('Name and company are required')
+    if (!company || !name) {
+      alert('Company and primary contact name are required')
       return
     }
 
     const { data: userData } = await supabase.auth.getUser()
 
     const { error } = await supabase.from('clients').insert({
+      company,
       name,
       email,
-      company,
       phone,
+      address,
+      notes,
       user_id: userData.user?.id,
       organisation_id: organisationId,
     })
@@ -55,16 +59,25 @@ export default function ClientsPage() {
       return
     }
 
+    setCompany('')
     setName('')
     setEmail('')
-    setCompany('')
     setPhone('')
+    setAddress('')
+    setNotes('')
 
     load()
   }
 
   const filteredClients = clients.filter((client) =>
-    `${client.name} ${client.company} ${client.email}`
+    `
+      ${client.company || ''}
+      ${client.name || ''}
+      ${client.email || ''}
+      ${client.phone || ''}
+      ${client.address || ''}
+      ${client.notes || ''}
+    `
       .toLowerCase()
       .includes(search.toLowerCase())
   )
@@ -77,7 +90,7 @@ export default function ClientsPage() {
         </h1>
 
         <p className="text-gray-500 mt-1">
-          Manage organisations and contacts
+          Manage companies, schools, nurseries and training customers
         </p>
       </div>
 
@@ -94,7 +107,7 @@ export default function ClientsPage() {
 
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <p className="text-gray-500">
-            Active Organisations
+            Companies
           </p>
 
           <h2 className="text-3xl font-bold mt-2">
@@ -104,11 +117,11 @@ export default function ClientsPage() {
 
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <p className="text-gray-500">
-            Upcoming Renewals
+            Search Results
           </p>
 
           <h2 className="text-3xl font-bold mt-2">
-            0
+            {filteredClients.length}
           </h2>
         </div>
       </div>
@@ -116,36 +129,50 @@ export default function ClientsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <h2 className="text-xl font-semibold mb-4">
-            Add Client
+            Add Company / Client
           </h2>
 
           <div className="flex flex-col gap-3">
             <input
               className="border p-3 rounded-lg"
-              placeholder="Contact name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-
-            <input
-              className="border p-3 rounded-lg"
-              placeholder="Company"
+              placeholder="Company / school name"
               value={company}
               onChange={(e) => setCompany(e.target.value)}
             />
 
             <input
               className="border p-3 rounded-lg"
-              placeholder="Email"
+              placeholder="Primary contact name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+
+            <input
+              className="border p-3 rounded-lg"
+              placeholder="Primary contact email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
 
             <input
               className="border p-3 rounded-lg"
-              placeholder="Phone"
+              placeholder="Primary contact phone"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+            />
+
+            <textarea
+              className="border p-3 rounded-lg"
+              placeholder="Address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+            />
+
+            <textarea
+              className="border p-3 rounded-lg"
+              placeholder="Notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
             />
 
             <button
@@ -174,29 +201,44 @@ export default function ClientsPage() {
                 key={client.id}
                 className="bg-white border rounded-2xl p-5 shadow-sm hover:shadow-md transition block"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                   <div>
                     <h2 className="text-xl font-semibold">
-                      {client.company}
+                      {client.company || 'Unnamed company'}
                     </h2>
 
                     <p className="text-gray-500 mt-1">
-                      {client.name}
+                      Primary contact: {client.name || 'Not set'}
                     </p>
                   </div>
 
-                  <div className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
+                  <div className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm w-fit">
                     Active
                   </div>
                 </div>
 
-                <div className="mt-4 text-sm text-gray-600">
-                  <p>{client.email}</p>
-                  <p>{client.phone}</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 text-sm text-gray-600">
+                  <p>
+                    Email: {client.email || 'Not set'}
+                  </p>
+
+                  <p>
+                    Phone: {client.phone || 'Not set'}
+                  </p>
+
+                  <p className="md:col-span-2">
+                    Address: {client.address || 'Not set'}
+                  </p>
                 </div>
 
+                {client.notes && (
+                  <div className="bg-gray-50 border rounded-xl p-3 mt-4 text-sm text-gray-600">
+                    {client.notes}
+                  </div>
+                )}
+
                 <p className="text-sm text-gray-400 mt-4">
-                  Click to view client profile
+                  Click to view company profile
                 </p>
               </Link>
             ))}
