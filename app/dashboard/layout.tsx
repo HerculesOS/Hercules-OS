@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import { getOrCreateAccount } from '@/lib/account'
 import AuthGuard from './AuthGuard'
 
 import {
@@ -17,6 +18,7 @@ import {
   LogOut,
   Menu,
   X,
+  Inbox,
 } from 'lucide-react'
 
 const navItems = [
@@ -24,6 +26,12 @@ const navItems = [
     href: '/dashboard',
     label: 'Dashboard',
     icon: LayoutDashboard,
+  },
+  {
+    href: '/dashboard/requests',
+    label: 'Requests',
+    icon: Inbox,
+    showRequestBadge: true,
   },
   {
     href: '/dashboard/clients',
@@ -71,6 +79,32 @@ export default function DashboardLayout({
   const pathname = usePathname()
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [newRequestCount, setNewRequestCount] = useState(0)
+
+  const loadNewRequestCount = async () => {
+    try {
+      const profile = await getOrCreateAccount()
+
+      const { count, error } = await supabase
+        .from('training_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('organisation_id', profile.organisation_id)
+        .eq('status', 'new')
+
+      if (error) {
+        console.error(error)
+        return
+      }
+
+      setNewRequestCount(count || 0)
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  useEffect(() => {
+    loadNewRequestCount()
+  }, [pathname])
 
   const handleLogout = async () => {
     const confirmLogout = confirm('Are you sure you want to log out?')
@@ -92,19 +126,30 @@ export default function DashboardLayout({
             ? pathname === '/dashboard'
             : pathname.startsWith(item.href)
 
+        const shouldShowBadge =
+          item.showRequestBadge && newRequestCount > 0
+
         return (
           <Link
             key={item.href}
             href={item.href}
             onClick={() => setMobileMenuOpen(false)}
-            className={`flex items-center gap-3 p-3 rounded-xl transition ${
+            className={`flex items-center justify-between gap-3 p-3 rounded-xl transition ${
               isActive
                 ? 'bg-black text-white'
                 : 'hover:bg-gray-100 text-gray-700'
             }`}
           >
-            <Icon size={20} />
-            {item.label}
+            <span className="flex items-center gap-3">
+              <Icon size={20} />
+              {item.label}
+            </span>
+
+            {shouldShowBadge && (
+              <span className="min-w-6 h-6 px-2 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center">
+                {newRequestCount > 99 ? '99+' : newRequestCount}
+              </span>
+            )}
           </Link>
         )
       })}
@@ -122,12 +167,27 @@ export default function DashboardLayout({
             </h1>
           </div>
 
-          <button
-            onClick={() => setMobileMenuOpen(true)}
-            className="border rounded-xl p-2"
-          >
-            <Menu size={24} />
-          </button>
+          <div className="flex items-center gap-3">
+            {newRequestCount > 0 && (
+              <Link
+                href="/dashboard/requests"
+                className="relative border rounded-xl p-2"
+              >
+                <Inbox size={22} />
+
+                <span className="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center">
+                  {newRequestCount > 99 ? '99+' : newRequestCount}
+                </span>
+              </Link>
+            )}
+
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="border rounded-xl p-2"
+            >
+              <Menu size={24} />
+            </button>
+          </div>
         </header>
 
         {/* Mobile menu overlay */}
@@ -214,8 +274,26 @@ export default function DashboardLayout({
                 </h2>
               </div>
 
-              <div className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center font-bold">
-                H
+              <div className="flex items-center gap-4">
+                {newRequestCount > 0 && (
+                  <Link
+                    href="/dashboard/requests"
+                    className="relative border rounded-xl px-4 py-2 flex items-center gap-2 hover:bg-gray-100"
+                  >
+                    <Inbox size={18} />
+                    <span className="text-sm">
+                      New requests
+                    </span>
+
+                    <span className="min-w-6 h-6 px-2 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center">
+                      {newRequestCount > 99 ? '99+' : newRequestCount}
+                    </span>
+                  </Link>
+                )}
+
+                <div className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center font-bold">
+                  H
+                </div>
               </div>
             </header>
 
