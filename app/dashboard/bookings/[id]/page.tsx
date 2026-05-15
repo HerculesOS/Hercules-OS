@@ -10,6 +10,7 @@ export default function BookingDetailPage() {
   const params = useParams()
   const router = useRouter()
 
+  const [profile, setProfile] = useState<any>(null)
   const [booking, setBooking] = useState<any>(null)
   const [client, setClient] = useState<any>(null)
   const [trainers, setTrainers] = useState<any[]>([])
@@ -17,6 +18,7 @@ export default function BookingDetailPage() {
   const [organisation, setOrganisation] = useState<any>(null)
   const [invoices, setInvoices] = useState<any[]>([])
   const [certificates, setCertificates] = useState<any[]>([])
+  const [delegates, setDelegates] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   const [editing, setEditing] = useState(false)
@@ -36,21 +38,34 @@ export default function BookingDetailPage() {
 
   const [recipientEmail, setRecipientEmail] = useState('')
 
+  const [delegateName, setDelegateName] = useState('')
+  const [delegateEmail, setDelegateEmail] = useState('')
+  const [delegatePhone, setDelegatePhone] = useState('')
+  const [delegateNotes, setDelegateNotes] = useState('')
+
+  const [editingDelegateId, setEditingDelegateId] = useState('')
+  const [editDelegateName, setEditDelegateName] = useState('')
+  const [editDelegateEmail, setEditDelegateEmail] = useState('')
+  const [editDelegatePhone, setEditDelegatePhone] = useState('')
+  const [editDelegateNotes, setEditDelegateNotes] = useState('')
+
   const load = async () => {
-    const profile = await getOrCreateAccount()
+    const currentProfile = await getOrCreateAccount()
     const bookingId = params.id as string
+
+    setProfile(currentProfile)
 
     const { data: organisationData } = await supabase
       .from('organisations')
       .select('*')
-      .eq('id', profile.organisation_id)
+      .eq('id', currentProfile.organisation_id)
       .single()
 
     const { data: bookingData, error: bookingError } = await supabase
       .from('bookings')
       .select('*')
       .eq('id', bookingId)
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .single()
 
     if (bookingError) {
@@ -66,7 +81,7 @@ export default function BookingDetailPage() {
         .from('clients')
         .select('*')
         .eq('id', bookingData.client_id)
-        .eq('organisation_id', profile.organisation_id)
+        .eq('organisation_id', currentProfile.organisation_id)
         .single()
 
       clientData = data
@@ -75,28 +90,35 @@ export default function BookingDetailPage() {
     const { data: trainersData } = await supabase
       .from('trainers')
       .select('*')
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .order('name', { ascending: true })
 
     const { data: courseTemplatesData } = await supabase
       .from('course_templates')
       .select('*')
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .order('name', { ascending: true })
 
     const { data: invoicesData } = await supabase
       .from('invoices')
       .select('*')
       .eq('booking_id', bookingId)
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .order('created_at', { ascending: false })
 
     const { data: certificatesData } = await supabase
       .from('certificates')
       .select('*')
       .eq('booking_id', bookingId)
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .order('created_at', { ascending: false })
+
+    const { data: delegatesData } = await supabase
+      .from('delegates')
+      .select('*')
+      .eq('booking_id', bookingId)
+      .eq('organisation_id', currentProfile.organisation_id)
+      .order('full_name', { ascending: true })
 
     setOrganisation(organisationData || null)
     setBooking(bookingData)
@@ -105,6 +127,7 @@ export default function BookingDetailPage() {
     setCourseTemplates(courseTemplatesData || [])
     setInvoices(invoicesData || [])
     setCertificates(certificatesData || [])
+    setDelegates(delegatesData || [])
 
     setEditTrainerId(bookingData.trainer_id || '')
     setEditCourseTemplateId('')
@@ -323,6 +346,96 @@ export default function BookingDetailPage() {
     }
 
     alert('Booking reminder sent')
+  }
+
+  const addDelegate = async () => {
+    if (!delegateName) {
+      alert('Delegate name is required')
+      return
+    }
+
+    const { error } = await supabase.from('delegates').insert({
+      organisation_id: profile.organisation_id,
+      client_id: booking.client_id,
+      booking_id: booking.id,
+      full_name: delegateName,
+      email: delegateEmail || null,
+      phone: delegatePhone || null,
+      notes: delegateNotes || null,
+    })
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    setDelegateName('')
+    setDelegateEmail('')
+    setDelegatePhone('')
+    setDelegateNotes('')
+
+    load()
+  }
+
+  const startEditingDelegate = (delegate: any) => {
+    setEditingDelegateId(delegate.id)
+    setEditDelegateName(delegate.full_name || '')
+    setEditDelegateEmail(delegate.email || '')
+    setEditDelegatePhone(delegate.phone || '')
+    setEditDelegateNotes(delegate.notes || '')
+  }
+
+  const cancelEditingDelegate = () => {
+    setEditingDelegateId('')
+    setEditDelegateName('')
+    setEditDelegateEmail('')
+    setEditDelegatePhone('')
+    setEditDelegateNotes('')
+  }
+
+  const saveDelegate = async (delegateId: string) => {
+    if (!editDelegateName) {
+      alert('Delegate name is required')
+      return
+    }
+
+    const { error } = await supabase
+      .from('delegates')
+      .update({
+        full_name: editDelegateName,
+        email: editDelegateEmail || null,
+        phone: editDelegatePhone || null,
+        notes: editDelegateNotes || null,
+      })
+      .eq('id', delegateId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    cancelEditingDelegate()
+    load()
+  }
+
+  const deleteDelegate = async (delegateId: string) => {
+    const confirmDelete = confirm(
+      'Are you sure you want to delete this delegate?'
+    )
+
+    if (!confirmDelete) return
+
+    const { error } = await supabase
+      .from('delegates')
+      .delete()
+      .eq('id', delegateId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    load()
   }
 
   const getStatusStyle = (status: string) => {
@@ -653,6 +766,165 @@ export default function BookingDetailPage() {
               Delete Booking
             </button>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white border rounded-2xl p-6 shadow-sm mt-8">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
+          <div>
+            <h2 className="text-2xl font-semibold">
+              Delegates
+            </h2>
+
+            <p className="text-gray-500 mt-1">
+              People attending this training session
+            </p>
+          </div>
+
+          <div className="bg-gray-100 px-4 py-2 rounded-full text-sm text-gray-700 w-fit">
+            {delegates.length} delegates
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 mb-6">
+          <input
+            className="border p-3 rounded-lg"
+            placeholder="Delegate full name"
+            value={delegateName}
+            onChange={(e) => setDelegateName(e.target.value)}
+          />
+
+          <input
+            className="border p-3 rounded-lg"
+            placeholder="Email optional"
+            value={delegateEmail}
+            onChange={(e) => setDelegateEmail(e.target.value)}
+          />
+
+          <input
+            className="border p-3 rounded-lg"
+            placeholder="Phone optional"
+            value={delegatePhone}
+            onChange={(e) => setDelegatePhone(e.target.value)}
+          />
+
+          <button
+            className="bg-black text-white p-3 rounded-lg"
+            onClick={addDelegate}
+          >
+            Add Delegate
+          </button>
+
+          <textarea
+            className="border p-3 rounded-lg lg:col-span-4"
+            placeholder="Delegate notes optional"
+            value={delegateNotes}
+            onChange={(e) => setDelegateNotes(e.target.value)}
+          />
+        </div>
+
+        <div className="grid gap-4">
+          {delegates.map((delegate) => {
+            const isEditingDelegate = editingDelegateId === delegate.id
+
+            return (
+              <div
+                key={delegate.id}
+                className="bg-gray-50 border rounded-xl p-4"
+              >
+                {!isEditingDelegate ? (
+                  <>
+                    <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                      <div>
+                        <p className="font-semibold">
+                          {delegate.full_name}
+                        </p>
+
+                        <div className="text-sm text-gray-600 mt-2 space-y-1">
+                          <p>Email: {delegate.email || 'Not set'}</p>
+                          <p>Phone: {delegate.phone || 'Not set'}</p>
+
+                          {delegate.notes && (
+                            <p>Notes: {delegate.notes}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          className="border px-4 py-2 rounded-lg bg-white"
+                          onClick={() => startEditingDelegate(delegate)}
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          className="border border-red-300 text-red-600 px-4 py-2 rounded-lg bg-white"
+                          onClick={() => deleteDelegate(delegate.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <input
+                        className="border p-3 rounded-lg"
+                        placeholder="Delegate full name"
+                        value={editDelegateName}
+                        onChange={(e) => setEditDelegateName(e.target.value)}
+                      />
+
+                      <input
+                        className="border p-3 rounded-lg"
+                        placeholder="Email"
+                        value={editDelegateEmail}
+                        onChange={(e) => setEditDelegateEmail(e.target.value)}
+                      />
+
+                      <input
+                        className="border p-3 rounded-lg"
+                        placeholder="Phone"
+                        value={editDelegatePhone}
+                        onChange={(e) => setEditDelegatePhone(e.target.value)}
+                      />
+
+                      <textarea
+                        className="border p-3 rounded-lg"
+                        placeholder="Notes"
+                        value={editDelegateNotes}
+                        onChange={(e) => setEditDelegateNotes(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-3 mt-4">
+                      <button
+                        className="bg-black text-white px-4 py-2 rounded-lg"
+                        onClick={() => saveDelegate(delegate.id)}
+                      >
+                        Save Delegate
+                      </button>
+
+                      <button
+                        className="border px-4 py-2 rounded-lg bg-white"
+                        onClick={cancelEditingDelegate}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )
+          })}
+
+          {delegates.length === 0 && (
+            <div className="bg-gray-50 border rounded-xl p-4 text-gray-500">
+              No delegates added yet.
+            </div>
+          )}
         </div>
       </div>
 
