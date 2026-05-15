@@ -13,6 +13,7 @@ export default function BookingDetailPage() {
   const [booking, setBooking] = useState<any>(null)
   const [client, setClient] = useState<any>(null)
   const [trainers, setTrainers] = useState<any[]>([])
+  const [courseTemplates, setCourseTemplates] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
   const [invoices, setInvoices] = useState<any[]>([])
   const [certificates, setCertificates] = useState<any[]>([])
@@ -24,6 +25,7 @@ export default function BookingDetailPage() {
   const [sendingReminder, setSendingReminder] = useState(false)
 
   const [editTrainerId, setEditTrainerId] = useState('')
+  const [editCourseTemplateId, setEditCourseTemplateId] = useState('')
   const [editCourseName, setEditCourseName] = useState('')
   const [editDate, setEditDate] = useState('')
   const [editStartTime, setEditStartTime] = useState('')
@@ -76,6 +78,12 @@ export default function BookingDetailPage() {
       .eq('organisation_id', profile.organisation_id)
       .order('name', { ascending: true })
 
+    const { data: courseTemplatesData } = await supabase
+      .from('course_templates')
+      .select('*')
+      .eq('organisation_id', profile.organisation_id)
+      .order('name', { ascending: true })
+
     const { data: invoicesData } = await supabase
       .from('invoices')
       .select('*')
@@ -94,10 +102,12 @@ export default function BookingDetailPage() {
     setBooking(bookingData)
     setClient(clientData)
     setTrainers(trainersData || [])
+    setCourseTemplates(courseTemplatesData || [])
     setInvoices(invoicesData || [])
     setCertificates(certificatesData || [])
 
     setEditTrainerId(bookingData.trainer_id || '')
+    setEditCourseTemplateId('')
     setEditCourseName(bookingData.course_name || '')
     setEditDate(bookingData.date || '')
     setEditStartTime(bookingData.start_time || '')
@@ -118,8 +128,29 @@ export default function BookingDetailPage() {
     return trainers.find((trainer) => trainer.id === booking?.trainer_id)
   }
 
+  const applyCourseTemplate = (templateId: string) => {
+    setEditCourseTemplateId(templateId)
+
+    const selectedCourse = courseTemplates.find(
+      (course) => course.id === templateId
+    )
+
+    if (!selectedCourse) return
+
+    setEditCourseName(selectedCourse.name || '')
+
+    if (selectedCourse.default_price) {
+      setEditPrice(String(selectedCourse.default_price))
+    }
+
+    if (selectedCourse.notes && !editNotes) {
+      setEditNotes(selectedCourse.notes)
+    }
+  }
+
   const startEditing = () => {
     setEditTrainerId(booking.trainer_id || '')
+    setEditCourseTemplateId('')
     setEditCourseName(booking.course_name || '')
     setEditDate(booking.date || '')
     setEditStartTime(booking.start_time || '')
@@ -133,6 +164,7 @@ export default function BookingDetailPage() {
   const cancelEditing = () => {
     setEditing(false)
     setEditTrainerId(booking.trainer_id || '')
+    setEditCourseTemplateId('')
     setEditCourseName(booking.course_name || '')
     setEditDate(booking.date || '')
     setEditStartTime(booking.start_time || '')
@@ -355,7 +387,7 @@ export default function BookingDetailPage() {
             </h1>
 
             <p className="text-gray-500 mt-2">
-              {booking.client_name} · {booking.date}
+              {client?.company || booking.client_name} · {booking.date}
             </p>
           </div>
 
@@ -468,69 +500,92 @@ export default function BookingDetailPage() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <select
-                className="border p-3 rounded-lg"
-                value={editTrainerId}
-                onChange={(e) => setEditTrainerId(e.target.value)}
-              >
-                <option value="">Assign Trainer</option>
+            <div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <select
+                  className="border p-3 rounded-lg md:col-span-2"
+                  value={editCourseTemplateId}
+                  onChange={(e) => applyCourseTemplate(e.target.value)}
+                >
+                  <option value="">Apply Course Template</option>
 
-                {trainers.map((trainer) => (
-                  <option key={trainer.id} value={trainer.id}>
-                    {trainer.name}
-                  </option>
-                ))}
-              </select>
+                  {courseTemplates.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.code ? `${course.code} - ` : ''}
+                      {course.name}
+                    </option>
+                  ))}
+                </select>
 
-              <input
-                className="border p-3 rounded-lg"
-                placeholder="Course name"
-                value={editCourseName}
-                onChange={(e) => setEditCourseName(e.target.value)}
-              />
+                <select
+                  className="border p-3 rounded-lg"
+                  value={editTrainerId}
+                  onChange={(e) => setEditTrainerId(e.target.value)}
+                >
+                  <option value="">Assign Trainer</option>
 
-              <input
-                className="border p-3 rounded-lg"
-                type="date"
-                value={editDate}
-                onChange={(e) => setEditDate(e.target.value)}
-              />
+                  {trainers.map((trainer) => (
+                    <option key={trainer.id} value={trainer.id}>
+                      {trainer.name}
+                    </option>
+                  ))}
+                </select>
 
-              <input
-                className="border p-3 rounded-lg"
-                type="time"
-                value={editStartTime}
-                onChange={(e) => setEditStartTime(e.target.value)}
-              />
+                <input
+                  className="border p-3 rounded-lg"
+                  placeholder="Course name"
+                  value={editCourseName}
+                  onChange={(e) => setEditCourseName(e.target.value)}
+                />
 
-              <input
-                className="border p-3 rounded-lg"
-                type="time"
-                value={editEndTime}
-                onChange={(e) => setEditEndTime(e.target.value)}
-              />
+                <input
+                  className="border p-3 rounded-lg"
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                />
 
-              <input
-                className="border p-3 rounded-lg"
-                placeholder="Location"
-                value={editLocation}
-                onChange={(e) => setEditLocation(e.target.value)}
-              />
+                <input
+                  className="border p-3 rounded-lg"
+                  type="time"
+                  value={editStartTime}
+                  onChange={(e) => setEditStartTime(e.target.value)}
+                />
 
-              <input
-                className="border p-3 rounded-lg"
-                placeholder="Price"
-                value={editPrice}
-                onChange={(e) => setEditPrice(e.target.value)}
-              />
+                <input
+                  className="border p-3 rounded-lg"
+                  type="time"
+                  value={editEndTime}
+                  onChange={(e) => setEditEndTime(e.target.value)}
+                />
 
-              <textarea
-                className="border p-3 rounded-lg md:col-span-2"
-                placeholder="Notes"
-                value={editNotes}
-                onChange={(e) => setEditNotes(e.target.value)}
-              />
+                <input
+                  className="border p-3 rounded-lg"
+                  placeholder="Location"
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                />
+
+                <input
+                  className="border p-3 rounded-lg"
+                  placeholder="Price"
+                  value={editPrice}
+                  onChange={(e) => setEditPrice(e.target.value)}
+                />
+
+                <textarea
+                  className="border p-3 rounded-lg md:col-span-2"
+                  placeholder="Notes"
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                />
+              </div>
+
+              {editCourseTemplateId && (
+                <div className="bg-gray-50 border rounded-xl p-3 text-sm text-gray-600 mt-4">
+                  Course template applied. You can still edit the course name, price or notes before saving.
+                </div>
+              )}
             </div>
           )}
         </div>
