@@ -13,6 +13,8 @@ export default function TrainersPage() {
   const [phone, setPhone] = useState('')
   const [notes, setNotes] = useState('')
 
+  const [search, setSearch] = useState('')
+
   const [editingId, setEditingId] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
 
@@ -20,6 +22,24 @@ export default function TrainersPage() {
   const [editEmail, setEditEmail] = useState('')
   const [editPhone, setEditPhone] = useState('')
   const [editNotes, setEditNotes] = useState('')
+
+  const inputClass =
+    'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+
+  const buttonPrimary =
+    'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
+
+  const buttonSecondary =
+    'border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400'
+
+  const buttonDanger =
+    'border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-red-50'
+
+  const panelClass =
+    'bg-white border border-slate-200 rounded-lg'
+
+  const panelHeaderClass =
+    'px-4 py-3 border-b border-slate-200'
 
   const load = async () => {
     const profile = await getOrCreateAccount()
@@ -131,217 +151,333 @@ export default function TrainersPage() {
     load()
   }
 
+  const clearSearch = () => {
+    setSearch('')
+  }
+
+  const filteredTrainers = trainers.filter((trainer) => {
+    const searchableText = `
+      ${trainer.name || ''}
+      ${trainer.email || ''}
+      ${trainer.phone || ''}
+      ${trainer.notes || ''}
+    `.toLowerCase()
+
+    return searchableText.includes(search.toLowerCase())
+  })
+
+  const trainersWithEmail = trainers.filter((trainer) => trainer.email)
+  const trainersWithPhone = trainers.filter((trainer) => trainer.phone)
+
+  const StatCard = ({
+    label,
+    value,
+    detail,
+  }: {
+    label: string
+    value: string | number
+    detail?: string
+  }) => (
+    <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+
+      <h2 className="text-2xl font-semibold tracking-tight text-slate-950 mt-2">
+        {value}
+      </h2>
+
+      {detail && (
+        <p className="text-xs text-slate-500 mt-1">
+          {detail}
+        </p>
+      )}
+    </div>
+  )
+
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold">
-          Trainers
-        </h1>
-
-        <p className="text-gray-500 mt-1">
-          Manage trainers and delivery staff
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">
-            Total Trainers
+      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Trainers
           </p>
 
-          <h2 className="text-3xl font-bold mt-2">
-            {trainers.length}
-          </h2>
-        </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
+            Trainer records
+          </h1>
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">
-            Active Trainers
+          <p className="text-sm text-slate-500 mt-1">
+            Manage trainers, delivery staff and contact details.
           </p>
-
-          <h2 className="text-3xl font-bold mt-2">
-            {trainers.length}
-          </h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">
-            Trainer Records
-          </p>
-
-          <h2 className="text-3xl font-bold mt-2">
-            {trainers.length}
-          </h2>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <h2 className="text-xl font-semibold mb-4">
-            Add Trainer
-          </h2>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+        <StatCard
+          label="Total trainers"
+          value={trainers.length}
+          detail="All trainer records"
+        />
 
-          <div className="flex flex-col gap-3">
+        <StatCard
+          label="With email"
+          value={trainersWithEmail.length}
+          detail="Email address saved"
+        />
+
+        <StatCard
+          label="With phone"
+          value={trainersWithPhone.length}
+          detail="Phone number saved"
+        />
+
+        <StatCard
+          label="Search results"
+          value={filteredTrainers.length}
+          detail="Matching current filter"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+        <div className={`xl:col-span-4 ${panelClass} h-fit`}>
+          <div className={panelHeaderClass}>
+            <h2 className="text-sm font-semibold text-slate-950">
+              Add trainer
+            </h2>
+
+            <p className="text-xs text-slate-500 mt-0.5">
+              Create a trainer profile for booking assignment.
+            </p>
+          </div>
+
+          <div className="p-4 flex flex-col gap-3">
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Trainer name"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Phone"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
             />
 
             <textarea
-              className="border p-3 rounded-lg"
+              className={`${inputClass} min-h-24`}
               placeholder="Notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
 
             <button
-              className="bg-black text-white p-3 rounded-lg"
+              className={buttonPrimary}
               onClick={addTrainer}
             >
-              Add Trainer
+              Add trainer
             </button>
           </div>
         </div>
 
-        <div className="lg:col-span-2 grid gap-4">
-          {trainers.map((trainer) => {
-            const isEditing = editingId === trainer.id
+        <div className="xl:col-span-8 grid gap-4">
+          <div className={panelClass}>
+            <div className={panelHeaderClass}>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Search trainers
+              </h2>
 
-            return (
-              <div
-                key={trainer.id}
-                className="bg-white border rounded-2xl p-5 shadow-sm"
-              >
-                {!isEditing ? (
-                  <>
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h2 className="text-xl font-semibold">
-                          {trainer.name}
-                        </h2>
-
-                        <p className="text-gray-500 mt-1">
-                          {trainer.email || 'No email set'}
-                        </p>
-                      </div>
-
-                      <div className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
-                        Active
-                      </div>
-                    </div>
-
-                    <div className="mt-4 text-sm text-gray-600 space-y-1">
-                      <p>
-                        Phone: {trainer.phone || 'Not set'}
-                      </p>
-
-                      <p>
-                        Notes: {trainer.notes || 'No notes'}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-3 mt-5">
-                      <button
-                        className="border px-4 py-2 rounded-lg"
-                        onClick={() => startEditing(trainer)}
-                      >
-                        Edit
-                      </button>
-
-                      <button
-                        className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
-                        onClick={() => deleteTrainer(trainer.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="mb-5">
-                      <h2 className="text-xl font-semibold">
-                        Edit Trainer
-                      </h2>
-
-                      <p className="text-gray-500 mt-1">
-                        Update trainer contact details and notes
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder="Trainer name"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                      />
-
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder="Email"
-                        value={editEmail}
-                        onChange={(e) => setEditEmail(e.target.value)}
-                      />
-
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder="Phone"
-                        value={editPhone}
-                        onChange={(e) => setEditPhone(e.target.value)}
-                      />
-
-                      <textarea
-                        className="border p-3 rounded-lg md:col-span-2"
-                        placeholder="Notes"
-                        value={editNotes}
-                        onChange={(e) => setEditNotes(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="flex flex-wrap gap-3 mt-5">
-                      <button
-                        className="bg-black text-white px-4 py-2 rounded-lg disabled:bg-gray-400"
-                        onClick={() => saveTrainerEdit(trainer.id)}
-                        disabled={savingEdit}
-                      >
-                        {savingEdit ? 'Saving...' : 'Save Changes'}
-                      </button>
-
-                      <button
-                        className="border px-4 py-2 rounded-lg"
-                        onClick={cancelEditing}
-                        disabled={savingEdit}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )
-          })}
-
-          {trainers.length === 0 && (
-            <div className="bg-white border rounded-2xl p-6 shadow-sm text-gray-500">
-              No trainers yet. Add your first trainer.
+              <p className="text-xs text-slate-500 mt-0.5">
+                Find trainers by name, email, phone or notes.
+              </p>
             </div>
-          )}
+
+            <div className="p-4">
+              <div className="flex flex-col md:flex-row gap-3">
+                <input
+                  className={`${inputClass} flex-1`}
+                  placeholder="Search trainers..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+
+                <button
+                  className={buttonSecondary}
+                  onClick={clearSearch}
+                >
+                  Clear
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-500 mt-3">
+                Showing {filteredTrainers.length} of {trainers.length} trainers
+              </p>
+            </div>
+          </div>
+
+          <div className={panelClass}>
+            <div className={panelHeaderClass}>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Trainer list
+              </h2>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                Edit trainer contact details or remove unused records.
+              </p>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {filteredTrainers.map((trainer) => {
+                const isEditing = editingId === trainer.id
+
+                return (
+                  <div
+                    key={trainer.id}
+                    className="p-4"
+                  >
+                    {!isEditing ? (
+                      <>
+                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-sm font-semibold text-slate-950">
+                                {trainer.name}
+                              </h3>
+
+                              <span className="border border-emerald-100 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-md text-xs font-medium">
+                                Active
+                              </span>
+
+                              {trainer.email ? (
+                                <span className="border border-blue-100 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-xs font-medium">
+                                  Email set
+                                </span>
+                              ) : (
+                                <span className="border border-slate-200 bg-slate-50 text-slate-700 px-2.5 py-1 rounded-md text-xs font-medium">
+                                  No email
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-sm text-slate-600 mt-1">
+                              {trainer.email || 'No email set'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 text-xs text-slate-600">
+                          <div>
+                            <p className="text-slate-400">Phone</p>
+                            <p className="font-medium text-slate-800 mt-1">
+                              {trainer.phone || 'Not set'}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-slate-400">Notes</p>
+                            <p className="font-medium text-slate-800 mt-1">
+                              {trainer.notes || 'No notes'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 mt-4">
+                          <button
+                            className={buttonSecondary}
+                            onClick={() => startEditing(trainer)}
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            className={buttonDanger}
+                            onClick={() => deleteTrainer(trainer.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="mb-4">
+                          <h3 className="text-sm font-semibold text-slate-950">
+                            Edit trainer
+                          </h3>
+
+                          <p className="text-xs text-slate-500 mt-1">
+                            Update trainer contact details and notes.
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <input
+                            className={inputClass}
+                            placeholder="Trainer name"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                          />
+
+                          <input
+                            className={inputClass}
+                            placeholder="Email"
+                            value={editEmail}
+                            onChange={(e) => setEditEmail(e.target.value)}
+                          />
+
+                          <input
+                            className={inputClass}
+                            placeholder="Phone"
+                            value={editPhone}
+                            onChange={(e) => setEditPhone(e.target.value)}
+                          />
+
+                          <textarea
+                            className={`${inputClass} md:col-span-2 min-h-24`}
+                            placeholder="Notes"
+                            value={editNotes}
+                            onChange={(e) => setEditNotes(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 mt-4">
+                          <button
+                            className={buttonPrimary}
+                            onClick={() => saveTrainerEdit(trainer.id)}
+                            disabled={savingEdit}
+                          >
+                            {savingEdit ? 'Saving...' : 'Save changes'}
+                          </button>
+
+                          <button
+                            className={buttonSecondary}
+                            onClick={cancelEditing}
+                            disabled={savingEdit}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+
+              {filteredTrainers.length === 0 && (
+                <div className="p-6 text-sm text-slate-500">
+                  No trainers found. Add your first trainer.
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
