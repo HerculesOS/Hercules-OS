@@ -20,6 +20,7 @@ import {
   X,
   Inbox,
   BookOpen,
+  GraduationCap,
 } from 'lucide-react'
 
 const navItems = [
@@ -38,6 +39,11 @@ const navItems = [
     href: '/dashboard/clients',
     label: 'Clients',
     icon: Users,
+  },
+  {
+    href: '/dashboard/delegates',
+    label: 'Delegates',
+    icon: GraduationCap,
   },
   {
     href: '/dashboard/courses',
