@@ -20,6 +20,24 @@ export default function CertificatesPage() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [linkFilter, setLinkFilter] = useState('all')
 
+  const inputClass =
+    'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+
+  const buttonPrimary =
+    'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
+
+  const buttonSecondary =
+    'border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400'
+
+  const buttonDanger =
+    'border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-red-50'
+
+  const panelClass =
+    'bg-white border border-slate-200 rounded-lg'
+
+  const panelHeaderClass =
+    'px-4 py-3 border-b border-slate-200'
+
   const load = async () => {
     const currentProfile = await getOrCreateAccount()
 
@@ -449,382 +467,435 @@ export default function CertificatesPage() {
   })
 
   const getStatusStyle = (status: string) => {
-    if (status === 'revoked') return 'bg-red-100 text-red-700'
-    if (status === 'expired') return 'bg-yellow-100 text-yellow-700'
-    return 'bg-green-100 text-green-700'
+    if (status === 'revoked') return 'bg-red-50 text-red-700 border-red-100'
+    if (status === 'expired') return 'bg-amber-50 text-amber-700 border-amber-100'
+    return 'bg-emerald-50 text-emerald-700 border-emerald-100'
   }
 
   const getLinkStyle = (certificate: any) => {
     if (certificate.delegate_id) {
-      return 'bg-blue-100 text-blue-700'
+      return 'bg-blue-50 text-blue-700 border-blue-100'
     }
 
-    return 'bg-gray-200 text-gray-700'
+    return 'bg-slate-50 text-slate-700 border-slate-200'
   }
+
+  const StatCard = ({
+    label,
+    value,
+    detail,
+  }: {
+    label: string
+    value: string | number
+    detail?: string
+  }) => (
+    <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+
+      <h2 className="text-2xl font-semibold tracking-tight text-slate-950 mt-2">
+        {value}
+      </h2>
+
+      {detail && (
+        <p className="text-xs text-slate-500 mt-1">
+          {detail}
+        </p>
+      )}
+    </div>
+  )
 
   if (loading) {
     return (
-      <div className="bg-white border rounded-2xl p-6 shadow-sm">
-        Loading certificates...
+      <div className={panelClass}>
+        <div className="p-4 text-sm text-slate-500">
+          Loading certificates...
+        </div>
       </div>
     )
   }
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold">
-          Certificates
-        </h1>
+      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Certificates
+          </p>
 
-        <p className="text-gray-500 mt-1">
-          Manage learner certificates, download PDFs and send certificate emails
-        </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
+            Learner certificates
+          </h1>
+
+          <p className="text-sm text-slate-500 mt-1">
+            Manage certificates, download PDFs, send emails and track expiry status.
+          </p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Total</p>
-          <h2 className="text-3xl font-bold mt-2">
-            {certificates.length}
-          </h2>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+        <StatCard
+          label="Total"
+          value={certificates.length}
+          detail="All certificates"
+        />
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Valid</p>
-          <h2 className="text-3xl font-bold mt-2">
-            {validCertificates.length}
-          </h2>
-        </div>
+        <StatCard
+          label="Valid"
+          value={validCertificates.length}
+          detail="Current certificates"
+        />
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Expiring Soon</p>
-          <h2 className="text-3xl font-bold mt-2">
-            {expiringSoonCertificates.length}
-          </h2>
-        </div>
+        <StatCard
+          label="Expiring soon"
+          value={expiringSoonCertificates.length}
+          detail="Within 90 days"
+        />
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Expired</p>
-          <h2 className="text-3xl font-bold mt-2">
-            {expiredCertificates.length}
-          </h2>
-        </div>
+        <StatCard
+          label="Expired"
+          value={expiredCertificates.length}
+          detail="Marked expired"
+        />
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Linked</p>
-          <h2 className="text-3xl font-bold mt-2">
-            {linkedCertificates.length}
-          </h2>
-        </div>
+        <StatCard
+          label="Linked"
+          value={linkedCertificates.length}
+          detail="Connected to delegates"
+        />
       </div>
 
       {revokedCertificates.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-5 mb-8 text-red-800">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 text-sm text-red-800">
           You have {revokedCertificates.length} revoked certificate
           {revokedCertificates.length === 1 ? '' : 's'}.
         </div>
       )}
 
-      <div className="bg-white border rounded-2xl p-5 shadow-sm mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-          <input
-            className="border p-3 rounded-lg md:col-span-2"
-            placeholder="Search by learner, delegate, client, course, certificate number..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      <div className={`${panelClass} mb-4`}>
+        <div className={panelHeaderClass}>
+          <h2 className="text-sm font-semibold text-slate-950">
+            Filters
+          </h2>
 
-          <select
-            className="border p-3 rounded-lg"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="all">All Statuses</option>
-            <option value="valid">Valid</option>
-            <option value="expired">Expired</option>
-            <option value="revoked">Revoked</option>
-          </select>
-
-          <select
-            className="border p-3 rounded-lg"
-            value={linkFilter}
-            onChange={(e) => setLinkFilter(e.target.value)}
-          >
-            <option value="all">All Link Types</option>
-            <option value="linked">Linked to Delegate</option>
-            <option value="manual">Manual / Old Certificates</option>
-          </select>
-
-          <button
-            className="border px-4 py-2 rounded-lg"
-            onClick={clearFilters}
-          >
-            Clear Filters
-          </button>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Search by learner, delegate, client, course or certificate number.
+          </p>
         </div>
 
-        <p className="text-sm text-gray-500 mt-4">
-          Showing {filteredCertificates.length} of {certificates.length} certificates
-        </p>
+        <div className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <input
+              className={`${inputClass} md:col-span-2`}
+              placeholder="Search certificates..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+
+            <select
+              className={inputClass}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All statuses</option>
+              <option value="valid">Valid</option>
+              <option value="expired">Expired</option>
+              <option value="revoked">Revoked</option>
+            </select>
+
+            <select
+              className={inputClass}
+              value={linkFilter}
+              onChange={(e) => setLinkFilter(e.target.value)}
+            >
+              <option value="all">All link types</option>
+              <option value="linked">Linked to delegate</option>
+              <option value="manual">Manual / old certificates</option>
+            </select>
+
+            <button
+              className={buttonSecondary}
+              onClick={clearFilters}
+            >
+              Clear filters
+            </button>
+          </div>
+
+          <p className="text-xs text-slate-500 mt-3">
+            Showing {filteredCertificates.length} of {certificates.length} certificates
+          </p>
+        </div>
       </div>
 
-      <div className="grid gap-4">
-        {filteredCertificates.map((certificate) => {
-          const delegate = getDelegateForCertificate(certificate)
-          const booking = getBookingForCertificate(certificate)
-          const client = getClientForCertificate(certificate)
+      <div className={panelClass}>
+        <div className={panelHeaderClass}>
+          <h2 className="text-sm font-semibold text-slate-950">
+            Certificate list
+          </h2>
 
-          return (
-            <div
-              key={certificate.id}
-              className="bg-white border rounded-2xl p-5 shadow-sm"
-            >
-              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold">
-                    {certificate.learner_name || delegate?.full_name || 'Unnamed learner'}
-                  </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Download, email, verify and manage certificate records.
+          </p>
+        </div>
 
-                  <p className="text-gray-500 mt-1">
-                    {certificate.course_name || booking?.course_name || 'No course'}
-                  </p>
+        <div className="divide-y divide-slate-100">
+          {filteredCertificates.map((certificate) => {
+            const delegate = getDelegateForCertificate(certificate)
+            const booking = getBookingForCertificate(certificate)
+            const client = getClientForCertificate(certificate)
 
-                  <p className="text-sm text-gray-400 mt-1">
-                    Certificate No: {certificate.certificate_number || 'Not set'}
-                  </p>
-                </div>
+            return (
+              <div
+                key={certificate.id}
+                className="p-4"
+              >
+                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-semibold text-slate-950">
+                        {certificate.learner_name || delegate?.full_name || 'Unnamed learner'}
+                      </h3>
 
-                <div className="flex flex-wrap gap-2">
-                  <div
-                    className={`px-3 py-1 rounded-full text-sm w-fit ${getStatusStyle(
-                      certificate.status
-                    )}`}
-                  >
-                    {certificate.status || 'valid'}
+                      <span
+                        className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(
+                          certificate.status
+                        )}`}
+                      >
+                        {certificate.status || 'valid'}
+                      </span>
+
+                      <span
+                        className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getLinkStyle(
+                          certificate
+                        )}`}
+                      >
+                        {certificate.delegate_id ? 'Linked delegate' : 'Manual / old'}
+                      </span>
+                    </div>
+
+                    <p className="text-sm text-slate-600 mt-1">
+                      {certificate.course_name || booking?.course_name || 'No course'}
+                    </p>
+
+                    <p className="text-xs text-slate-500 mt-1">
+                      Certificate No: {certificate.certificate_number || 'Not set'}
+                    </p>
                   </div>
 
-                  <div
-                    className={`px-3 py-1 rounded-full text-sm w-fit ${getLinkStyle(
-                      certificate
-                    )}`}
+                  <button
+                    className={buttonPrimary}
+                    onClick={() => generateCertificatePDF(certificate)}
                   >
-                    {certificate.delegate_id ? 'Linked delegate' : 'Manual / old'}
+                    Download PDF
+                  </button>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mt-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-2">
+                    Certificate wording
+                  </p>
+
+                  <h4 className="text-sm font-semibold text-slate-950">
+                    {certificate.certificate_title || 'Certificate of Completion'}
+                  </h4>
+
+                  <p className="text-xs text-slate-700 mt-2 whitespace-pre-line leading-5">
+                    {certificate.certificate_body ||
+                      `This is to certify that ${certificate.learner_name || 'the learner'} has successfully completed ${certificate.course_name || 'the course'}.`}
+                  </p>
+
+                  {certificate.certificate_footer && (
+                    <p className="text-xs text-slate-500 mt-3">
+                      {certificate.certificate_footer}
+                    </p>
+                  )}
+
+                  {(certificate.signature_name || certificate.signature_title) && (
+                    <p className="text-xs text-slate-600 mt-3">
+                      Signature: {certificate.signature_name || 'Not set'}
+                      {certificate.signature_title ? `, ${certificate.signature_title}` : ''}
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-4 text-xs text-slate-600">
+                  <div>
+                    <p className="text-slate-400">Delegate</p>
+
+                    {delegate ? (
+                      <Link
+                        href={`/dashboard/delegates/${delegate.id}`}
+                        className="font-medium text-slate-800 mt-1 inline-block hover:underline"
+                      >
+                        {delegate.full_name}
+                      </Link>
+                    ) : (
+                      <p className="font-medium text-slate-800 mt-1">
+                        Not linked
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-slate-400">Client</p>
+
+                    {client ? (
+                      <Link
+                        href={`/dashboard/clients/${client.id}`}
+                        className="font-medium text-slate-800 mt-1 inline-block hover:underline"
+                      >
+                        {client.company}
+                      </Link>
+                    ) : (
+                      <p className="font-medium text-slate-800 mt-1">
+                        Not linked
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-slate-400">Booking</p>
+
+                    {booking ? (
+                      <Link
+                        href={`/dashboard/bookings/${booking.id}`}
+                        className="font-medium text-slate-800 mt-1 inline-block hover:underline"
+                      >
+                        {booking.date} - {booking.course_name}
+                      </Link>
+                    ) : (
+                      <p className="font-medium text-slate-800 mt-1">
+                        Not linked
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-slate-400">Delegate email</p>
+                    <p className="font-medium text-slate-800 mt-1 break-all">
+                      {delegate?.email || 'Not set'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-400">Issue date</p>
+                    <p className="font-medium text-slate-800 mt-1">
+                      {certificate.issue_date || 'Not set'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-400">Expiry date</p>
+                    <p className="font-medium text-slate-800 mt-1">
+                      {certificate.expiry_date || 'Not set'}
+                    </p>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <p className="text-slate-400">Verification ID</p>
+                    <p className="font-medium text-slate-800 mt-1 break-all">
+                      {certificate.verification_id || 'Not set'}
+                    </p>
                   </div>
                 </div>
-              </div>
 
-              <div className="bg-gray-50 border rounded-xl p-4 mt-5">
-                <p className="text-sm text-gray-500 mb-1">
-                  Certificate wording
-                </p>
-
-                <h3 className="text-lg font-semibold">
-                  {certificate.certificate_title || 'Certificate of Completion'}
-                </h3>
-
-                <p className="text-sm text-gray-700 mt-2 whitespace-pre-line">
-                  {certificate.certificate_body ||
-                    `This is to certify that ${certificate.learner_name || 'the learner'} has successfully completed ${certificate.course_name || 'the course'}.`}
-                </p>
-
-                {certificate.certificate_footer && (
-                  <p className="text-xs text-gray-500 mt-4">
-                    {certificate.certificate_footer}
-                  </p>
-                )}
-
-                {(certificate.signature_name || certificate.signature_title) && (
-                  <p className="text-sm text-gray-600 mt-4">
-                    Signature: {certificate.signature_name || 'Not set'}
-                    {certificate.signature_title ? `, ${certificate.signature_title}` : ''}
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-5 text-sm text-gray-700">
-                <div>
-                  <p className="text-gray-500">Delegate</p>
-
-                  {delegate ? (
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {delegate && (
                     <Link
                       href={`/dashboard/delegates/${delegate.id}`}
-                      className="font-medium mt-1 inline-block hover:underline"
+                      className={buttonSecondary}
                     >
-                      {delegate.full_name}
+                      View delegate
                     </Link>
-                  ) : (
-                    <p className="font-medium mt-1">
-                      Not linked
-                    </p>
                   )}
-                </div>
 
-                <div>
-                  <p className="text-gray-500">Client</p>
-
-                  {client ? (
-                    <Link
-                      href={`/dashboard/clients/${client.id}`}
-                      className="font-medium mt-1 inline-block hover:underline"
-                    >
-                      {client.company}
-                    </Link>
-                  ) : (
-                    <p className="font-medium mt-1">
-                      Not linked
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <p className="text-gray-500">Booking</p>
-
-                  {booking ? (
+                  {booking && (
                     <Link
                       href={`/dashboard/bookings/${booking.id}`}
-                      className="font-medium mt-1 inline-block hover:underline"
+                      className={buttonSecondary}
                     >
-                      {booking.date} - {booking.course_name}
+                      View booking
                     </Link>
-                  ) : (
-                    <p className="font-medium mt-1">
-                      Not linked
-                    </p>
                   )}
-                </div>
 
-                <div>
-                  <p className="text-gray-500">Delegate email</p>
-                  <p className="font-medium mt-1 break-all">
-                    {delegate?.email || 'Not set'}
-                  </p>
-                </div>
+                  {client && (
+                    <Link
+                      href={`/dashboard/clients/${client.id}`}
+                      className={buttonSecondary}
+                    >
+                      View client
+                    </Link>
+                  )}
 
-                <div>
-                  <p className="text-gray-500">Issue date</p>
-                  <p className="font-medium mt-1">
-                    {certificate.issue_date || 'Not set'}
-                  </p>
-                </div>
+                  {delegate?.email && (
+                    <button
+                      className={buttonSecondary}
+                      onClick={() => sendCertificate(certificate)}
+                    >
+                      Send certificate
+                    </button>
+                  )}
 
-                <div>
-                  <p className="text-gray-500">Expiry date</p>
-                  <p className="font-medium mt-1">
-                    {certificate.expiry_date || 'Not set'}
-                  </p>
-                </div>
+                  {delegate?.email && (
+                    <button
+                      className={buttonSecondary}
+                      onClick={() => sendExpiryReminder(certificate)}
+                    >
+                      Send expiry reminder
+                    </button>
+                  )}
 
-                <div>
-                  <p className="text-gray-500">Verification ID</p>
-                  <p className="font-medium mt-1 break-all">
-                    {certificate.verification_id || 'Not set'}
-                  </p>
+                  {certificate.status !== 'valid' && (
+                    <button
+                      className={buttonSecondary}
+                      onClick={() =>
+                        updateCertificateStatus(certificate.id, 'valid')
+                      }
+                    >
+                      Mark valid
+                    </button>
+                  )}
+
+                  {certificate.status !== 'expired' && (
+                    <button
+                      className={buttonSecondary}
+                      onClick={() =>
+                        updateCertificateStatus(certificate.id, 'expired')
+                      }
+                    >
+                      Mark expired
+                    </button>
+                  )}
+
+                  {certificate.status !== 'revoked' && (
+                    <button
+                      className={buttonSecondary}
+                      onClick={() =>
+                        updateCertificateStatus(certificate.id, 'revoked')
+                      }
+                    >
+                      Revoke
+                    </button>
+                  )}
+
+                  <button
+                    className={buttonDanger}
+                    onClick={() => deleteCertificate(certificate.id)}
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
+            )
+          })}
 
-              <div className="flex flex-wrap gap-3 mt-5">
-                <button
-                  className="bg-black text-white px-4 py-2 rounded-lg"
-                  onClick={() => generateCertificatePDF(certificate)}
-                >
-                  Download PDF
-                </button>
-
-                {delegate && (
-                  <Link
-                    href={`/dashboard/delegates/${delegate.id}`}
-                    className="border px-4 py-2 rounded-lg"
-                  >
-                    View Delegate
-                  </Link>
-                )}
-
-                {booking && (
-                  <Link
-                    href={`/dashboard/bookings/${booking.id}`}
-                    className="border px-4 py-2 rounded-lg"
-                  >
-                    View Booking
-                  </Link>
-                )}
-
-                {client && (
-                  <Link
-                    href={`/dashboard/clients/${client.id}`}
-                    className="border px-4 py-2 rounded-lg"
-                  >
-                    View Client
-                  </Link>
-                )}
-
-                {delegate?.email && (
-                  <button
-                    className="border px-4 py-2 rounded-lg"
-                    onClick={() => sendCertificate(certificate)}
-                  >
-                    Send Certificate
-                  </button>
-                )}
-
-                {delegate?.email && (
-                  <button
-                    className="border px-4 py-2 rounded-lg"
-                    onClick={() => sendExpiryReminder(certificate)}
-                  >
-                    Send Expiry Reminder
-                  </button>
-                )}
-
-                {certificate.status !== 'valid' && (
-                  <button
-                    className="border px-4 py-2 rounded-lg"
-                    onClick={() =>
-                      updateCertificateStatus(certificate.id, 'valid')
-                    }
-                  >
-                    Mark Valid
-                  </button>
-                )}
-
-                {certificate.status !== 'expired' && (
-                  <button
-                    className="border px-4 py-2 rounded-lg"
-                    onClick={() =>
-                      updateCertificateStatus(certificate.id, 'expired')
-                    }
-                  >
-                    Mark Expired
-                  </button>
-                )}
-
-                {certificate.status !== 'revoked' && (
-                  <button
-                    className="border px-4 py-2 rounded-lg"
-                    onClick={() =>
-                      updateCertificateStatus(certificate.id, 'revoked')
-                    }
-                  >
-                    Revoke
-                  </button>
-                )}
-
-                <button
-                  className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
-                  onClick={() => deleteCertificate(certificate.id)}
-                >
-                  Delete
-                </button>
-              </div>
+          {filteredCertificates.length === 0 && (
+            <div className="p-6 text-sm text-slate-500">
+              No certificates found.
             </div>
-          )
-        })}
-
-        {filteredCertificates.length === 0 && (
-          <div className="bg-white border rounded-2xl p-6 shadow-sm text-gray-500">
-            No certificates found.
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )
