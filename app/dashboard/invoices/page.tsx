@@ -34,6 +34,21 @@ export default function InvoicesPage() {
   const [unpaidOnly, setUnpaidOnly] = useState(false)
   const [sortBy, setSortBy] = useState('newest')
 
+  const inputClass =
+    'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+
+  const buttonPrimary =
+    'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
+
+  const buttonSecondary =
+    'border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400'
+
+  const panelClass =
+    'bg-white border border-slate-200 rounded-lg'
+
+  const panelHeaderClass =
+    'px-4 py-3 border-b border-slate-200'
+
   const load = async () => {
     const profile = await getOrCreateAccount()
 
@@ -274,274 +289,260 @@ export default function InvoicesPage() {
   }
 
   const generateInvoicePDF = (invoice: any) => {
-  const doc = new jsPDF()
+    const doc = new jsPDF()
 
-  const netAmount = Number(invoice.amount || 0)
-  const vatAmount = Number(invoice.vat_amount || 0)
-  const totalAmount = Number(invoice.total_amount || invoice.amount || 0)
+    const netAmount = Number(invoice.amount || 0)
+    const vatAmount = Number(invoice.vat_amount || 0)
+    const totalAmount = Number(invoice.total_amount || invoice.amount || 0)
 
-  const businessName = organisation?.name || 'Training Provider'
-  const businessEmail = organisation?.email || ''
-  const businessPhone = organisation?.phone || ''
-  const businessAddress = organisation?.address || ''
-  const businessWebsite = organisation?.website || ''
-  const paymentDetails = organisation?.invoice_payment_details || ''
+    const businessName = organisation?.name || 'Training Provider'
+    const businessEmail = organisation?.email || ''
+    const businessPhone = organisation?.phone || ''
+    const businessAddress = organisation?.address || ''
+    const businessWebsite = organisation?.website || ''
+    const paymentDetails = organisation?.invoice_payment_details || ''
 
-  const invoiceDate = invoice.created_at
-    ? new Date(invoice.created_at).toLocaleDateString()
-    : new Date().toLocaleDateString()
+    const invoiceDate = invoice.created_at
+      ? new Date(invoice.created_at).toLocaleDateString()
+      : new Date().toLocaleDateString()
 
-  const securedDate = invoice.secured_at
-    ? new Date(invoice.secured_at).toLocaleDateString()
-    : ''
+    const securedDate = invoice.secured_at
+      ? new Date(invoice.secured_at).toLocaleDateString()
+      : ''
 
-  const paidDate = invoice.paid_at
-    ? new Date(invoice.paid_at).toLocaleDateString()
-    : ''
+    const paidDate = invoice.paid_at
+      ? new Date(invoice.paid_at).toLocaleDateString()
+      : ''
 
-  // Background
-  doc.setFillColor(248, 250, 252)
-  doc.rect(0, 0, 210, 297, 'F')
+    doc.setFillColor(248, 250, 252)
+    doc.rect(0, 0, 210, 297, 'F')
 
-  // Main white panel
-  doc.setFillColor(255, 255, 255)
-  doc.roundedRect(12, 12, 186, 273, 3, 3, 'F')
+    doc.setFillColor(255, 255, 255)
+    doc.roundedRect(12, 12, 186, 273, 3, 3, 'F')
 
-  // Header
-  doc.setFillColor(17, 24, 39)
-  doc.roundedRect(12, 12, 186, 35, 3, 3, 'F')
+    doc.setFillColor(17, 24, 39)
+    doc.roundedRect(12, 12, 186, 35, 3, 3, 'F')
 
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(24)
-  doc.text('INVOICE', 22, 34)
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(24)
+    doc.text('INVOICE', 22, 34)
 
-  doc.setFontSize(11)
-  doc.text(businessName, 188, 26, { align: 'right' })
+    doc.setFontSize(11)
+    doc.text(businessName, 188, 26, { align: 'right' })
 
-  if (businessEmail) {
-    doc.setFontSize(8)
-    doc.text(businessEmail, 188, 33, { align: 'right' })
-  }
+    if (businessEmail) {
+      doc.setFontSize(8)
+      doc.text(businessEmail, 188, 33, { align: 'right' })
+    }
 
-  if (businessPhone) {
-    doc.text(businessPhone, 188, 39, { align: 'right' })
-  }
+    if (businessPhone) {
+      doc.text(businessPhone, 188, 39, { align: 'right' })
+    }
 
-  // Reset colour
-  doc.setTextColor(17, 24, 39)
+    doc.setTextColor(17, 24, 39)
 
-  // Invoice meta box
-  doc.setFillColor(249, 250, 251)
-  doc.setDrawColor(229, 231, 235)
-  doc.roundedRect(22, 60, 76, 42, 3, 3, 'FD')
+    doc.setFillColor(249, 250, 251)
+    doc.setDrawColor(229, 231, 235)
+    doc.roundedRect(22, 60, 76, 42, 3, 3, 'FD')
 
-  doc.setFontSize(9)
-  doc.setTextColor(107, 114, 128)
-  doc.text('INVOICE DETAILS', 28, 69)
+    doc.setFontSize(9)
+    doc.setTextColor(107, 114, 128)
+    doc.text('INVOICE DETAILS', 28, 69)
 
-  doc.setFontSize(10)
-  doc.setTextColor(17, 24, 39)
-  doc.text(`Invoice No: ${invoice.invoice_number || invoice.id}`, 28, 78)
-  doc.text(`Date: ${invoiceDate}`, 28, 85)
-  doc.text(`Due Date: ${invoice.due_date || 'Not set'}`, 28, 92)
-  doc.text(`Status: ${invoice.status || 'draft'}`, 28, 99)
+    doc.setFontSize(10)
+    doc.setTextColor(17, 24, 39)
+    doc.text(`Invoice No: ${invoice.invoice_number || invoice.id}`, 28, 78)
+    doc.text(`Date: ${invoiceDate}`, 28, 85)
+    doc.text(`Due Date: ${invoice.due_date || 'Not set'}`, 28, 92)
+    doc.text(`Status: ${invoice.status || 'draft'}`, 28, 99)
 
-  // Bill to box
-  doc.setFillColor(249, 250, 251)
-  doc.setDrawColor(229, 231, 235)
-  doc.roundedRect(112, 60, 76, 42, 3, 3, 'FD')
+    doc.setFillColor(249, 250, 251)
+    doc.setDrawColor(229, 231, 235)
+    doc.roundedRect(112, 60, 76, 42, 3, 3, 'FD')
 
-  doc.setFontSize(9)
-  doc.setTextColor(107, 114, 128)
-  doc.text('BILL TO', 118, 69)
+    doc.setFontSize(9)
+    doc.setTextColor(107, 114, 128)
+    doc.text('BILL TO', 118, 69)
 
-  doc.setFontSize(12)
-  doc.setTextColor(17, 24, 39)
-  doc.text(invoice.client_name || 'Client', 118, 80)
+    doc.setFontSize(12)
+    doc.setTextColor(17, 24, 39)
+    doc.text(invoice.client_name || 'Client', 118, 80)
 
-  // Business address
-  if (businessAddress) {
+    if (businessAddress) {
+      doc.setFontSize(8)
+      doc.setTextColor(107, 114, 128)
+
+      const addressLines = doc.splitTextToSize(businessAddress, 65)
+      doc.text(addressLines, 118, 89)
+    }
+
+    let badgeX = 22
+
+    if (invoice.secured_at) {
+      doc.setFillColor(229, 231, 235)
+      doc.setTextColor(55, 65, 81)
+      doc.roundedRect(badgeX, 112, 36, 9, 2, 2, 'F')
+      doc.setFontSize(8)
+      doc.text('SECURED', badgeX + 18, 118, { align: 'center' })
+      badgeX += 42
+    }
+
+    if (invoice.status === 'paid') {
+      doc.setFillColor(220, 252, 231)
+      doc.setTextColor(21, 128, 61)
+      doc.roundedRect(badgeX, 112, 28, 9, 2, 2, 'F')
+      doc.setFontSize(8)
+      doc.text('PAID', badgeX + 14, 118, { align: 'center' })
+    }
+
+    doc.setFillColor(17, 24, 39)
+    doc.roundedRect(22, 132, 166, 12, 2, 2, 'F')
+
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(9)
+    doc.text('Description', 28, 140)
+    doc.text('Net', 128, 140)
+    doc.text('VAT', 150, 140)
+    doc.text('Total', 172, 140)
+
+    doc.setFillColor(255, 255, 255)
+    doc.setDrawColor(229, 231, 235)
+    doc.rect(22, 144, 166, 20, 'D')
+
+    doc.setTextColor(17, 24, 39)
+    doc.setFontSize(10)
+    doc.text('Training course delivery', 28, 156)
+
+    doc.text(`£${netAmount.toFixed(2)}`, 128, 156)
+    doc.text(`£${vatAmount.toFixed(2)}`, 150, 156)
+    doc.text(`£${totalAmount.toFixed(2)}`, 172, 156)
+
+    doc.setFillColor(249, 250, 251)
+    doc.setDrawColor(229, 231, 235)
+    doc.roundedRect(112, 178, 76, 42, 3, 3, 'FD')
+
+    doc.setFontSize(10)
+    doc.setTextColor(75, 85, 99)
+    doc.text('Net Amount', 120, 190)
+    doc.text(`£${netAmount.toFixed(2)}`, 180, 190, { align: 'right' })
+
+    doc.text(`VAT (${invoice.vat_rate || 0}%)`, 120, 202)
+    doc.text(`£${vatAmount.toFixed(2)}`, 180, 202, { align: 'right' })
+
+    doc.setDrawColor(209, 213, 219)
+    doc.line(120, 208, 180, 208)
+
+    doc.setFontSize(14)
+    doc.setTextColor(17, 24, 39)
+    doc.text('Total', 120, 216)
+    doc.text(`£${totalAmount.toFixed(2)}`, 180, 216, { align: 'right' })
+
+    if (paymentDetails) {
+      doc.setFillColor(255, 247, 237)
+      doc.setDrawColor(254, 215, 170)
+      doc.roundedRect(22, 178, 80, 42, 3, 3, 'FD')
+
+      doc.setFontSize(9)
+      doc.setTextColor(154, 52, 18)
+      doc.text('PAYMENT DETAILS', 28, 188)
+
+      doc.setFontSize(8)
+      doc.setTextColor(67, 20, 7)
+
+      const paymentLines = doc.splitTextToSize(paymentDetails, 68)
+      doc.text(paymentLines, 28, 198)
+    }
+
     doc.setFontSize(8)
     doc.setTextColor(107, 114, 128)
 
-    const addressLines = doc.splitTextToSize(businessAddress, 65)
-    doc.text(addressLines, 118, 89)
-  }
+    let recordY = 238
 
-  // Status badges
-  let badgeX = 22
+    if (securedDate) {
+      doc.text(`Secured on: ${securedDate}`, 22, recordY)
+      recordY += 6
+    }
 
-  if (invoice.secured_at) {
-    doc.setFillColor(229, 231, 235)
-    doc.setTextColor(55, 65, 81)
-    doc.roundedRect(badgeX, 112, 36, 9, 2, 2, 'F')
-    doc.setFontSize(8)
-    doc.text('SECURED', badgeX + 18, 118, { align: 'center' })
-    badgeX += 42
-  }
+    if (paidDate) {
+      doc.text(`Paid on: ${paidDate}`, 22, recordY)
+      recordY += 6
+    }
 
-  if (invoice.status === 'paid') {
-    doc.setFillColor(220, 252, 231)
-    doc.setTextColor(21, 128, 61)
-    doc.roundedRect(badgeX, 112, 28, 9, 2, 2, 'F')
-    doc.setFontSize(8)
-    doc.text('PAID', badgeX + 14, 118, { align: 'center' })
-  }
+    if (businessWebsite) {
+      doc.text(`Website: ${businessWebsite}`, 22, recordY)
+    }
 
-  // Table header
-  doc.setFillColor(17, 24, 39)
-  doc.roundedRect(22, 132, 166, 12, 2, 2, 'F')
-
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(9)
-  doc.text('Description', 28, 140)
-  doc.text('Net', 128, 140)
-  doc.text('VAT', 150, 140)
-  doc.text('Total', 172, 140)
-
-  // Table row
-  doc.setFillColor(255, 255, 255)
-  doc.setDrawColor(229, 231, 235)
-  doc.rect(22, 144, 166, 20, 'D')
-
-  doc.setTextColor(17, 24, 39)
-  doc.setFontSize(10)
-  doc.text('Training course delivery', 28, 156)
-
-  doc.text(`£${netAmount.toFixed(2)}`, 128, 156)
-  doc.text(`£${vatAmount.toFixed(2)}`, 150, 156)
-  doc.text(`£${totalAmount.toFixed(2)}`, 172, 156)
-
-  // Totals box
-  doc.setFillColor(249, 250, 251)
-  doc.setDrawColor(229, 231, 235)
-  doc.roundedRect(112, 178, 76, 42, 3, 3, 'FD')
-
-  doc.setFontSize(10)
-  doc.setTextColor(75, 85, 99)
-  doc.text('Net Amount', 120, 190)
-  doc.text(`£${netAmount.toFixed(2)}`, 180, 190, { align: 'right' })
-
-  doc.text(`VAT (${invoice.vat_rate || 0}%)`, 120, 202)
-  doc.text(`£${vatAmount.toFixed(2)}`, 180, 202, { align: 'right' })
-
-  doc.setDrawColor(209, 213, 219)
-  doc.line(120, 208, 180, 208)
-
-  doc.setFontSize(14)
-  doc.setTextColor(17, 24, 39)
-  doc.text('Total', 120, 216)
-  doc.text(`£${totalAmount.toFixed(2)}`, 180, 216, { align: 'right' })
-
-  // Payment details
-  if (paymentDetails) {
-    doc.setFillColor(255, 247, 237)
-    doc.setDrawColor(254, 215, 170)
-    doc.roundedRect(22, 178, 80, 42, 3, 3, 'FD')
-
-    doc.setFontSize(9)
-    doc.setTextColor(154, 52, 18)
-    doc.text('PAYMENT DETAILS', 28, 188)
+    doc.setDrawColor(229, 231, 235)
+    doc.line(22, 265, 188, 265)
 
     doc.setFontSize(8)
-    doc.setTextColor(67, 20, 7)
+    doc.setTextColor(107, 114, 128)
+    doc.text('Generated by Hercules OS', 22, 274)
 
-    const paymentLines = doc.splitTextToSize(paymentDetails, 68)
-    doc.text(paymentLines, 28, 198)
+    doc.text(
+      'Thank you for your business.',
+      188,
+      274,
+      { align: 'right' }
+    )
+
+    doc.save(`${invoice.invoice_number || 'invoice'}.pdf`)
   }
 
-  // Record details
-  doc.setFontSize(8)
-  doc.setTextColor(107, 114, 128)
+  const sendInvoiceEmail = async (invoice: any) => {
+    const recipientEmail =
+      recipientEmails[invoice.id] || getClientEmailForInvoice(invoice)
 
-  let recordY = 238
+    if (!recipientEmail) {
+      alert('Enter a recipient email first')
+      return
+    }
 
-  if (securedDate) {
-    doc.text(`Secured on: ${securedDate}`, 22, recordY)
-    recordY += 6
+    const booking = bookings.find((b) => b.id === invoice.booking_id)
+
+    setSendingId(invoice.id)
+
+    const response = await fetch('/api/send-invoice-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: recipientEmail,
+        invoiceNumber: invoice.invoice_number || invoice.id,
+        clientName: invoice.client_name,
+        courseName: booking?.course_name || 'Training course',
+        amount: invoice.amount,
+        vatAmount: invoice.vat_amount,
+        totalAmount: invoice.total_amount || invoice.amount,
+        dueDate: invoice.due_date,
+        status: invoice.status,
+        businessName: organisation?.name || 'Hercules OS',
+        businessEmail: organisation?.email || '',
+        businessPhone: organisation?.phone || '',
+        paymentDetails: organisation?.invoice_payment_details || '',
+        organisationId,
+      }),
+    })
+
+    const result = await response.json()
+
+    setSendingId('')
+
+    if (!response.ok) {
+      alert(result.error?.message || result.error || 'Email failed')
+      return
+    }
+
+    await markAsSent(invoice.id)
+
+    alert('Invoice email sent')
+
+    setRecipientEmails((previous) => ({
+      ...previous,
+      [invoice.id]: '',
+    }))
   }
-
-  if (paidDate) {
-    doc.text(`Paid on: ${paidDate}`, 22, recordY)
-    recordY += 6
-  }
-
-  if (businessWebsite) {
-    doc.text(`Website: ${businessWebsite}`, 22, recordY)
-  }
-
-  // Footer
-  doc.setDrawColor(229, 231, 235)
-  doc.line(22, 265, 188, 265)
-
-  doc.setFontSize(8)
-  doc.setTextColor(107, 114, 128)
-  doc.text('Generated by Hercules OS', 22, 274)
-
-  doc.text(
-    'Thank you for your business.',
-    188,
-    274,
-    { align: 'right' }
-  )
-
-  doc.save(`${invoice.invoice_number || 'invoice'}.pdf`)
-}
-
-const sendInvoiceEmail = async (invoice: any) => {
-  const recipientEmail =
-    recipientEmails[invoice.id] || getClientEmailForInvoice(invoice)
-
-  if (!recipientEmail) {
-    alert('Enter a recipient email first')
-    return
-  }
-
-  const booking = bookings.find((b) => b.id === invoice.booking_id)
-
-  setSendingId(invoice.id)
-
-  const response = await fetch('/api/send-invoice-email', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      to: recipientEmail,
-      invoiceNumber: invoice.invoice_number || invoice.id,
-      clientName: invoice.client_name,
-      courseName: booking?.course_name || 'Training course',
-      amount: invoice.amount,
-      vatAmount: invoice.vat_amount,
-      totalAmount: invoice.total_amount || invoice.amount,
-      dueDate: invoice.due_date,
-      status: invoice.status,
-      businessName: organisation?.name || 'Hercules OS',
-      businessEmail: organisation?.email || '',
-      businessPhone: organisation?.phone || '',
-      paymentDetails: organisation?.invoice_payment_details || '',
-      organisationId,
-    }),
-  })
-
-  const result = await response.json()
-
-  setSendingId('')
-
-  if (!response.ok) {
-    alert(result.error?.message || result.error || 'Email failed')
-    return
-  }
-
-  await markAsSent(invoice.id)
-
-  alert('Invoice email sent')
-
-  setRecipientEmails((previous) => ({
-    ...previous,
-    [invoice.id]: '',
-  }))
-}
 
   const clearFilters = () => {
     setSearch('')
@@ -608,136 +609,184 @@ const sendInvoiceEmail = async (invoice: any) => {
 
   const getStatusStyle = (status: string) => {
     if (status === 'paid') {
-      return 'bg-green-100 text-green-700'
+      return 'bg-emerald-50 text-emerald-700 border-emerald-100'
     }
 
     if (status === 'sent') {
-      return 'bg-blue-100 text-blue-700'
+      return 'bg-blue-50 text-blue-700 border-blue-100'
     }
 
-    return 'bg-yellow-100 text-yellow-700'
+    return 'bg-amber-50 text-amber-700 border-amber-100'
   }
+
+  const StatCard = ({
+    label,
+    value,
+    detail,
+  }: {
+    label: string
+    value: string | number
+    detail?: string
+  }) => (
+    <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+
+      <h2 className="text-2xl font-semibold tracking-tight text-slate-950 mt-2">
+        {value}
+      </h2>
+
+      {detail && (
+        <p className="text-xs text-slate-500 mt-1">
+          {detail}
+        </p>
+      )}
+    </div>
+  )
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold">
-          Invoices
-        </h1>
-
-        <p className="text-gray-500 mt-1">
-          Create, edit, secure, filter, download, email and track client invoices
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Total Invoice Value</p>
-          <h2 className="text-3xl font-bold mt-2">
-            £{totalRevenue.toFixed(2)}
-          </h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Invoices</p>
-          <h2 className="text-3xl font-bold mt-2">
-            {invoices.length}
-          </h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Outstanding</p>
-          <h2 className="text-3xl font-bold mt-2">
-            {unpaidInvoices.length}
-          </h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Secured</p>
-          <h2 className="text-3xl font-bold mt-2">
-            {securedInvoices.length}
-          </h2>
-        </div>
-      </div>
-
-      <div className="bg-white border rounded-2xl p-5 shadow-sm mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-          <input
-            className="border p-3 rounded-lg md:col-span-2"
-            placeholder="Search invoices..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-
-          <select
-            className="border p-3 rounded-lg"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="all">All Statuses</option>
-            <option value="draft">Draft</option>
-            <option value="sent">Sent</option>
-            <option value="paid">Paid</option>
-          </select>
-
-          <select
-            className="border p-3 rounded-lg"
-            value={securedFilter}
-            onChange={(e) => setSecuredFilter(e.target.value)}
-          >
-            <option value="all">All Security</option>
-            <option value="secured">Secured</option>
-            <option value="unsecured">Unsecured</option>
-          </select>
-
-          <select
-            className="border p-3 rounded-lg"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-          >
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-            <option value="highest">Highest Value</option>
-            <option value="lowest">Lowest Value</option>
-          </select>
-
-          <button
-            className={`border p-3 rounded-lg ${
-              unpaidOnly ? 'bg-black text-white' : ''
-            }`}
-            onClick={() => setUnpaidOnly(!unpaidOnly)}
-          >
-            Unpaid Only
-          </button>
-        </div>
-
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-4">
-          <p className="text-sm text-gray-500">
-            Showing {filteredInvoices.length} of {invoices.length} invoices · Filtered value £{filteredTotalValue.toFixed(2)}
+      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Invoices
           </p>
 
-          <button
-            className="border px-4 py-2 rounded-lg text-sm w-fit"
-            onClick={clearFilters}
-          >
-            Clear Filters
-          </button>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
+            Client invoices
+          </h1>
+
+          <p className="text-sm text-slate-500 mt-1">
+            Create, edit, secure, download, email and track client invoices.
+          </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <h2 className="text-xl font-semibold mb-4">
-            Create Invoice
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+        <StatCard
+          label="Total value"
+          value={`£${totalRevenue.toFixed(2)}`}
+          detail="All invoice value"
+        />
+
+        <StatCard
+          label="Invoices"
+          value={invoices.length}
+          detail="Total invoice records"
+        />
+
+        <StatCard
+          label="Outstanding"
+          value={unpaidInvoices.length}
+          detail="Not marked paid"
+        />
+
+        <StatCard
+          label="Secured"
+          value={securedInvoices.length}
+          detail="Locked invoices"
+        />
+      </div>
+
+      <div className={`${panelClass} mb-4`}>
+        <div className={panelHeaderClass}>
+          <h2 className="text-sm font-semibold text-slate-950">
+            Filters
           </h2>
 
-          <div className="flex flex-col gap-3">
+          <p className="text-xs text-slate-500 mt-0.5">
+            Search, sort and filter invoices by status or security.
+          </p>
+        </div>
+
+        <div className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+            <input
+              className={`${inputClass} md:col-span-2`}
+              placeholder="Search invoices..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+
             <select
-              className="border p-3 rounded-lg"
+              className={inputClass}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All statuses</option>
+              <option value="draft">Draft</option>
+              <option value="sent">Sent</option>
+              <option value="paid">Paid</option>
+            </select>
+
+            <select
+              className={inputClass}
+              value={securedFilter}
+              onChange={(e) => setSecuredFilter(e.target.value)}
+            >
+              <option value="all">All security</option>
+              <option value="secured">Secured</option>
+              <option value="unsecured">Unsecured</option>
+            </select>
+
+            <select
+              className={inputClass}
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="highest">Highest value</option>
+              <option value="lowest">Lowest value</option>
+            </select>
+
+            <button
+              className={
+                unpaidOnly
+                  ? buttonPrimary
+                  : buttonSecondary
+              }
+              onClick={() => setUnpaidOnly(!unpaidOnly)}
+            >
+              Unpaid only
+            </button>
+          </div>
+
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-4">
+            <p className="text-xs text-slate-500">
+              Showing {filteredInvoices.length} of {invoices.length} invoices · Filtered value £{filteredTotalValue.toFixed(2)}
+            </p>
+
+            <button
+              className={buttonSecondary}
+              onClick={clearFilters}
+            >
+              Clear filters
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+        <div className={`xl:col-span-4 ${panelClass} h-fit`}>
+          <div className={panelHeaderClass}>
+            <h2 className="text-sm font-semibold text-slate-950">
+              Create invoice
+            </h2>
+
+            <p className="text-xs text-slate-500 mt-0.5">
+              Generate an invoice from an existing booking.
+            </p>
+          </div>
+
+          <div className="p-4 flex flex-col gap-3">
+            <select
+              className={inputClass}
               value={bookingId}
               onChange={(e) => setBookingId(e.target.value)}
             >
-              <option value="">Select Booking</option>
+              <option value="">Select booking</option>
 
               {bookings.map((booking) => (
                 <option key={booking.id} value={booking.id}>
@@ -747,140 +796,196 @@ const sendInvoiceEmail = async (invoice: any) => {
             </select>
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Net amount"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="VAT rate %"
               value={vatRate}
               onChange={(e) => setVatRate(e.target.value)}
             />
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
             />
 
+            <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600">
+              <p>
+                VAT: £
+                {(Number(amount || 0) * (Number(vatRate || 0) / 100)).toFixed(2)}
+              </p>
+
+              <p className="font-semibold text-slate-950 mt-1">
+                Total: £
+                {(
+                  Number(amount || 0) +
+                  Number(amount || 0) * (Number(vatRate || 0) / 100)
+                ).toFixed(2)}
+              </p>
+            </div>
+
             <button
-              className="bg-black text-white p-3 rounded-lg"
+              className={buttonPrimary}
               onClick={createInvoice}
             >
-              Create Invoice
+              Create invoice
             </button>
           </div>
         </div>
 
-        <div className="lg:col-span-2 grid gap-4">
-          {filteredInvoices.map((invoice) => {
-            const netAmount = Number(invoice.amount || 0)
-            const vatAmount = Number(invoice.vat_amount || 0)
-            const totalAmount = Number(invoice.total_amount || invoice.amount || 0)
-            const savedClientEmail = getClientEmailForInvoice(invoice)
-            const isEditing = editingId === invoice.id
-            const isLocked = Boolean(invoice.secured_at) || invoice.status === 'paid'
+        <div className={`xl:col-span-8 ${panelClass}`}>
+          <div className={panelHeaderClass}>
+            <h2 className="text-sm font-semibold text-slate-950">
+              Invoice list
+            </h2>
 
-            return (
-              <div
-                key={invoice.id}
-                className="bg-white border rounded-2xl p-5 shadow-sm"
-              >
-                {!isEditing ? (
-                  <>
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h2 className="text-xl font-semibold">
-                          {invoice.invoice_number || 'Invoice'}
-                        </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Manage invoice records, payments and client communication.
+            </p>
+          </div>
 
-                        <p className="text-gray-500 mt-1">
-                          {invoice.client_name}
+          <div className="divide-y divide-slate-100">
+            {filteredInvoices.map((invoice) => {
+              const netAmount = Number(invoice.amount || 0)
+              const vatAmount = Number(invoice.vat_amount || 0)
+              const totalAmount = Number(invoice.total_amount || invoice.amount || 0)
+              const savedClientEmail = getClientEmailForInvoice(invoice)
+              const isEditing = editingId === invoice.id
+              const isLocked = Boolean(invoice.secured_at) || invoice.status === 'paid'
+
+              return (
+                <div
+                  key={invoice.id}
+                  className="p-4"
+                >
+                  {!isEditing ? (
+                    <>
+                      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-sm font-semibold text-slate-950">
+                              {invoice.invoice_number || 'Invoice'}
+                            </h3>
+
+                            <span
+                              className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(
+                                invoice.status
+                              )}`}
+                            >
+                              {invoice.status}
+                            </span>
+
+                            {invoice.secured_at && (
+                              <span className="border border-slate-200 bg-slate-50 text-slate-700 px-2.5 py-1 rounded-md text-xs font-medium">
+                                Secured
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-sm text-slate-600 mt-1">
+                            {invoice.client_name}
+                          </p>
+                        </div>
+
+                        <p className="text-xl font-semibold text-slate-950">
+                          £{totalAmount.toFixed(2)}
                         </p>
                       </div>
 
-                      <div className="flex flex-col items-end gap-2">
-                        <div
-                          className={`px-3 py-1 rounded-full text-sm ${getStatusStyle(
-                            invoice.status
-                          )}`}
-                        >
-                          {invoice.status}
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-4 text-xs text-slate-600">
+                        <div>
+                          <p className="text-slate-400">Net</p>
+                          <p className="font-medium text-slate-800 mt-1">
+                            £{netAmount.toFixed(2)}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-slate-400">VAT</p>
+                          <p className="font-medium text-slate-800 mt-1">
+                            £{vatAmount.toFixed(2)}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-slate-400">Due date</p>
+                          <p className="font-medium text-slate-800 mt-1">
+                            {invoice.due_date || 'Not set'}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-slate-400">Client email</p>
+                          <p className="font-medium text-slate-800 mt-1 break-all">
+                            {savedClientEmail || 'Not set'}
+                          </p>
                         </div>
 
                         {invoice.secured_at && (
-                          <div className="bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-sm">
-                            Secured
+                          <div>
+                            <p className="text-slate-400">Secured</p>
+                            <p className="font-medium text-slate-800 mt-1">
+                              {new Date(invoice.secured_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        )}
+
+                        {invoice.paid_at && (
+                          <div>
+                            <p className="text-slate-400">Paid</p>
+                            <p className="font-medium text-slate-800 mt-1">
+                              {new Date(invoice.paid_at).toLocaleDateString()}
+                            </p>
                           </div>
                         )}
                       </div>
-                    </div>
 
-                    <div className="mt-4 text-sm text-gray-600 space-y-1">
-                      <p>Net: £{netAmount.toFixed(2)}</p>
-                      <p>VAT: £{vatAmount.toFixed(2)}</p>
-                      <p>Total: £{totalAmount.toFixed(2)}</p>
-                      <p>Due: {invoice.due_date || 'Not set'}</p>
+                      <div className="mt-4">
+                        <input
+                          className={`${inputClass} w-full`}
+                          placeholder={savedClientEmail || 'Recipient email'}
+                          value={recipientEmails[invoice.id] || ''}
+                          onChange={(e) =>
+                            setRecipientEmails((previous) => ({
+                              ...previous,
+                              [invoice.id]: e.target.value,
+                            }))
+                          }
+                        />
 
-                      {invoice.secured_at && (
-                        <p>
-                          Secured: {new Date(invoice.secured_at).toLocaleDateString()}
-                        </p>
-                      )}
+                        {savedClientEmail && (
+                          <p className="text-xs text-slate-500 mt-2">
+                            Leave blank to send to saved client email.
+                          </p>
+                        )}
+                      </div>
 
-                      {savedClientEmail && (
-                        <p>Client Email: {savedClientEmail}</p>
-                      )}
-
-                      {invoice.paid_at && (
-                        <p>
-                          Paid: {new Date(invoice.paid_at).toLocaleDateString()}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="mt-5 flex flex-col gap-3">
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder={savedClientEmail || 'Recipient email'}
-                        value={recipientEmails[invoice.id] || ''}
-                        onChange={(e) =>
-                          setRecipientEmails((previous) => ({
-                            ...previous,
-                            [invoice.id]: e.target.value,
-                          }))
-                        }
-                      />
-
-                      {savedClientEmail && (
-                        <p className="text-sm text-gray-500">
-                          Leave blank to send to saved client email.
-                        </p>
-                      )}
-
-                      <div className="flex flex-wrap gap-3">
+                      <div className="flex flex-wrap gap-2 mt-4">
                         <button
-                          className="bg-black text-white px-4 py-2 rounded-lg"
+                          className={buttonPrimary}
                           onClick={() => generateInvoicePDF(invoice)}
                         >
                           Download PDF
                         </button>
 
                         <button
-                          className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
+                          className={buttonSecondary}
                           onClick={() => sendInvoiceEmail(invoice)}
                           disabled={sendingId === invoice.id}
                         >
-                          {sendingId === invoice.id ? 'Sending...' : 'Send Email'}
+                          {sendingId === invoice.id ? 'Sending...' : 'Send email'}
                         </button>
 
                         {!isLocked && (
                           <button
-                            className="border px-4 py-2 rounded-lg"
+                            className={buttonSecondary}
                             onClick={() => startEditing(invoice)}
                           >
                             Edit
@@ -889,140 +994,140 @@ const sendInvoiceEmail = async (invoice: any) => {
 
                         {!invoice.secured_at && invoice.status !== 'paid' && (
                           <button
-                            className="border px-4 py-2 rounded-lg"
+                            className={buttonSecondary}
                             onClick={() => secureInvoice(invoice.id)}
                           >
-                            Secure Invoice
+                            Secure invoice
                           </button>
                         )}
 
                         {invoice.status !== 'draft' && !invoice.secured_at && invoice.status !== 'paid' && (
                           <button
-                            className="border px-4 py-2 rounded-lg"
+                            className={buttonSecondary}
                             onClick={() => markAsDraft(invoice.id)}
                           >
-                            Mark Draft
+                            Mark draft
                           </button>
                         )}
 
                         {invoice.status === 'draft' && (
                           <button
-                            className="border px-4 py-2 rounded-lg"
+                            className={buttonSecondary}
                             onClick={() => markAsSent(invoice.id)}
                           >
-                            Mark Sent
+                            Mark sent
                           </button>
                         )}
 
                         {invoice.status !== 'paid' && (
                           <button
-                            className="border px-4 py-2 rounded-lg"
+                            className={buttonSecondary}
                             onClick={() => markAsPaid(invoice.id)}
                           >
-                            Mark Paid
+                            Mark paid
                           </button>
                         )}
                       </div>
 
                       {isLocked && (
-                        <p className="text-sm text-gray-500">
+                        <p className="text-xs text-slate-500 mt-3">
                           This invoice is locked because it is secured or paid.
                         </p>
                       )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="mb-5">
-                      <h2 className="text-xl font-semibold">
-                        Edit Invoice
-                      </h2>
+                    </>
+                  ) : (
+                    <>
+                      <div className="mb-4">
+                        <h3 className="text-sm font-semibold text-slate-950">
+                          Edit invoice
+                        </h3>
 
-                      <p className="text-gray-500 mt-1">
-                        Update invoice details and totals
-                      </p>
-                    </div>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Update invoice details and totals.
+                        </p>
+                      </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <select
-                        className="border p-3 rounded-lg md:col-span-2"
-                        value={editBookingId}
-                        onChange={(e) => setEditBookingId(e.target.value)}
-                      >
-                        <option value="">Select Booking</option>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <select
+                          className={`${inputClass} md:col-span-2`}
+                          value={editBookingId}
+                          onChange={(e) => setEditBookingId(e.target.value)}
+                        >
+                          <option value="">Select booking</option>
 
-                        {bookings.map((booking) => (
-                          <option key={booking.id} value={booking.id}>
-                            {booking.client_name} - {booking.course_name}
-                          </option>
-                        ))}
-                      </select>
+                          {bookings.map((booking) => (
+                            <option key={booking.id} value={booking.id}>
+                              {booking.client_name} - {booking.course_name}
+                            </option>
+                          ))}
+                        </select>
 
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder="Net amount"
-                        value={editAmount}
-                        onChange={(e) => setEditAmount(e.target.value)}
-                      />
+                        <input
+                          className={inputClass}
+                          placeholder="Net amount"
+                          value={editAmount}
+                          onChange={(e) => setEditAmount(e.target.value)}
+                        />
 
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder="VAT rate %"
-                        value={editVatRate}
-                        onChange={(e) => setEditVatRate(e.target.value)}
-                      />
+                        <input
+                          className={inputClass}
+                          placeholder="VAT rate %"
+                          value={editVatRate}
+                          onChange={(e) => setEditVatRate(e.target.value)}
+                        />
 
-                      <input
-                        className="border p-3 rounded-lg md:col-span-2"
-                        type="date"
-                        value={editDueDate}
-                        onChange={(e) => setEditDueDate(e.target.value)}
-                      />
-                    </div>
+                        <input
+                          className={`${inputClass} md:col-span-2`}
+                          type="date"
+                          value={editDueDate}
+                          onChange={(e) => setEditDueDate(e.target.value)}
+                        />
+                      </div>
 
-                    <div className="bg-gray-50 rounded-xl p-4 mt-4 text-sm text-gray-700">
-                      <p>
-                        New VAT: £
-                        {(Number(editAmount || 0) * (Number(editVatRate || 0) / 100)).toFixed(2)}
-                      </p>
+                      <div className="bg-slate-50 border border-slate-200 rounded-md p-3 mt-4 text-xs text-slate-600">
+                        <p>
+                          New VAT: £
+                          {(Number(editAmount || 0) * (Number(editVatRate || 0) / 100)).toFixed(2)}
+                        </p>
 
-                      <p className="font-semibold mt-1">
-                        New Total: £
-                        {(
-                          Number(editAmount || 0) +
-                          Number(editAmount || 0) * (Number(editVatRate || 0) / 100)
-                        ).toFixed(2)}
-                      </p>
-                    </div>
+                        <p className="font-semibold text-slate-950 mt-1">
+                          New total: £
+                          {(
+                            Number(editAmount || 0) +
+                            Number(editAmount || 0) * (Number(editVatRate || 0) / 100)
+                          ).toFixed(2)}
+                        </p>
+                      </div>
 
-                    <div className="flex flex-wrap gap-3 mt-5">
-                      <button
-                        className="bg-black text-white px-4 py-2 rounded-lg disabled:bg-gray-400"
-                        onClick={() => saveInvoiceEdit(invoice.id)}
-                        disabled={savingEdit}
-                      >
-                        {savingEdit ? 'Saving...' : 'Save Changes'}
-                      </button>
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        <button
+                          className={buttonPrimary}
+                          onClick={() => saveInvoiceEdit(invoice.id)}
+                          disabled={savingEdit}
+                        >
+                          {savingEdit ? 'Saving...' : 'Save changes'}
+                        </button>
 
-                      <button
-                        className="border px-4 py-2 rounded-lg"
-                        onClick={cancelEditing}
-                        disabled={savingEdit}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </>
-                )}
+                        <button
+                          className={buttonSecondary}
+                          onClick={cancelEditing}
+                          disabled={savingEdit}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            })}
+
+            {filteredInvoices.length === 0 && (
+              <div className="p-6 text-sm text-slate-500">
+                No invoices match your filters.
               </div>
-            )
-          })}
-
-          {filteredInvoices.length === 0 && (
-            <div className="bg-white border rounded-2xl p-6 shadow-sm text-gray-500">
-              No invoices match your filters.
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
