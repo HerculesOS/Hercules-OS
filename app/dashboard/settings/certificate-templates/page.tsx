@@ -38,6 +38,24 @@ export default function CertificateTemplatesPage() {
   const [editValidityYears, setEditValidityYears] = useState('3')
   const [editIsDefault, setEditIsDefault] = useState(false)
 
+  const inputClass =
+    'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+
+  const buttonPrimary =
+    'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
+
+  const buttonSecondary =
+    'border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400'
+
+  const buttonDanger =
+    'border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-red-50'
+
+  const panelClass =
+    'bg-white border border-slate-200 rounded-lg'
+
+  const panelHeaderClass =
+    'px-4 py-3 border-b border-slate-200'
+
   const placeholders = [
     '{{delegate_name}}',
     '{{course_name}}',
@@ -248,10 +266,7 @@ export default function CertificateTemplatesPage() {
     return `${course.code ? `${course.code} - ` : ''}${course.name}`
   }
 
-  const previewText = (
-    text: string,
-    template?: any
-  ) => {
+  const previewText = (text: string) => {
     const values: Record<string, string> = {
       '{{delegate_name}}': 'Alex Smith',
       '{{course_name}}': 'Emergency First Aid at Work',
@@ -273,68 +288,86 @@ export default function CertificateTemplatesPage() {
 
   if (loading) {
     return (
-      <div className="bg-white border rounded-2xl p-6 shadow-sm">
-        Loading certificate templates...
+      <div className={panelClass}>
+        <div className="p-4 text-sm text-slate-500">
+          Loading certificate templates...
+        </div>
       </div>
     )
   }
 
   return (
     <div>
-      <div className="mb-8">
+      <div className="mb-6">
         <Link
           href="/dashboard/settings"
-          className="text-sm text-gray-500 hover:text-black"
+          className="text-sm text-slate-500 hover:text-slate-950"
         >
           ← Back to settings
         </Link>
 
-        <h1 className="text-4xl font-bold mt-4">
-          Certificate Templates
-        </h1>
+        <div className="mt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Settings
+          </p>
 
-        <p className="text-gray-500 mt-1">
-          Customise certificate wording, validity and course-specific templates
-        </p>
-      </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
+            Certificate templates
+          </h1>
 
-      <div className="bg-white border rounded-2xl p-6 shadow-sm mb-8">
-        <h2 className="text-2xl font-semibold mb-4">
-          Available Placeholders
-        </h2>
-
-        <p className="text-gray-500 mb-4">
-          Use these placeholders in certificate wording. They will be replaced automatically when certificates are generated.
-        </p>
-
-        <div className="flex flex-wrap gap-2">
-          {placeholders.map((placeholder) => (
-            <span
-              key={placeholder}
-              className="bg-gray-100 border px-3 py-1 rounded-full text-sm"
-            >
-              {placeholder}
-            </span>
-          ))}
+          <p className="text-sm text-slate-500 mt-1">
+            Customise certificate wording, validity and course-specific templates.
+          </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm h-fit">
-          <h2 className="text-xl font-semibold mb-4">
-            Create Template
+      <div className={`${panelClass} mb-4`}>
+        <div className={panelHeaderClass}>
+          <h2 className="text-sm font-semibold text-slate-950">
+            Available placeholders
           </h2>
 
-          <div className="flex flex-col gap-3">
+          <p className="text-xs text-slate-500 mt-0.5">
+            Use these placeholders in certificate wording. They will be replaced automatically when certificates are generated.
+          </p>
+        </div>
+
+        <div className="p-4">
+          <div className="flex flex-wrap gap-2">
+            {placeholders.map((placeholder) => (
+              <span
+                key={placeholder}
+                className="bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-md text-xs font-medium text-slate-700"
+              >
+                {placeholder}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+        <div className={`xl:col-span-4 ${panelClass} h-fit`}>
+          <div className={panelHeaderClass}>
+            <h2 className="text-sm font-semibold text-slate-950">
+              Create template
+            </h2>
+
+            <p className="text-xs text-slate-500 mt-0.5">
+              Create default or course-specific certificate wording.
+            </p>
+          </div>
+
+          <div className="p-4 flex flex-col gap-3">
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Template name"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
 
             <select
-              className="border p-3 rounded-lg"
+              className={inputClass}
               value={courseTemplateId}
               onChange={(e) => setCourseTemplateId(e.target.value)}
             >
@@ -349,42 +382,42 @@ export default function CertificateTemplatesPage() {
             </select>
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Certificate title"
               value={certificateTitle}
               onChange={(e) => setCertificateTitle(e.target.value)}
             />
 
             <textarea
-              className="border p-3 rounded-lg min-h-36"
+              className={`${inputClass} min-h-36`}
               placeholder="Certificate body"
               value={certificateBody}
               onChange={(e) => setCertificateBody(e.target.value)}
             />
 
             <textarea
-              className="border p-3 rounded-lg"
+              className={`${inputClass} min-h-20`}
               placeholder="Footer text"
               value={footerText}
               onChange={(e) => setFooterText(e.target.value)}
             />
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Signature name"
               value={signatureName}
               onChange={(e) => setSignatureName(e.target.value)}
             />
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Signature title"
               value={signatureTitle}
               onChange={(e) => setSignatureTitle(e.target.value)}
             />
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               type="number"
               min="0"
               max="20"
@@ -393,7 +426,7 @@ export default function CertificateTemplatesPage() {
               onChange={(e) => setValidityYears(e.target.value)}
             />
 
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-md p-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={isDefault}
@@ -402,228 +435,264 @@ export default function CertificateTemplatesPage() {
               Set as default template
             </label>
 
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Body preview
+              </p>
+
+              <p className="text-xs text-slate-700 mt-2 whitespace-pre-line leading-5">
+                {previewText(certificateBody)}
+              </p>
+            </div>
+
             <button
-              className="bg-black text-white p-3 rounded-lg"
+              className={buttonPrimary}
               onClick={createTemplate}
             >
-              Create Template
+              Create template
             </button>
           </div>
         </div>
 
-        <div className="xl:col-span-2 grid gap-5">
-          {templates.map((template) => {
-            const isEditing = editingId === template.id
+        <div className={`xl:col-span-8 ${panelClass}`}>
+          <div className={panelHeaderClass}>
+            <h2 className="text-sm font-semibold text-slate-950">
+              Template list
+            </h2>
 
-            return (
-              <div
-                key={template.id}
-                className="bg-white border rounded-2xl p-6 shadow-sm"
-              >
-                {!isEditing ? (
-                  <>
-                    <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-2xl font-semibold">
-                            {template.name}
-                          </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Manage default, course-specific and signature wording.
+            </p>
+          </div>
 
-                          {template.is_default && (
-                            <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs">
-                              Default
+          <div className="divide-y divide-slate-100">
+            {templates.map((template) => {
+              const isEditing = editingId === template.id
+
+              return (
+                <div
+                  key={template.id}
+                  className="p-4"
+                >
+                  {!isEditing ? (
+                    <>
+                      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-sm font-semibold text-slate-950">
+                              {template.name}
+                            </h3>
+
+                            {template.is_default && (
+                              <span className="border border-emerald-100 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-md text-xs font-medium">
+                                Default
+                              </span>
+                            )}
+
+                            <span className="border border-slate-200 bg-slate-50 text-slate-700 px-2.5 py-1 rounded-md text-xs font-medium">
+                              {getCourseTemplateName(template.course_template_id)}
                             </span>
+                          </div>
+
+                          <p className="text-xs text-slate-500 mt-2">
+                            Validity: {template.validity_years ?? 3} year
+                            {Number(template.validity_years ?? 3) === 1 ? '' : 's'}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            className={buttonPrimary}
+                            onClick={() => startEditing(template)}
+                          >
+                            Edit
+                          </button>
+
+                          {!template.is_default && (
+                            <button
+                              className={buttonDanger}
+                              onClick={() => deleteTemplate(template)}
+                            >
+                              Delete
+                            </button>
                           )}
                         </div>
+                      </div>
 
-                        <p className="text-gray-500 mt-1">
-                          {getCourseTemplateName(template.course_template_id)}
-                        </p>
+                      <div className="grid gap-4 mt-4">
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                            Title
+                          </p>
 
-                        <p className="text-sm text-gray-400 mt-1">
-                          Validity: {template.validity_years ?? 3} year
-                          {Number(template.validity_years ?? 3) === 1 ? '' : 's'}
+                          <p className="text-sm text-slate-950 mt-2">
+                            {template.certificate_title}
+                          </p>
+                        </div>
+
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                            Body preview
+                          </p>
+
+                          <p className="text-sm text-slate-700 mt-2 whitespace-pre-line leading-6">
+                            {previewText(template.certificate_body)}
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                              Footer
+                            </p>
+
+                            <p className="text-sm text-slate-700 mt-2">
+                              {template.footer_text || 'No footer text'}
+                            </p>
+                          </div>
+
+                          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                              Signature
+                            </p>
+
+                            <p className="text-sm text-slate-700 mt-2">
+                              {template.signature_name || 'No signature name'}
+                              {template.signature_title ? `, ${template.signature_title}` : ''}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="mb-4">
+                        <h3 className="text-sm font-semibold text-slate-950">
+                          Edit certificate template
+                        </h3>
+
+                        <p className="text-xs text-slate-500 mt-1">
+                          Update the wording and settings used when certificates are generated.
                         </p>
                       </div>
 
-                      <div className="flex flex-wrap gap-3">
-                        <button
-                          className="bg-black text-white px-4 py-2 rounded-lg"
-                          onClick={() => startEditing(template)}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input
+                          className={inputClass}
+                          placeholder="Template name"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                        />
+
+                        <select
+                          className={inputClass}
+                          value={editCourseTemplateId}
+                          onChange={(e) => setEditCourseTemplateId(e.target.value)}
                         >
-                          Edit
+                          <option value="">Any course</option>
+
+                          {courseTemplates.map((course) => (
+                            <option key={course.id} value={course.id}>
+                              {course.code ? `${course.code} - ` : ''}
+                              {course.name}
+                            </option>
+                          ))}
+                        </select>
+
+                        <input
+                          className={`${inputClass} md:col-span-2`}
+                          placeholder="Certificate title"
+                          value={editCertificateTitle}
+                          onChange={(e) => setEditCertificateTitle(e.target.value)}
+                        />
+
+                        <textarea
+                          className={`${inputClass} md:col-span-2 min-h-40`}
+                          placeholder="Certificate body"
+                          value={editCertificateBody}
+                          onChange={(e) => setEditCertificateBody(e.target.value)}
+                        />
+
+                        <textarea
+                          className={`${inputClass} md:col-span-2 min-h-20`}
+                          placeholder="Footer text"
+                          value={editFooterText}
+                          onChange={(e) => setEditFooterText(e.target.value)}
+                        />
+
+                        <input
+                          className={inputClass}
+                          placeholder="Signature name"
+                          value={editSignatureName}
+                          onChange={(e) => setEditSignatureName(e.target.value)}
+                        />
+
+                        <input
+                          className={inputClass}
+                          placeholder="Signature title"
+                          value={editSignatureTitle}
+                          onChange={(e) => setEditSignatureTitle(e.target.value)}
+                        />
+
+                        <input
+                          className={inputClass}
+                          type="number"
+                          min="0"
+                          max="20"
+                          placeholder="Validity years"
+                          value={editValidityYears}
+                          onChange={(e) => setEditValidityYears(e.target.value)}
+                        />
+
+                        <label className="flex items-center gap-2 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-md p-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editIsDefault}
+                            onChange={(e) => setEditIsDefault(e.target.checked)}
+                          />
+                          Set as default template
+                        </label>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mt-4">
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-2">
+                          Body preview
+                        </p>
+
+                        <p className="text-sm text-slate-700 whitespace-pre-line leading-6">
+                          {previewText(editCertificateBody)}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        <button
+                          className={buttonPrimary}
+                          onClick={() => saveTemplate(template.id)}
+                          disabled={savingEdit}
+                        >
+                          {savingEdit ? 'Saving...' : 'Save changes'}
                         </button>
 
-                        {!template.is_default && (
-                          <button
-                            className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
-                            onClick={() => deleteTemplate(template)}
-                          >
-                            Delete
-                          </button>
-                        )}
+                        <button
+                          className={buttonSecondary}
+                          onClick={cancelEditing}
+                          disabled={savingEdit}
+                        >
+                          Cancel
+                        </button>
                       </div>
-                    </div>
+                    </>
+                  )}
+                </div>
+              )
+            })}
 
-                    <div className="mt-5 grid gap-4">
-                      <div>
-                        <p className="text-sm text-gray-500">Title</p>
-                        <div className="bg-gray-50 border rounded-xl p-4 mt-2">
-                          {template.certificate_title}
-                        </div>
-                      </div>
-
-                      <div>
-                        <p className="text-sm text-gray-500">Body preview</p>
-                        <div className="bg-gray-50 border rounded-xl p-4 mt-2 whitespace-pre-line">
-                          {previewText(template.certificate_body, template)}
-                        </div>
-                      </div>
-
-                      <div>
-                        <p className="text-sm text-gray-500">Footer</p>
-                        <div className="bg-gray-50 border rounded-xl p-4 mt-2">
-                          {template.footer_text || 'No footer text'}
-                        </div>
-                      </div>
-
-                      <div>
-                        <p className="text-sm text-gray-500">Signature</p>
-                        <div className="bg-gray-50 border rounded-xl p-4 mt-2">
-                          {template.signature_name || 'No signature name'}
-                          {template.signature_title ? `, ${template.signature_title}` : ''}
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="mb-5">
-                      <h2 className="text-2xl font-semibold">
-                        Edit Certificate Template
-                      </h2>
-
-                      <p className="text-gray-500 mt-1">
-                        Update the wording and settings used when certificates are generated.
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder="Template name"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                      />
-
-                      <select
-                        className="border p-3 rounded-lg"
-                        value={editCourseTemplateId}
-                        onChange={(e) => setEditCourseTemplateId(e.target.value)}
-                      >
-                        <option value="">Any course</option>
-
-                        {courseTemplates.map((course) => (
-                          <option key={course.id} value={course.id}>
-                            {course.code ? `${course.code} - ` : ''}
-                            {course.name}
-                          </option>
-                        ))}
-                      </select>
-
-                      <input
-                        className="border p-3 rounded-lg md:col-span-2"
-                        placeholder="Certificate title"
-                        value={editCertificateTitle}
-                        onChange={(e) => setEditCertificateTitle(e.target.value)}
-                      />
-
-                      <textarea
-                        className="border p-3 rounded-lg md:col-span-2 min-h-40"
-                        placeholder="Certificate body"
-                        value={editCertificateBody}
-                        onChange={(e) => setEditCertificateBody(e.target.value)}
-                      />
-
-                      <textarea
-                        className="border p-3 rounded-lg md:col-span-2"
-                        placeholder="Footer text"
-                        value={editFooterText}
-                        onChange={(e) => setEditFooterText(e.target.value)}
-                      />
-
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder="Signature name"
-                        value={editSignatureName}
-                        onChange={(e) => setEditSignatureName(e.target.value)}
-                      />
-
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder="Signature title"
-                        value={editSignatureTitle}
-                        onChange={(e) => setEditSignatureTitle(e.target.value)}
-                      />
-
-                      <input
-                        className="border p-3 rounded-lg"
-                        type="number"
-                        min="0"
-                        max="20"
-                        placeholder="Validity years"
-                        value={editValidityYears}
-                        onChange={(e) => setEditValidityYears(e.target.value)}
-                      />
-
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={editIsDefault}
-                          onChange={(e) => setEditIsDefault(e.target.checked)}
-                        />
-                        Set as default template
-                      </label>
-                    </div>
-
-                    <div className="bg-gray-50 border rounded-xl p-4 mt-4">
-                      <p className="text-sm text-gray-500 mb-2">
-                        Body preview
-                      </p>
-
-                      <div className="whitespace-pre-line">
-                        {previewText(editCertificateBody)}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-3 mt-5">
-                      <button
-                        className="bg-black text-white px-4 py-2 rounded-lg disabled:bg-gray-400"
-                        onClick={() => saveTemplate(template.id)}
-                        disabled={savingEdit}
-                      >
-                        {savingEdit ? 'Saving...' : 'Save Changes'}
-                      </button>
-
-                      <button
-                        className="border px-4 py-2 rounded-lg"
-                        onClick={cancelEditing}
-                        disabled={savingEdit}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </>
-                )}
+            {templates.length === 0 && (
+              <div className="p-6 text-sm text-slate-500">
+                No certificate templates found.
               </div>
-            )
-          })}
-
-          {templates.length === 0 && (
-            <div className="bg-white border rounded-2xl p-6 shadow-sm text-gray-500">
-              No certificate templates found.
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
