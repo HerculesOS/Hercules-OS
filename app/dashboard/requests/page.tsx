@@ -1,18 +1,26 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 
 export default function RequestsPage() {
   const [requests, setRequests] = useState<any[]>([])
+  const [organisationId, setOrganisationId] = useState('')
+  const [userId, setUserId] = useState('')
   const [loading, setLoading] = useState(true)
+  const [convertingId, setConvertingId] = useState('')
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
 
   const load = async () => {
     const profile = await getOrCreateAccount()
+    const { data: userData } = await supabase.auth.getUser()
+
+    setOrganisationId(profile.organisation_id)
+    setUserId(userData.user?.id || '')
 
     const { data, error } = await supabase
       .from('training_requests')
@@ -66,6 +74,122 @@ export default function RequestsPage() {
     }
 
     load()
+  }
+
+  const findExistingClient = async (request: any) => {
+    const companyName = request.company_name?.trim()
+
+    if (!companyName) return null
+
+    const { data } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('organisation_id', organisationId)
+      .ilike('company', companyName)
+      .maybeSingle()
+
+    return data
+  }
+
+  const createClientFromRequest = async (request: any) => {
+    const { data, error } = await supabase
+      .from('clients')
+      .insert({
+        user_id: userId,
+        organisation_id: organisationId,
+        company: request.company_name || 'Unnamed company',
+        name: request.contact_name || 'Primary contact',
+        email: request.email || '',
+        phone: request.phone || '',
+        address: request.location || '',
+        notes: request.notes || '',
+      })
+      .select('*')
+      .single()
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    return data
+  }
+
+  const createBookingFromRequest = async (request: any, client: any) => {
+    if (!request.preferred_date) {
+      throw new Error(
+        'This request has no preferred date. Add a date to the booking manually or update the request first.'
+      )
+    }
+
+    const bookingNotes = [
+      request.notes ? `Request notes: ${request.notes}` : '',
+      request.learner_count ? `Learners requested: ${request.learner_count}` : '',
+      `Created from public request.`,
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    const { data, error } = await supabase
+      .from('bookings')
+      .insert({
+        user_id: userId,
+        organisation_id: organisationId,
+        client_id: client.id,
+        trainer_id: null,
+        client_name: client.name,
+        course_name: request.course_name || 'Training course',
+        date: request.preferred_date,
+        start_time: null,
+        end_time: null,
+        location: request.location || '',
+        price: null,
+        notes: bookingNotes,
+        status: 'scheduled',
+      })
+      .select('*')
+      .single()
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    return data
+  }
+
+  const convertRequest = async (request: any) => {
+    const confirmConvert = confirm(
+      'Create a client and booking from this request?'
+    )
+
+    if (!confirmConvert) return
+
+    setConvertingId(request.id)
+
+    try {
+      let client = await findExistingClient(request)
+
+      if (!client) {
+        client = await createClientFromRequest(request)
+      }
+
+      const booking = await createBookingFromRequest(request, client)
+
+      const { error: updateError } = await supabase
+        .from('training_requests')
+        .update({ status: 'converted' })
+        .eq('id', request.id)
+
+      if (updateError) {
+        throw new Error(updateError.message)
+      }
+
+      alert('Client and booking created successfully.')
+
+      window.location.href = `/dashboard/bookings/${booking.id}`
+    } catch (error: any) {
+      alert(error.message || 'Could not convert request')
+      setConvertingId('')
+    }
   }
 
   const clearFilters = () => {
@@ -280,6 +404,18 @@ export default function RequestsPage() {
             )}
 
             <div className="flex flex-wrap gap-3 mt-5">
+              {request.status !== 'converted' && (
+                <button
+                  className="bg-black text-white px-4 py-2 rounded-lg disabled:bg-gray-400"
+                  onClick={() => convertRequest(request)}
+                  disabled={convertingId === request.id}
+                >
+                  {convertingId === request.id
+                    ? 'Converting...'
+                    : 'Create Client & Booking'}
+                </button>
+              )}
+
               {request.status !== 'contacted' && (
                 <button
                   className="border px-4 py-2 rounded-lg"
@@ -314,6 +450,15 @@ export default function RequestsPage() {
                 >
                   Mark New
                 </button>
+              )}
+
+              {request.status === 'converted' && (
+                <Link
+                  href="/dashboard/bookings"
+                  className="border px-4 py-2 rounded-lg"
+                >
+                  View Bookings
+                </Link>
               )}
 
               <button
