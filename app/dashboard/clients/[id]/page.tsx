@@ -9,8 +9,10 @@ import { getOrCreateAccount } from '@/lib/account'
 export default function ClientDetailPage() {
   const params = useParams()
 
+  const [profile, setProfile] = useState<any>(null)
   const [client, setClient] = useState<any>(null)
   const [bookings, setBookings] = useState<any[]>([])
+  const [bookingDelegateLinks, setBookingDelegateLinks] = useState<any[]>([])
   const [invoices, setInvoices] = useState<any[]>([])
   const [certificates, setCertificates] = useState<any[]>([])
   const [delegates, setDelegates] = useState<any[]>([])
@@ -27,21 +29,32 @@ export default function ClientDetailPage() {
   const [editNotes, setEditNotes] = useState('')
 
   const [delegateSearch, setDelegateSearch] = useState('')
+  const [delegateName, setDelegateName] = useState('')
+  const [delegateEmail, setDelegateEmail] = useState('')
+  const [delegatePhone, setDelegatePhone] = useState('')
+  const [delegateNotes, setDelegateNotes] = useState('')
+
+  const [editingDelegateId, setEditingDelegateId] = useState('')
+  const [editDelegateName, setEditDelegateName] = useState('')
+  const [editDelegateEmail, setEditDelegateEmail] = useState('')
+  const [editDelegatePhone, setEditDelegatePhone] = useState('')
+  const [editDelegateNotes, setEditDelegateNotes] = useState('')
 
   const load = async () => {
-    const profile = await getOrCreateAccount()
-
+    const currentProfile = await getOrCreateAccount()
     const clientId = params.id as string
+
+    setProfile(currentProfile)
 
     const { data: clientData, error: clientError } = await supabase
       .from('clients')
       .select('*')
       .eq('id', clientId)
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .single()
 
-    if (clientError) {
-      console.error(clientError)
+    if (clientError || !clientData) {
+      setClient(null)
       setLoading(false)
       return
     }
@@ -50,17 +63,24 @@ export default function ClientDetailPage() {
       .from('bookings')
       .select('*')
       .eq('client_id', clientId)
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .order('date', { ascending: false })
 
     const { data: delegatesData } = await supabase
       .from('delegates')
       .select('*')
       .eq('client_id', clientId)
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .order('full_name', { ascending: true })
 
+    const { data: bookingDelegateLinksData } = await supabase
+      .from('booking_delegates')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('organisation_id', currentProfile.organisation_id)
+
     const bookingIds = (bookingsData || []).map((booking) => booking.id)
+    const delegateIds = (delegatesData || []).map((delegate) => delegate.id)
 
     let invoicesData: any[] = []
     let certificatesData: any[] = []
@@ -70,25 +90,29 @@ export default function ClientDetailPage() {
         .from('invoices')
         .select('*')
         .in('booking_id', bookingIds)
-        .eq('organisation_id', profile.organisation_id)
-        .order('created_at', { ascending: false })
-
-      const { data: certificateResults } = await supabase
-        .from('certificates')
-        .select('*')
-        .in('booking_id', bookingIds)
-        .eq('organisation_id', profile.organisation_id)
+        .eq('organisation_id', currentProfile.organisation_id)
         .order('created_at', { ascending: false })
 
       invoicesData = invoiceResults || []
+    }
+
+    if (delegateIds.length > 0) {
+      const { data: certificateResults } = await supabase
+        .from('certificates')
+        .select('*')
+        .in('delegate_id', delegateIds)
+        .eq('organisation_id', currentProfile.organisation_id)
+        .order('created_at', { ascending: false })
+
       certificatesData = certificateResults || []
     }
 
     setClient(clientData)
     setBookings(bookingsData || [])
+    setDelegates(delegatesData || [])
+    setBookingDelegateLinks(bookingDelegateLinksData || [])
     setInvoices(invoicesData)
     setCertificates(certificatesData)
-    setDelegates(delegatesData || [])
 
     setEditCompany(clientData.company || '')
     setEditName(clientData.name || '')
@@ -155,6 +179,120 @@ export default function ClientDetailPage() {
     load()
   }
 
+  const addDelegate = async () => {
+    if (!delegateName) {
+      alert('Delegate name is required')
+      return
+    }
+
+    const { error } = await supabase.from('delegates').insert({
+      organisation_id: profile.organisation_id,
+      client_id: client.id,
+      booking_id: null,
+      full_name: delegateName,
+      email: delegateEmail || null,
+      phone: delegatePhone || null,
+      notes: delegateNotes || null,
+    })
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    setDelegateName('')
+    setDelegateEmail('')
+    setDelegatePhone('')
+    setDelegateNotes('')
+
+    load()
+  }
+
+  const startEditingDelegate = (delegate: any) => {
+    setEditingDelegateId(delegate.id)
+    setEditDelegateName(delegate.full_name || '')
+    setEditDelegateEmail(delegate.email || '')
+    setEditDelegatePhone(delegate.phone || '')
+    setEditDelegateNotes(delegate.notes || '')
+  }
+
+  const cancelEditingDelegate = () => {
+    setEditingDelegateId('')
+    setEditDelegateName('')
+    setEditDelegateEmail('')
+    setEditDelegatePhone('')
+    setEditDelegateNotes('')
+  }
+
+  const saveDelegate = async (delegateId: string) => {
+    if (!editDelegateName) {
+      alert('Delegate name is required')
+      return
+    }
+
+    const { error } = await supabase
+      .from('delegates')
+      .update({
+        full_name: editDelegateName,
+        email: editDelegateEmail || null,
+        phone: editDelegatePhone || null,
+        notes: editDelegateNotes || null,
+      })
+      .eq('id', delegateId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    cancelEditingDelegate()
+    load()
+  }
+
+  const deleteDelegate = async (delegateId: string) => {
+    const confirmDelete = confirm(
+      'Are you sure you want to delete this delegate profile? This may also remove their booking links.'
+    )
+
+    if (!confirmDelete) return
+
+    const { error } = await supabase
+      .from('delegates')
+      .delete()
+      .eq('id', delegateId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    load()
+  }
+
+  const getBookingsForDelegate = (delegate: any) => {
+    const links = bookingDelegateLinks.filter(
+      (link) => link.delegate_id === delegate.id
+    )
+
+    const linkedBookingIds = links.map((link) => link.booking_id)
+
+    return bookings.filter((booking) => linkedBookingIds.includes(booking.id))
+  }
+
+  const getCertificatesForDelegate = (delegate: any) => {
+    return certificates.filter(
+      (certificate) => certificate.delegate_id === delegate.id
+    )
+  }
+
+  const getBookingForInvoice = (invoice: any) => {
+    return bookings.find((booking) => booking.id === invoice.booking_id)
+  }
+
+  const getBookingForCertificate = (certificate: any) => {
+    return bookings.find((booking) => booking.id === certificate.booking_id)
+  }
+
   const totalInvoiceValue = invoices.reduce(
     (sum, invoice) => sum + Number(invoice.total_amount || invoice.amount || 0),
     0
@@ -182,42 +320,25 @@ export default function ClientDetailPage() {
     (booking) => booking.status === 'completed'
   )
 
-  const getBookingForInvoice = (invoice: any) => {
-    return bookings.find((booking) => booking.id === invoice.booking_id)
-  }
-
-  const getBookingForCertificate = (certificate: any) => {
-    return bookings.find((booking) => booking.id === certificate.booking_id)
-  }
-
-  const getBookingForDelegate = (delegate: any) => {
-    return bookings.find((booking) => booking.id === delegate.booking_id)
-  }
-
-  const getCertificatesForDelegate = (delegate: any) => {
-    return certificates.filter(
-      (certificate) =>
-        certificate.booking_id === delegate.booking_id &&
-        certificate.learner_name?.toLowerCase() === delegate.full_name?.toLowerCase()
-    )
-  }
+  const delegatesWithEmail = delegates.filter((delegate) => delegate.email)
 
   const filteredDelegates = delegates.filter((delegate) => {
-    const booking = getBookingForDelegate(delegate)
+    const delegateBookings = getBookingsForDelegate(delegate)
+
+    const bookingText = delegateBookings
+      .map((booking) => `${booking.course_name} ${booking.date}`)
+      .join(' ')
 
     const searchableText = `
       ${delegate.full_name || ''}
       ${delegate.email || ''}
       ${delegate.phone || ''}
       ${delegate.notes || ''}
-      ${booking?.course_name || ''}
-      ${booking?.date || ''}
+      ${bookingText}
     `.toLowerCase()
 
     return searchableText.includes(delegateSearch.toLowerCase())
   })
-
-  const delegatesWithEmail = delegates.filter((delegate) => delegate.email)
 
   const getBookingStatusStyle = (status: string) => {
     if (status === 'completed') return 'bg-green-100 text-green-700'
@@ -279,7 +400,7 @@ export default function ClientDetailPage() {
             </h1>
 
             <p className="text-gray-500 mt-2">
-              Company profile, bookings, delegates, invoices and certificates
+              Company profile, delegates, bookings, invoices and certificates
             </p>
           </div>
 
@@ -461,7 +582,7 @@ export default function ClientDetailPage() {
             </h2>
 
             <p className="text-gray-500 mt-1">
-              All learners trained for this company across all bookings
+              Learner profiles connected to this company
             </p>
           </div>
 
@@ -476,6 +597,49 @@ export default function ClientDetailPage() {
           </div>
         </div>
 
+        <div className="bg-gray-50 border rounded-2xl p-5 mb-6">
+          <h3 className="text-lg font-semibold mb-4">
+            Add Delegate
+          </h3>
+
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+            <input
+              className="border p-3 rounded-lg"
+              placeholder="Delegate full name"
+              value={delegateName}
+              onChange={(e) => setDelegateName(e.target.value)}
+            />
+
+            <input
+              className="border p-3 rounded-lg"
+              placeholder="Email optional"
+              value={delegateEmail}
+              onChange={(e) => setDelegateEmail(e.target.value)}
+            />
+
+            <input
+              className="border p-3 rounded-lg"
+              placeholder="Phone optional"
+              value={delegatePhone}
+              onChange={(e) => setDelegatePhone(e.target.value)}
+            />
+
+            <button
+              className="bg-black text-white p-3 rounded-lg"
+              onClick={addDelegate}
+            >
+              Add Delegate
+            </button>
+
+            <textarea
+              className="border p-3 rounded-lg lg:col-span-4"
+              placeholder="Notes optional"
+              value={delegateNotes}
+              onChange={(e) => setDelegateNotes(e.target.value)}
+            />
+          </div>
+        </div>
+
         <input
           className="border p-3 rounded-lg w-full mb-5"
           placeholder="Search delegates by name, email, phone, course or date..."
@@ -485,68 +649,156 @@ export default function ClientDetailPage() {
 
         <div className="grid gap-4">
           {filteredDelegates.map((delegate) => {
-            const booking = getBookingForDelegate(delegate)
+            const delegateBookings = getBookingsForDelegate(delegate)
             const delegateCertificates = getCertificatesForDelegate(delegate)
+            const isEditingDelegate = editingDelegateId === delegate.id
 
             return (
               <div
                 key={delegate.id}
                 className="bg-gray-50 border rounded-xl p-4"
               >
-                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                  <div>
-                    <h3 className="font-semibold">
-                      {delegate.full_name}
-                    </h3>
+                {!isEditingDelegate ? (
+                  <>
+                    <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                      <div>
+                        <Link
+                          href={`/dashboard/delegates/${delegate.id}`}
+                          className="font-semibold hover:underline"
+                        >
+                          {delegate.full_name}
+                        </Link>
 
-                    <div className="text-sm text-gray-600 mt-2 space-y-1">
-                      <p>Email: {delegate.email || 'Not set'}</p>
-                      <p>Phone: {delegate.phone || 'Not set'}</p>
+                        <div className="text-sm text-gray-600 mt-2 space-y-1">
+                          <p>Email: {delegate.email || 'Not set'}</p>
+                          <p>Phone: {delegate.phone || 'Not set'}</p>
 
-                      {delegate.notes && (
-                        <p>Notes: {delegate.notes}</p>
+                          {delegate.notes && (
+                            <p>Notes: {delegate.notes}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-sm text-gray-600 lg:text-right">
+                        <p className="font-medium text-gray-900">
+                          {delegateBookings.length} booking
+                          {delegateBookings.length === 1 ? '' : 's'}
+                        </p>
+
+                        <p className="mt-1">
+                          {delegateCertificates.length} certificate
+                          {delegateCertificates.length === 1 ? '' : 's'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      {delegateBookings.length > 0 ? (
+                        delegateBookings.slice(0, 3).map((booking) => (
+                          <Link
+                            key={booking.id}
+                            href={`/dashboard/bookings/${booking.id}`}
+                            className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs"
+                          >
+                            {booking.date} - {booking.course_name}
+                          </Link>
+                        ))
+                      ) : (
+                        <div className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs">
+                          No bookings yet
+                        </div>
+                      )}
+
+                      {delegateCertificates.length > 0 ? (
+                        delegateCertificates.map((certificate) => (
+                          <div
+                            key={certificate.id}
+                            className={`px-3 py-1 rounded-full text-xs ${getCertificateStatusStyle(
+                              certificate.status
+                            )}`}
+                          >
+                            Certificate: {certificate.status}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-xs">
+                          No certificates yet
+                        </div>
                       )}
                     </div>
-                  </div>
 
-                  <div className="text-sm text-gray-600 lg:text-right">
-                    <p className="font-medium text-gray-900">
-                      {booking?.course_name || 'Unknown booking'}
-                    </p>
-
-                    <p className="mt-1">
-                      {booking?.date || 'No date'}
-                    </p>
-
-                    {booking && (
+                    <div className="flex flex-wrap gap-3 mt-4">
                       <Link
-                        href={`/dashboard/bookings/${booking.id}`}
-                        className="inline-block mt-2 text-gray-500 hover:text-black"
+                        href={`/dashboard/delegates/${delegate.id}`}
+                        className="bg-black text-white px-4 py-2 rounded-lg"
                       >
-                        View booking →
+                        View Profile
                       </Link>
-                    )}
-                  </div>
-                </div>
 
-                <div className="flex flex-wrap gap-2 mt-4">
-                  {delegateCertificates.length > 0 ? (
-                    delegateCertificates.map((certificate) => (
-                      <div
-                        key={certificate.id}
-                        className={`px-3 py-1 rounded-full text-xs ${getCertificateStatusStyle(
-                          certificate.status
-                        )}`}
+                      <button
+                        className="border px-4 py-2 rounded-lg bg-white"
+                        onClick={() => startEditingDelegate(delegate)}
                       >
-                        Certificate: {certificate.status}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-xs">
-                      No certificate yet
+                        Edit
+                      </button>
+
+                      <button
+                        className="border border-red-300 text-red-600 px-4 py-2 rounded-lg bg-white"
+                        onClick={() => deleteDelegate(delegate.id)}
+                      >
+                        Delete
+                      </button>
                     </div>
-                  )}
-                </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <input
+                        className="border p-3 rounded-lg"
+                        placeholder="Delegate full name"
+                        value={editDelegateName}
+                        onChange={(e) => setEditDelegateName(e.target.value)}
+                      />
+
+                      <input
+                        className="border p-3 rounded-lg"
+                        placeholder="Email"
+                        value={editDelegateEmail}
+                        onChange={(e) => setEditDelegateEmail(e.target.value)}
+                      />
+
+                      <input
+                        className="border p-3 rounded-lg"
+                        placeholder="Phone"
+                        value={editDelegatePhone}
+                        onChange={(e) => setEditDelegatePhone(e.target.value)}
+                      />
+
+                      <textarea
+                        className="border p-3 rounded-lg"
+                        placeholder="Notes"
+                        value={editDelegateNotes}
+                        onChange={(e) => setEditDelegateNotes(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-3 mt-4">
+                      <button
+                        className="bg-black text-white px-4 py-2 rounded-lg"
+                        onClick={() => saveDelegate(delegate.id)}
+                      >
+                        Save Delegate
+                      </button>
+
+                      <button
+                        className="border px-4 py-2 rounded-lg bg-white"
+                        onClick={cancelEditingDelegate}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )
           })}
