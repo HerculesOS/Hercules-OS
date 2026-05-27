@@ -49,6 +49,23 @@ export default function BookingDetailPage() {
   const [editDelegatePhone, setEditDelegatePhone] = useState('')
   const [editDelegateNotes, setEditDelegateNotes] = useState('')
 
+  const [selectedDelegateIds, setSelectedDelegateIds] = useState<string[]>([])
+  const [certificateIssueDate, setCertificateIssueDate] = useState('')
+  const [certificateExpiryDate, setCertificateExpiryDate] = useState('')
+  const [creatingCertificates, setCreatingCertificates] = useState(false)
+  const [sendingCertificates, setSendingCertificates] = useState(false)
+
+  const getDateString = (date: Date) => {
+    return date.toISOString().split('T')[0]
+  }
+
+  const getDefaultExpiryDate = (issueDate: string) => {
+    const baseDate = issueDate ? new Date(issueDate) : new Date()
+    baseDate.setFullYear(baseDate.getFullYear() + 3)
+
+    return getDateString(baseDate)
+  }
+
   const load = async () => {
     const currentProfile = await getOrCreateAccount()
     const bookingId = params.id as string
@@ -140,6 +157,12 @@ export default function BookingDetailPage() {
     setEditNotes(bookingData.notes || '')
     setRecipientEmail(clientData?.email || '')
 
+    if (!certificateIssueDate) {
+      const issueDate = bookingData.date || getDateString(new Date())
+      setCertificateIssueDate(issueDate)
+      setCertificateExpiryDate(getDefaultExpiryDate(issueDate))
+    }
+
     setLoading(false)
   }
 
@@ -149,6 +172,19 @@ export default function BookingDetailPage() {
 
   const getTrainer = () => {
     return trainers.find((trainer) => trainer.id === booking?.trainer_id)
+  }
+
+  const getCertificateForDelegate = (delegate: any) => {
+    return certificates.find((certificate) => {
+      const matchesDelegateId = certificate.delegate_id === delegate.id
+
+      const matchesOldCertificate =
+        !certificate.delegate_id &&
+        certificate.booking_id === delegate.booking_id &&
+        certificate.learner_name?.toLowerCase() === delegate.full_name?.toLowerCase()
+
+      return matchesDelegateId || matchesOldCertificate
+    })
   }
 
   const applyCourseTemplate = (templateId: string) => {
@@ -435,7 +471,148 @@ export default function BookingDetailPage() {
       return
     }
 
+    setSelectedDelegateIds((previous) =>
+      previous.filter((id) => id !== delegateId)
+    )
+
     load()
+  }
+
+  const toggleDelegateSelection = (delegateId: string) => {
+    setSelectedDelegateIds((previous) => {
+      if (previous.includes(delegateId)) {
+        return previous.filter((id) => id !== delegateId)
+      }
+
+      return [...previous, delegateId]
+    })
+  }
+
+  const selectAllDelegates = () => {
+    setSelectedDelegateIds(delegates.map((delegate) => delegate.id))
+  }
+
+  const clearSelectedDelegates = () => {
+    setSelectedDelegateIds([])
+  }
+
+  const createCertificatesForSelectedDelegates = async () => {
+    if (selectedDelegateIds.length === 0) {
+      alert('Select at least one delegate first')
+      return
+    }
+
+    if (!certificateIssueDate || !certificateExpiryDate) {
+      alert('Issue date and expiry date are required')
+      return
+    }
+
+    const selectedDelegates = delegates.filter((delegate) =>
+      selectedDelegateIds.includes(delegate.id)
+    )
+
+    const delegatesWithoutCertificates = selectedDelegates.filter(
+      (delegate) => !getCertificateForDelegate(delegate)
+    )
+
+    if (delegatesWithoutCertificates.length === 0) {
+      alert('All selected delegates already have certificates.')
+      return
+    }
+
+    setCreatingCertificates(true)
+
+    const { data: userData } = await supabase.auth.getUser()
+
+    const rows = delegatesWithoutCertificates.map((delegate, index) => ({
+      user_id: userData.user?.id,
+      organisation_id: profile.organisation_id,
+      booking_id: booking.id,
+      delegate_id: delegate.id,
+      learner_name: delegate.full_name,
+      course_name: booking.course_name,
+      issue_date: certificateIssueDate,
+      expiry_date: certificateExpiryDate,
+      certificate_number: `CERT-${Date.now()}-${String(index + 1).padStart(2, '0')}`,
+      status: 'valid',
+    }))
+
+    const { error } = await supabase.from('certificates').insert(rows)
+
+    setCreatingCertificates(false)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    alert(`Created ${rows.length} certificate${rows.length === 1 ? '' : 's'}.`)
+    load()
+  }
+
+  const sendCertificatesToSelectedDelegates = async () => {
+    if (selectedDelegateIds.length === 0) {
+      alert('Select at least one delegate first')
+      return
+    }
+
+    const selectedDelegates = delegates.filter((delegate) =>
+      selectedDelegateIds.includes(delegate.id)
+    )
+
+    const sendableDelegates = selectedDelegates.filter((delegate) => {
+      const certificate = getCertificateForDelegate(delegate)
+      return certificate && delegate.email
+    })
+
+    if (sendableDelegates.length === 0) {
+      alert('Selected delegates need both an email address and a certificate before sending.')
+      return
+    }
+
+    setSendingCertificates(true)
+
+    let sentCount = 0
+    let failedCount = 0
+
+    for (const delegate of sendableDelegates) {
+      const certificate = getCertificateForDelegate(delegate)
+
+      const verificationUrl =
+        `${window.location.origin}/verify/${certificate.verification_id}`
+
+      const response = await fetch('/api/send-certificate-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: delegate.email,
+          learnerName: certificate.learner_name,
+          courseName: certificate.course_name,
+          issueDate: certificate.issue_date,
+          expiryDate: certificate.expiry_date,
+          certificateNumber: certificate.certificate_number,
+          verificationUrl,
+          businessName: organisation?.name || 'Hercules OS',
+        }),
+      })
+
+      if (response.ok) {
+        sentCount += 1
+      } else {
+        failedCount += 1
+      }
+    }
+
+    setSendingCertificates(false)
+
+    if (failedCount > 0) {
+      alert(`Sent ${sentCount}. Failed ${failedCount}.`)
+      return
+    }
+
+    alert(`Certificate email sent to ${sentCount} delegate${sentCount === 1 ? '' : 's'}.`)
   }
 
   const getStatusStyle = (status: string) => {
@@ -482,6 +659,13 @@ export default function BookingDetailPage() {
   }
 
   const trainer = getTrainer()
+  const selectedDelegates = delegates.filter((delegate) =>
+    selectedDelegateIds.includes(delegate.id)
+  )
+  const selectedWithCertificates = selectedDelegates.filter((delegate) =>
+    getCertificateForDelegate(delegate)
+  )
+  const selectedWithEmail = selectedDelegates.filter((delegate) => delegate.email)
 
   return (
     <div>
@@ -823,30 +1007,164 @@ export default function BookingDetailPage() {
           />
         </div>
 
+        <div className="bg-gray-50 border rounded-2xl p-5 mb-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">
+                Certificates for Selected Delegates
+              </h3>
+
+              <p className="text-sm text-gray-500 mt-1">
+                Select delegates below, then create or email their certificates.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                className="border px-4 py-2 rounded-lg bg-white"
+                onClick={selectAllDelegates}
+              >
+                Select All
+              </button>
+
+              <button
+                className="border px-4 py-2 rounded-lg bg-white"
+                onClick={clearSelectedDelegates}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div>
+              <label className="text-sm text-gray-600">
+                Issue date
+              </label>
+
+              <input
+                className="border p-3 rounded-lg w-full mt-1 bg-white"
+                type="date"
+                value={certificateIssueDate}
+                onChange={(e) => {
+                  setCertificateIssueDate(e.target.value)
+                  setCertificateExpiryDate(getDefaultExpiryDate(e.target.value))
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-gray-600">
+                Expiry date
+              </label>
+
+              <input
+                className="border p-3 rounded-lg w-full mt-1 bg-white"
+                type="date"
+                value={certificateExpiryDate}
+                onChange={(e) => setCertificateExpiryDate(e.target.value)}
+              />
+            </div>
+
+            <div className="bg-white border rounded-xl p-3 text-sm text-gray-600">
+              <p className="font-medium text-gray-900">
+                {selectedDelegateIds.length} selected
+              </p>
+
+              <p>
+                {selectedWithCertificates.length} already certified
+              </p>
+
+              <p>
+                {selectedWithEmail.length} with email
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                className="bg-black text-white px-4 py-2 rounded-lg disabled:bg-gray-400"
+                onClick={createCertificatesForSelectedDelegates}
+                disabled={creatingCertificates}
+              >
+                {creatingCertificates ? 'Creating...' : 'Create Certificates'}
+              </button>
+
+              <button
+                className="border px-4 py-2 rounded-lg bg-white disabled:bg-gray-100"
+                onClick={sendCertificatesToSelectedDelegates}
+                disabled={sendingCertificates}
+              >
+                {sendingCertificates ? 'Sending...' : 'Send Certificates'}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div className="grid gap-4">
           {delegates.map((delegate) => {
             const isEditingDelegate = editingDelegateId === delegate.id
+            const certificate = getCertificateForDelegate(delegate)
+            const isSelected = selectedDelegateIds.includes(delegate.id)
 
             return (
               <div
                 key={delegate.id}
-                className="bg-gray-50 border rounded-xl p-4"
+                className={`border rounded-xl p-4 ${
+                  isSelected ? 'bg-blue-50 border-blue-200' : 'bg-gray-50'
+                }`}
               >
                 {!isEditingDelegate ? (
                   <>
                     <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                      <div>
-                        <p className="font-semibold">
-                          {delegate.full_name}
-                        </p>
+                      <div className="flex gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleDelegateSelection(delegate.id)}
+                          className="mt-1"
+                        />
 
-                        <div className="text-sm text-gray-600 mt-2 space-y-1">
-                          <p>Email: {delegate.email || 'Not set'}</p>
-                          <p>Phone: {delegate.phone || 'Not set'}</p>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <p className="font-semibold">
+                              {delegate.full_name}
+                            </p>
 
-                          {delegate.notes && (
-                            <p>Notes: {delegate.notes}</p>
-                          )}
+                            {certificate ? (
+                              <div className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs">
+                                Certificate created
+                              </div>
+                            ) : (
+                              <div className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs">
+                                No certificate
+                              </div>
+                            )}
+
+                            {delegate.email ? (
+                              <div className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs">
+                                Email set
+                              </div>
+                            ) : (
+                              <div className="bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-xs">
+                                No email
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="text-sm text-gray-600 mt-2 space-y-1">
+                            <p>Email: {delegate.email || 'Not set'}</p>
+                            <p>Phone: {delegate.phone || 'Not set'}</p>
+
+                            {certificate && (
+                              <p>
+                                Certificate No: {certificate.certificate_number}
+                              </p>
+                            )}
+
+                            {delegate.notes && (
+                              <p>Notes: {delegate.notes}</p>
+                            )}
+                          </div>
                         </div>
                       </div>
 
