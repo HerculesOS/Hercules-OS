@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import jsPDF from 'jspdf'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 
@@ -176,6 +177,180 @@ export default function CertificatesPage() {
     alert('Certificate email sent')
   }
 
+  const sendExpiryReminder = async (certificate: any) => {
+    const delegate = getDelegateForCertificate(certificate)
+
+    if (!delegate?.email) {
+      alert('This certificate is not linked to a delegate with an email address.')
+      return
+    }
+
+    const verificationUrl = certificate.verification_id
+      ? `${window.location.origin}/verify/${certificate.verification_id}`
+      : ''
+
+    const response = await fetch('/api/send-expiry-reminder', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: delegate.email,
+        learnerName: certificate.learner_name || delegate.full_name,
+        courseName: certificate.course_name,
+        expiryDate: certificate.expiry_date,
+        certificateNumber: certificate.certificate_number,
+        verificationUrl,
+        businessName: organisation?.name || 'Hercules OS',
+        businessEmail: organisation?.email || '',
+        businessPhone: organisation?.phone || '',
+        organisationId: profile.organisation_id,
+      }),
+    })
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      alert(result.error?.message || result.error || 'Expiry reminder failed')
+      return
+    }
+
+    alert('Expiry reminder sent')
+  }
+
+  const generateCertificatePDF = (certificate: any) => {
+    const delegate = getDelegateForCertificate(certificate)
+    const client = getClientForCertificate(certificate)
+
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4',
+    })
+
+    const businessName = organisation?.name || 'Training Provider'
+    const businessEmail = organisation?.email || ''
+    const businessPhone = organisation?.phone || ''
+
+    const learnerName =
+      certificate.learner_name ||
+      delegate?.full_name ||
+      'Learner'
+
+    const courseName =
+      certificate.course_name ||
+      'Training Course'
+
+    const title =
+      certificate.certificate_title ||
+      'Certificate of Completion'
+
+    const body =
+      certificate.certificate_body ||
+      `This is to certify that ${learnerName} has successfully completed ${courseName}.`
+
+    const footer =
+      certificate.certificate_footer ||
+      'This certificate can be verified online using the certificate number.'
+
+    const signatureName =
+      certificate.signature_name ||
+      businessName
+
+    const signatureTitle =
+      certificate.signature_title ||
+      'Training Provider'
+
+    const issueDate = certificate.issue_date || 'Not set'
+    const expiryDate = certificate.expiry_date || 'Not set'
+    const certificateNumber = certificate.certificate_number || 'Not set'
+
+    doc.setFillColor(248, 250, 252)
+    doc.rect(0, 0, 297, 210, 'F')
+
+    doc.setFillColor(255, 255, 255)
+    doc.roundedRect(15, 15, 267, 180, 4, 4, 'F')
+
+    doc.setDrawColor(17, 24, 39)
+    doc.setLineWidth(1.2)
+    doc.roundedRect(22, 22, 253, 166, 3, 3, 'D')
+
+    doc.setDrawColor(209, 213, 219)
+    doc.setLineWidth(0.4)
+    doc.roundedRect(28, 28, 241, 154, 2, 2, 'D')
+
+    doc.setTextColor(17, 24, 39)
+    doc.setFontSize(16)
+    doc.text(businessName, 148.5, 40, { align: 'center' })
+
+    doc.setFontSize(30)
+    doc.text(title, 148.5, 63, { align: 'center' })
+
+    doc.setDrawColor(17, 24, 39)
+    doc.setLineWidth(0.5)
+    doc.line(80, 72, 217, 72)
+
+    doc.setFontSize(13)
+    doc.setTextColor(75, 85, 99)
+    doc.text('Presented to', 148.5, 86, { align: 'center' })
+
+    doc.setFontSize(28)
+    doc.setTextColor(17, 24, 39)
+    doc.text(learnerName, 148.5, 103, { align: 'center' })
+
+    doc.setFontSize(12)
+    doc.setTextColor(75, 85, 99)
+
+    const bodyLines = doc.splitTextToSize(body, 210)
+    doc.text(bodyLines, 148.5, 119, { align: 'center' })
+
+    doc.setFontSize(10)
+    doc.setTextColor(55, 65, 81)
+
+    doc.text(`Course: ${courseName}`, 45, 150)
+    doc.text(`Issue Date: ${issueDate}`, 45, 158)
+    doc.text(`Expiry Date: ${expiryDate}`, 45, 166)
+    doc.text(`Certificate No: ${certificateNumber}`, 45, 174)
+
+    if (client?.company) {
+      doc.text(`Client: ${client.company}`, 45, 142)
+    }
+
+    doc.setDrawColor(17, 24, 39)
+    doc.line(198, 153, 255, 153)
+
+    doc.setFontSize(12)
+    doc.setTextColor(17, 24, 39)
+    doc.text(signatureName, 226.5, 162, { align: 'center' })
+
+    doc.setFontSize(9)
+    doc.setTextColor(75, 85, 99)
+    doc.text(signatureTitle, 226.5, 169, { align: 'center' })
+
+    doc.setFontSize(8)
+    doc.setTextColor(107, 114, 128)
+
+    const footerLines = doc.splitTextToSize(footer, 210)
+    doc.text(footerLines, 148.5, 186, { align: 'center' })
+
+    if (businessEmail || businessPhone) {
+      doc.setFontSize(8)
+      doc.text(
+        `${businessEmail}${businessEmail && businessPhone ? ' · ' : ''}${businessPhone}`,
+        148.5,
+        194,
+        { align: 'center' }
+      )
+    }
+
+    const safeName = learnerName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
+
+    doc.save(`${safeName || 'certificate'}-${certificateNumber}.pdf`)
+  }
+
   const clearFilters = () => {
     setSearch('')
     setStatusFilter('all')
@@ -192,6 +367,8 @@ export default function CertificatesPage() {
       ${certificate.course_name || ''}
       ${certificate.certificate_number || ''}
       ${certificate.status || ''}
+      ${certificate.certificate_title || ''}
+      ${certificate.certificate_body || ''}
       ${delegate?.full_name || ''}
       ${delegate?.email || ''}
       ${client?.company || ''}
@@ -220,6 +397,10 @@ export default function CertificatesPage() {
 
   const expiredCertificates = certificates.filter(
     (certificate) => certificate.status === 'expired'
+  )
+
+  const revokedCertificates = certificates.filter(
+    (certificate) => certificate.status === 'revoked'
   )
 
   const linkedCertificates = certificates.filter(
@@ -269,7 +450,7 @@ export default function CertificatesPage() {
         </h1>
 
         <p className="text-gray-500 mt-1">
-          Manage learner certificates linked to delegates, bookings and clients
+          Manage learner certificates, download PDFs and send certificate emails
         </p>
       </div>
 
@@ -309,6 +490,13 @@ export default function CertificatesPage() {
           </h2>
         </div>
       </div>
+
+      {revokedCertificates.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-5 mb-8 text-red-800">
+          You have {revokedCertificates.length} revoked certificate
+          {revokedCertificates.length === 1 ? '' : 's'}.
+        </div>
+      )}
 
       <div className="bg-white border rounded-2xl p-5 shadow-sm mb-8">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -398,6 +586,34 @@ export default function CertificatesPage() {
                 </div>
               </div>
 
+              <div className="bg-gray-50 border rounded-xl p-4 mt-5">
+                <p className="text-sm text-gray-500 mb-1">
+                  Certificate wording
+                </p>
+
+                <h3 className="text-lg font-semibold">
+                  {certificate.certificate_title || 'Certificate of Completion'}
+                </h3>
+
+                <p className="text-sm text-gray-700 mt-2 whitespace-pre-line">
+                  {certificate.certificate_body ||
+                    `This is to certify that ${certificate.learner_name || 'the learner'} has successfully completed ${certificate.course_name || 'the course'}.`}
+                </p>
+
+                {certificate.certificate_footer && (
+                  <p className="text-xs text-gray-500 mt-4">
+                    {certificate.certificate_footer}
+                  </p>
+                )}
+
+                {(certificate.signature_name || certificate.signature_title) && (
+                  <p className="text-sm text-gray-600 mt-4">
+                    Signature: {certificate.signature_name || 'Not set'}
+                    {certificate.signature_title ? `, ${certificate.signature_title}` : ''}
+                  </p>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-5 text-sm text-gray-700">
                 <div>
                   <p className="text-gray-500">Delegate</p>
@@ -480,10 +696,17 @@ export default function CertificatesPage() {
               </div>
 
               <div className="flex flex-wrap gap-3 mt-5">
+                <button
+                  className="bg-black text-white px-4 py-2 rounded-lg"
+                  onClick={() => generateCertificatePDF(certificate)}
+                >
+                  Download PDF
+                </button>
+
                 {delegate && (
                   <Link
                     href={`/dashboard/delegates/${delegate.id}`}
-                    className="bg-black text-white px-4 py-2 rounded-lg"
+                    className="border px-4 py-2 rounded-lg"
                   >
                     View Delegate
                   </Link>
@@ -513,6 +736,15 @@ export default function CertificatesPage() {
                     onClick={() => sendCertificate(certificate)}
                   >
                     Send Certificate
+                  </button>
+                )}
+
+                {delegate?.email && (
+                  <button
+                    className="border px-4 py-2 rounded-lg"
+                    onClick={() => sendExpiryReminder(certificate)}
+                  >
+                    Send Expiry Reminder
                   </button>
                 )}
 

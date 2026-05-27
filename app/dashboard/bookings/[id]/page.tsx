@@ -15,6 +15,7 @@ export default function BookingDetailPage() {
   const [client, setClient] = useState<any>(null)
   const [trainers, setTrainers] = useState<any[]>([])
   const [courseTemplates, setCourseTemplates] = useState<any[]>([])
+  const [certificateTemplates, setCertificateTemplates] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
   const [invoices, setInvoices] = useState<any[]>([])
   const [certificates, setCertificates] = useState<any[]>([])
@@ -61,11 +62,66 @@ export default function BookingDetailPage() {
     return date.toISOString().split('T')[0]
   }
 
-  const getDefaultExpiryDate = (issueDate: string) => {
-    const baseDate = issueDate ? new Date(issueDate) : new Date()
-    baseDate.setFullYear(baseDate.getFullYear() + 3)
+  const addYearsToDate = (dateString: string, years: number) => {
+    const baseDate = dateString ? new Date(dateString) : new Date()
+    baseDate.setFullYear(baseDate.getFullYear() + years)
 
     return getDateString(baseDate)
+  }
+
+  const replaceCertificatePlaceholders = (
+    text: string,
+    values: Record<string, string>
+  ) => {
+    let output = text || ''
+
+    Object.entries(values).forEach(([key, value]) => {
+      output = output.replaceAll(`{{${key}}}`, value || '')
+    })
+
+    return output
+  }
+
+  const getCertificateTemplateFromLists = (
+    bookingData: any,
+    localCourseTemplates: any[],
+    localCertificateTemplates: any[]
+  ) => {
+    if (!bookingData) return null
+
+    const matchedCourseTemplate = localCourseTemplates.find(
+      (course) =>
+        course.name?.toLowerCase() === bookingData.course_name?.toLowerCase()
+    )
+
+    if (matchedCourseTemplate) {
+      const courseSpecificTemplate = localCertificateTemplates.find(
+        (template) => template.course_template_id === matchedCourseTemplate.id
+      )
+
+      if (courseSpecificTemplate) return courseSpecificTemplate
+    }
+
+    const defaultTemplate = localCertificateTemplates.find(
+      (template) => template.is_default
+    )
+
+    return defaultTemplate || localCertificateTemplates[0] || null
+  }
+
+  const getCertificateTemplateForBooking = () => {
+    return getCertificateTemplateFromLists(
+      booking,
+      courseTemplates,
+      certificateTemplates
+    )
+  }
+
+  const getDefaultExpiryDate = (issueDate: string) => {
+    const template = getCertificateTemplateForBooking()
+    const validityYears = Number(template?.validity_years ?? 3)
+
+    return addYearsToDate(issueDate, validityYears)
   }
 
   const load = async () => {
@@ -118,6 +174,13 @@ export default function BookingDetailPage() {
       .eq('organisation_id', currentProfile.organisation_id)
       .order('name', { ascending: true })
 
+    const { data: certificateTemplatesData } = await supabase
+      .from('certificate_templates')
+      .select('*')
+      .eq('organisation_id', currentProfile.organisation_id)
+      .order('is_default', { ascending: false })
+      .order('name', { ascending: true })
+
     const { data: invoicesData } = await supabase
       .from('invoices')
       .select('*')
@@ -165,6 +228,7 @@ export default function BookingDetailPage() {
     setClient(clientData)
     setTrainers(trainersData || [])
     setCourseTemplates(courseTemplatesData || [])
+    setCertificateTemplates(certificateTemplatesData || [])
     setInvoices(invoicesData || [])
     setCertificates(certificatesData || [])
     setAllClientDelegates(allClientDelegatesData || [])
@@ -183,8 +247,16 @@ export default function BookingDetailPage() {
 
     if (!certificateIssueDate) {
       const issueDate = bookingData.date || getDateString(new Date())
+      const selectedTemplate = getCertificateTemplateFromLists(
+        bookingData,
+        courseTemplatesData || [],
+        certificateTemplatesData || []
+      )
+
+      const validityYears = Number(selectedTemplate?.validity_years ?? 3)
+
       setCertificateIssueDate(issueDate)
-      setCertificateExpiryDate(getDefaultExpiryDate(issueDate))
+      setCertificateExpiryDate(addYearsToDate(issueDate, validityYears))
     }
 
     setLoading(false)
@@ -351,6 +423,7 @@ export default function BookingDetailPage() {
         businessName: organisation?.name || 'Hercules OS',
         businessEmail: organisation?.email || '',
         businessPhone: organisation?.phone || '',
+        organisationId: profile.organisation_id,
       }),
     })
 
@@ -393,6 +466,7 @@ export default function BookingDetailPage() {
         businessName: organisation?.name || 'Hercules OS',
         businessEmail: organisation?.email || '',
         businessPhone: organisation?.phone || '',
+        organisationId: profile.organisation_id,
       }),
     })
 
@@ -592,22 +666,59 @@ export default function BookingDetailPage() {
       return
     }
 
+    const selectedTemplate = getCertificateTemplateForBooking()
+
+    if (!selectedTemplate) {
+      alert('No certificate template found. Create a default certificate template in Settings first.')
+      return
+    }
+
     setCreatingCertificates(true)
 
     const { data: userData } = await supabase.auth.getUser()
 
-    const rows = delegatesWithoutCertificates.map((delegate, index) => ({
-      user_id: userData.user?.id,
-      organisation_id: profile.organisation_id,
-      booking_id: booking.id,
-      delegate_id: delegate.id,
-      learner_name: delegate.full_name,
-      course_name: booking.course_name,
-      issue_date: certificateIssueDate,
-      expiry_date: certificateExpiryDate,
-      certificate_number: `CERT-${Date.now()}-${String(index + 1).padStart(2, '0')}`,
-      status: 'valid',
-    }))
+    const rows = delegatesWithoutCertificates.map((delegate, index) => {
+      const certificateNumber = `CERT-${Date.now()}-${String(index + 1).padStart(2, '0')}`
+
+      const placeholderValues = {
+        delegate_name: delegate.full_name || '',
+        learner_name: delegate.full_name || '',
+        course_name: booking.course_name || '',
+        issue_date: certificateIssueDate || '',
+        expiry_date: certificateExpiryDate || '',
+        certificate_number: certificateNumber,
+        business_name: organisation?.name || 'Hercules OS',
+        trainer_name: getTrainer()?.name || '',
+      }
+
+      return {
+        user_id: userData.user?.id,
+        organisation_id: profile.organisation_id,
+        booking_id: booking.id,
+        delegate_id: delegate.id,
+        certificate_template_id: selectedTemplate.id,
+        learner_name: delegate.full_name,
+        course_name: booking.course_name,
+        issue_date: certificateIssueDate,
+        expiry_date: certificateExpiryDate,
+        certificate_number: certificateNumber,
+        certificate_title: replaceCertificatePlaceholders(
+          selectedTemplate.certificate_title,
+          placeholderValues
+        ),
+        certificate_body: replaceCertificatePlaceholders(
+          selectedTemplate.certificate_body,
+          placeholderValues
+        ),
+        certificate_footer: replaceCertificatePlaceholders(
+          selectedTemplate.footer_text || '',
+          placeholderValues
+        ),
+        signature_name: selectedTemplate.signature_name || '',
+        signature_title: selectedTemplate.signature_title || '',
+        status: 'valid',
+      }
+    })
 
     const { error } = await supabase.from('certificates').insert(rows)
 
@@ -618,7 +729,7 @@ export default function BookingDetailPage() {
       return
     }
 
-    alert(`Created ${rows.length} certificate${rows.length === 1 ? '' : 's'}.`)
+    alert(`Created ${rows.length} certificate${rows.length === 1 ? '' : 's'} using "${selectedTemplate.name}".`)
     load()
   }
 
@@ -732,6 +843,7 @@ export default function BookingDetailPage() {
   }
 
   const trainer = getTrainer()
+  const selectedTemplate = getCertificateTemplateForBooking()
 
   const selectedDelegates = delegates.filter((delegate) =>
     selectedDelegateIds.includes(delegate.id)
@@ -1143,6 +1255,13 @@ export default function BookingDetailPage() {
               <p className="text-sm text-gray-500 mt-1">
                 Select delegates below, then create or email their certificates.
               </p>
+
+              <p className="text-sm text-gray-500 mt-2">
+                Template: <span className="font-semibold">{selectedTemplate?.name || 'No template found'}</span>
+                {selectedTemplate?.validity_years !== undefined
+                  ? ` · Validity: ${selectedTemplate.validity_years} year${Number(selectedTemplate.validity_years) === 1 ? '' : 's'}`
+                  : ''}
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -1285,9 +1404,17 @@ export default function BookingDetailPage() {
                             <p>Phone: {delegate.phone || 'Not set'}</p>
 
                             {certificate && (
-                              <p>
-                                Certificate No: {certificate.certificate_number}
-                              </p>
+                              <>
+                                <p>
+                                  Certificate No: {certificate.certificate_number}
+                                </p>
+
+                                {certificate.certificate_title && (
+                                  <p>
+                                    Template title: {certificate.certificate_title}
+                                  </p>
+                                )}
+                              </>
                             )}
 
                             {delegate.notes && (
@@ -1453,6 +1580,12 @@ export default function BookingDetailPage() {
                 <p className="text-sm text-gray-500 mt-1">
                   {certificate.certificate_number}
                 </p>
+
+                {certificate.certificate_title && (
+                  <p className="text-sm text-gray-600 mt-2">
+                    {certificate.certificate_title}
+                  </p>
+                )}
 
                 <p className="text-sm text-gray-600 mt-2">
                   Expires: {certificate.expiry_date}
