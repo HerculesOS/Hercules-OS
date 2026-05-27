@@ -9,12 +9,14 @@ import { getOrCreateAccount } from '@/lib/account'
 export default function DelegateProfilePage() {
   const params = useParams()
 
+  const [profile, setProfile] = useState<any>(null)
   const [delegate, setDelegate] = useState<any>(null)
   const [client, setClient] = useState<any>(null)
-  const [bookingLinks, setBookingLinks] = useState<any[]>([])
-  const [bookings, setBookings] = useState<any[]>([])
-  const [certificates, setCertificates] = useState<any[]>([])
   const [clients, setClients] = useState<any[]>([])
+  const [bookingLinks, setBookingLinks] = useState<any[]>([])
+  const [linkedBookings, setLinkedBookings] = useState<any[]>([])
+  const [allClientBookings, setAllClientBookings] = useState<any[]>([])
+  const [certificates, setCertificates] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   const [editing, setEditing] = useState(false)
@@ -26,15 +28,20 @@ export default function DelegateProfilePage() {
   const [editPhone, setEditPhone] = useState('')
   const [editNotes, setEditNotes] = useState('')
 
+  const [bookingToAttach, setBookingToAttach] = useState('')
+  const [attaching, setAttaching] = useState(false)
+
   const load = async () => {
-    const profile = await getOrCreateAccount()
+    const currentProfile = await getOrCreateAccount()
     const delegateId = params.id as string
+
+    setProfile(currentProfile)
 
     const { data: delegateData, error: delegateError } = await supabase
       .from('delegates')
       .select('*')
       .eq('id', delegateId)
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .single()
 
     if (delegateError || !delegateData) {
@@ -46,7 +53,7 @@ export default function DelegateProfilePage() {
     const { data: clientsData } = await supabase
       .from('clients')
       .select('*')
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .order('company', { ascending: true })
 
     let clientData = null
@@ -56,46 +63,54 @@ export default function DelegateProfilePage() {
         .from('clients')
         .select('*')
         .eq('id', delegateData.client_id)
-        .eq('organisation_id', profile.organisation_id)
+        .eq('organisation_id', currentProfile.organisation_id)
         .single()
 
       clientData = data
     }
 
+    const { data: allBookingsData } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('client_id', delegateData.client_id)
+      .eq('organisation_id', currentProfile.organisation_id)
+      .order('date', { ascending: false })
+
     const { data: bookingLinksData } = await supabase
       .from('booking_delegates')
       .select('*')
       .eq('delegate_id', delegateId)
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .order('created_at', { ascending: false })
 
     const bookingIds = (bookingLinksData || []).map((link) => link.booking_id)
 
-    let bookingsData: any[] = []
+    let linkedBookingsData: any[] = []
 
     if (bookingIds.length > 0) {
       const { data } = await supabase
         .from('bookings')
         .select('*')
         .in('id', bookingIds)
-        .eq('organisation_id', profile.organisation_id)
+        .eq('organisation_id', currentProfile.organisation_id)
         .order('date', { ascending: false })
 
-      bookingsData = data || []
+      linkedBookingsData = data || []
     }
 
     const { data: certificatesData } = await supabase
       .from('certificates')
       .select('*')
       .eq('delegate_id', delegateId)
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .order('created_at', { ascending: false })
 
     setDelegate(delegateData)
     setClient(clientData)
     setClients(clientsData || [])
+    setAllClientBookings(allBookingsData || [])
     setBookingLinks(bookingLinksData || [])
-    setBookings(bookingsData)
+    setLinkedBookings(linkedBookingsData)
     setCertificates(certificatesData || [])
 
     setEditClientId(delegateData.client_id || '')
@@ -159,6 +174,60 @@ export default function DelegateProfilePage() {
     load()
   }
 
+  const attachToBooking = async () => {
+    if (!bookingToAttach) {
+      alert('Select a booking first')
+      return
+    }
+
+    setAttaching(true)
+
+    const { error } = await supabase
+      .from('booking_delegates')
+      .insert({
+        organisation_id: profile.organisation_id,
+        client_id: delegate.client_id,
+        booking_id: bookingToAttach,
+        delegate_id: delegate.id,
+      })
+
+    setAttaching(false)
+
+    if (error) {
+      if (error.message.includes('duplicate')) {
+        alert('This delegate is already attached to that booking.')
+        return
+      }
+
+      alert(error.message)
+      return
+    }
+
+    setBookingToAttach('')
+    load()
+  }
+
+  const removeFromBooking = async (bookingId: string) => {
+    const confirmRemove = confirm(
+      'Remove this delegate from this booking? Their delegate profile will not be deleted.'
+    )
+
+    if (!confirmRemove) return
+
+    const { error } = await supabase
+      .from('booking_delegates')
+      .delete()
+      .eq('delegate_id', delegate.id)
+      .eq('booking_id', bookingId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    load()
+  }
+
   const getBookingStatusStyle = (status: string) => {
     if (status === 'completed') return 'bg-green-100 text-green-700'
     if (status === 'cancelled') return 'bg-red-100 text-red-700'
@@ -170,6 +239,12 @@ export default function DelegateProfilePage() {
     if (status === 'expired') return 'bg-yellow-100 text-yellow-700'
     return 'bg-green-100 text-green-700'
   }
+
+  const linkedBookingIds = linkedBookings.map((booking) => booking.id)
+
+  const availableBookings = allClientBookings.filter(
+    (booking) => !linkedBookingIds.includes(booking.id)
+  )
 
   if (loading) {
     return (
@@ -231,7 +306,7 @@ export default function DelegateProfilePage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <p className="text-gray-500">Bookings</p>
-          <h2 className="text-3xl font-bold mt-2">{bookings.length}</h2>
+          <h2 className="text-3xl font-bold mt-2">{linkedBookings.length}</h2>
         </div>
 
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
@@ -371,6 +446,50 @@ export default function DelegateProfilePage() {
         )}
       </div>
 
+      <div className="bg-white border rounded-2xl p-6 shadow-sm mb-8">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
+          <div>
+            <h2 className="text-2xl font-semibold">
+              Attach to Booking
+            </h2>
+
+            <p className="text-gray-500 mt-1">
+              Add this delegate to another booking for the same client.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <select
+            className="border p-3 rounded-lg md:col-span-2"
+            value={bookingToAttach}
+            onChange={(e) => setBookingToAttach(e.target.value)}
+          >
+            <option value="">Select booking</option>
+
+            {availableBookings.map((booking) => (
+              <option key={booking.id} value={booking.id}>
+                {booking.date} - {booking.course_name}
+              </option>
+            ))}
+          </select>
+
+          <button
+            className="bg-black text-white p-3 rounded-lg disabled:bg-gray-400"
+            onClick={attachToBooking}
+            disabled={attaching}
+          >
+            {attaching ? 'Attaching...' : 'Attach'}
+          </button>
+        </div>
+
+        {availableBookings.length === 0 && (
+          <p className="text-sm text-gray-500 mt-3">
+            No available bookings to attach for this client.
+          </p>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <h2 className="text-2xl font-semibold mb-5">
@@ -378,17 +497,19 @@ export default function DelegateProfilePage() {
           </h2>
 
           <div className="grid gap-4">
-            {bookings.map((booking) => (
-              <Link
+            {linkedBookings.map((booking) => (
+              <div
                 key={booking.id}
-                href={`/dashboard/bookings/${booking.id}`}
-                className="bg-gray-50 border rounded-xl p-4 hover:bg-gray-100 transition block"
+                className="bg-gray-50 border rounded-xl p-4"
               >
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                   <div>
-                    <p className="font-semibold">
+                    <Link
+                      href={`/dashboard/bookings/${booking.id}`}
+                      className="font-semibold hover:underline"
+                    >
                       {booking.course_name}
-                    </p>
+                    </Link>
 
                     <p className="text-sm text-gray-500 mt-1">
                       {booking.date}
@@ -405,13 +526,25 @@ export default function DelegateProfilePage() {
                   </div>
                 </div>
 
-                <p className="text-xs text-gray-400 mt-3">
-                  View booking →
-                </p>
-              </Link>
+                <div className="flex flex-wrap gap-3 mt-4">
+                  <Link
+                    href={`/dashboard/bookings/${booking.id}`}
+                    className="border px-4 py-2 rounded-lg bg-white"
+                  >
+                    View Booking
+                  </Link>
+
+                  <button
+                    className="border border-red-300 text-red-600 px-4 py-2 rounded-lg bg-white"
+                    onClick={() => removeFromBooking(booking.id)}
+                  >
+                    Remove Link
+                  </button>
+                </div>
+              </div>
             ))}
 
-            {bookings.length === 0 && (
+            {linkedBookings.length === 0 && (
               <p className="text-gray-500">
                 No bookings linked to this delegate yet.
               </p>
