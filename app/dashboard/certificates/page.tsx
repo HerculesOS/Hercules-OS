@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import jsPDF from 'jspdf'
+import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 
@@ -218,7 +219,7 @@ export default function CertificatesPage() {
     alert('Expiry reminder sent')
   }
 
-  const generateCertificatePDF = (certificate: any) => {
+  const generateCertificatePDF = async (certificate: any) => {
     const delegate = getDelegateForCertificate(certificate)
     const client = getClientForCertificate(certificate)
 
@@ -265,6 +266,21 @@ export default function CertificatesPage() {
     const expiryDate = certificate.expiry_date || 'Not set'
     const certificateNumber = certificate.certificate_number || 'Not set'
 
+    const verificationUrl = certificate.verification_id
+      ? `${window.location.origin}/verify/${certificate.verification_id}`
+      : `${window.location.origin}/verify`
+
+    let qrDataUrl = ''
+
+    try {
+      qrDataUrl = await QRCode.toDataURL(verificationUrl, {
+        margin: 1,
+        width: 240,
+      })
+    } catch {
+      qrDataUrl = ''
+    }
+
     doc.setFillColor(248, 250, 252)
     doc.rect(0, 0, 297, 210, 'F')
 
@@ -301,19 +317,27 @@ export default function CertificatesPage() {
     doc.setFontSize(12)
     doc.setTextColor(75, 85, 99)
 
-    const bodyLines = doc.splitTextToSize(body, 210)
+    const bodyLines = doc.splitTextToSize(body, 190)
     doc.text(bodyLines, 148.5, 119, { align: 'center' })
 
     doc.setFontSize(10)
     doc.setTextColor(55, 65, 81)
+
+    if (client?.company) {
+      doc.text(`Client: ${client.company}`, 45, 142)
+    }
 
     doc.text(`Course: ${courseName}`, 45, 150)
     doc.text(`Issue Date: ${issueDate}`, 45, 158)
     doc.text(`Expiry Date: ${expiryDate}`, 45, 166)
     doc.text(`Certificate No: ${certificateNumber}`, 45, 174)
 
-    if (client?.company) {
-      doc.text(`Client: ${client.company}`, 45, 142)
+    if (qrDataUrl) {
+      doc.addImage(qrDataUrl, 'PNG', 132, 141, 34, 34)
+
+      doc.setFontSize(7)
+      doc.setTextColor(107, 114, 128)
+      doc.text('Scan to verify', 149, 179, { align: 'center' })
     }
 
     doc.setDrawColor(17, 24, 39)
@@ -342,6 +366,10 @@ export default function CertificatesPage() {
         { align: 'center' }
       )
     }
+
+    doc.setFontSize(6)
+    doc.setTextColor(156, 163, 175)
+    doc.text(verificationUrl, 148.5, 201, { align: 'center' })
 
     const safeName = learnerName
       .toLowerCase()
