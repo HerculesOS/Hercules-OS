@@ -128,8 +128,8 @@ export default function DashboardLayout({
     router.push('/login')
   }
 
-  const NavLinks = () => (
-    <nav className="flex flex-col gap-2 p-4">
+  const NavLinks = ({ mobile = false }: { mobile?: boolean }) => (
+    <nav className={mobile ? 'flex flex-col gap-1 p-3' : 'flex flex-col gap-1 px-3 py-4'}>
       {navItems.map((item) => {
         const Icon = item.icon
 
@@ -146,19 +146,27 @@ export default function DashboardLayout({
             key={item.href}
             href={item.href}
             onClick={() => setMobileMenuOpen(false)}
-            className={`flex items-center justify-between gap-3 p-3 rounded-xl transition ${
-              isActive
-                ? 'bg-black text-white'
-                : 'hover:bg-gray-100 text-gray-700'
-            }`}
+            className={
+              mobile
+                ? `flex items-center justify-between gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition ${
+                    isActive
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-700 hover:bg-slate-100'
+                  }`
+                : `flex items-center justify-between gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition ${
+                    isActive
+                      ? 'bg-white text-slate-950 shadow-sm'
+                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`
+            }
           >
             <span className="flex items-center gap-3">
-              <Icon size={20} />
+              <Icon size={17} />
               {item.label}
             </span>
 
             {shouldShowBadge && (
-              <span className="min-w-6 h-6 px-2 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center">
+              <span className="min-w-5 h-5 px-1.5 rounded-full bg-red-600 text-white text-[11px] font-bold flex items-center justify-center">
                 {newRequestCount > 99 ? '99+' : newRequestCount}
               </span>
             )}
@@ -170,21 +178,21 @@ export default function DashboardLayout({
 
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-gray-100">
-        <header className="lg:hidden h-16 bg-white border-b flex items-center justify-between px-4 sticky top-0 z-40">
+      <div className="min-h-screen bg-slate-50 text-slate-950">
+        <header className="lg:hidden h-14 bg-slate-950 text-white border-b border-slate-800 flex items-center justify-between px-4 sticky top-0 z-40">
           <div>
-            <h1 className="text-xl font-bold">
+            <h1 className="text-base font-semibold tracking-tight">
               Hercules OS
             </h1>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {newRequestCount > 0 && (
               <Link
                 href="/dashboard/requests"
-                className="relative border rounded-xl p-2"
+                className="relative border border-slate-700 rounded-md p-2 hover:bg-slate-900"
               >
-                <Inbox size={22} />
+                <Inbox size={19} />
 
                 <span className="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center">
                   {newRequestCount > 99 ? '99+' : newRequestCount}
@@ -194,43 +202,43 @@ export default function DashboardLayout({
 
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="border rounded-xl p-2"
+              className="border border-slate-700 rounded-md p-2 hover:bg-slate-900"
             >
-              <Menu size={24} />
+              <Menu size={20} />
             </button>
           </div>
         </header>
 
         {mobileMenuOpen && (
-          <div className="lg:hidden fixed inset-0 z-50 bg-black/40">
+          <div className="lg:hidden fixed inset-0 z-50 bg-slate-950/60">
             <div className="bg-white w-80 max-w-[85%] min-h-screen shadow-xl flex flex-col">
-              <div className="p-6 border-b flex items-start justify-between">
+              <div className="px-5 py-4 border-b flex items-start justify-between">
                 <div>
-                  <h1 className="text-2xl font-bold">
+                  <h1 className="text-lg font-semibold tracking-tight">
                     Hercules OS
                   </h1>
 
-                  <p className="text-sm text-gray-500 mt-1">
-                    First Aid Business Platform
+                  <p className="text-xs text-slate-500 mt-1">
+                    Training operations platform
                   </p>
                 </div>
 
                 <button
                   onClick={() => setMobileMenuOpen(false)}
-                  className="border rounded-xl p-2"
+                  className="border rounded-md p-2 hover:bg-slate-50"
                 >
-                  <X size={20} />
+                  <X size={18} />
                 </button>
               </div>
 
-              <NavLinks />
+              <NavLinks mobile />
 
-              <div className="mt-auto p-4 border-t">
+              <div className="mt-auto p-3 border-t">
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl border hover:bg-gray-100 transition text-left"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md border text-sm font-medium hover:bg-slate-50 transition text-left"
                 >
-                  <LogOut size={20} />
+                  <LogOut size={17} />
                   Log out
                 </button>
               </div>
@@ -239,73 +247,77 @@ export default function DashboardLayout({
         )}
 
         <div className="flex">
-          <aside className="hidden lg:flex w-72 bg-white border-r shadow-sm flex-col fixed left-0 top-0 h-screen overflow-y-auto">
-            <div className="p-6 border-b">
-              <h1 className="text-2xl font-bold">
+          <aside className="hidden lg:flex w-64 bg-slate-950 text-white border-r border-slate-900 flex-col fixed left-0 top-0 h-screen overflow-y-auto">
+            <div className="px-5 py-5 border-b border-slate-800">
+              <h1 className="text-lg font-semibold tracking-tight">
                 Hercules OS
               </h1>
 
-              <p className="text-sm text-gray-500 mt-1">
-                First Aid Business Platform
+              <p className="text-xs text-slate-400 mt-1">
+                Training operations platform
               </p>
             </div>
 
             <NavLinks />
 
-            <div className="mt-auto p-4 border-t">
-              <div className="bg-gray-100 rounded-xl p-4 mb-4">
-                <p className="font-semibold">
-                  Hercules OS
+            <div className="mt-auto p-3 border-t border-slate-800">
+              <div className="bg-slate-900 border border-slate-800 rounded-md p-3 mb-3">
+                <p className="text-sm font-semibold text-white">
+                  Operations Suite
                 </p>
 
-                <p className="text-sm text-gray-500 mt-1">
-                  Manage training, invoices and certificates in one place.
+                <p className="text-xs text-slate-400 mt-1 leading-5">
+                  Manage clients, bookings, invoices and certificates.
                 </p>
               </div>
 
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center gap-3 p-3 rounded-xl border hover:bg-gray-100 transition text-left"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md border border-slate-800 text-sm font-medium text-slate-300 hover:bg-slate-900 hover:text-white transition text-left"
               >
-                <LogOut size={20} />
+                <LogOut size={17} />
                 Log out
               </button>
             </div>
           </aside>
 
-          <div className="flex-1 lg:ml-72">
-            <header className="hidden lg:flex h-20 bg-white border-b items-center justify-between px-8 sticky top-0 z-30">
+          <div className="flex-1 lg:ml-64">
+            <header className="hidden lg:flex h-16 bg-white border-b border-slate-200 items-center justify-between px-6 sticky top-0 z-30">
               <div>
-                <h2 className="text-2xl font-bold">
+                <h2 className="text-lg font-semibold tracking-tight text-slate-950">
                   Operations Dashboard
                 </h2>
+
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Manage your training business from one place
+                </p>
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
                 {newRequestCount > 0 && (
                   <Link
                     href="/dashboard/requests"
-                    className="relative border rounded-xl px-4 py-2 flex items-center gap-2 hover:bg-gray-100"
+                    className="relative border border-slate-200 rounded-md px-3 py-2 flex items-center gap-2 hover:bg-slate-50 text-sm"
                   >
-                    <Inbox size={18} />
+                    <Inbox size={16} />
 
-                    <span className="text-sm">
+                    <span>
                       New requests
                     </span>
 
-                    <span className="min-w-6 h-6 px-2 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center">
+                    <span className="min-w-5 h-5 px-1.5 rounded-full bg-red-600 text-white text-[11px] font-bold flex items-center justify-center">
                       {newRequestCount > 99 ? '99+' : newRequestCount}
                     </span>
                   </Link>
                 )}
 
-                <div className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center font-bold">
+                <div className="w-8 h-8 rounded-md bg-slate-950 text-white flex items-center justify-center text-sm font-semibold">
                   H
                 </div>
               </div>
             </header>
 
-            <main className="p-4 sm:p-6 lg:p-8">
+            <main className="p-4 sm:p-5 lg:p-6">
               {children}
             </main>
           </div>

@@ -71,10 +71,7 @@ export default function Dashboard() {
     const bookingDate = new Date(booking.date)
     bookingDate.setHours(0, 0, 0, 0)
 
-    return (
-      bookingDate >= today &&
-      booking.status !== 'cancelled'
-    )
+    return bookingDate >= today && booking.status !== 'cancelled'
   })
 
   const completedBookings = bookings.filter(
@@ -125,218 +122,296 @@ export default function Dashboard() {
     return client?.email || ''
   }
 
+  const StatCard = ({
+    label,
+    value,
+    href,
+    detail,
+  }: {
+    label: string
+    value: string | number
+    href?: string
+    detail?: string
+  }) => {
+    const content = (
+      <div className="bg-white border border-slate-200 rounded-lg p-4 hover:border-slate-300 transition">
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+          {label}
+        </p>
+
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-950 mt-2">
+          {value}
+        </h2>
+
+        {detail && (
+          <p className="text-xs text-slate-500 mt-1">
+            {detail}
+          </p>
+        )}
+      </div>
+    )
+
+    if (href) {
+      return (
+        <Link href={href}>
+          {content}
+        </Link>
+      )
+    }
+
+    return content
+  }
+
+  const StatusPill = ({
+    children,
+    tone = 'default',
+  }: {
+    children: React.ReactNode
+    tone?: 'default' | 'blue' | 'yellow' | 'red'
+  }) => {
+    const styles = {
+      default: 'bg-slate-100 text-slate-700 border-slate-200',
+      blue: 'bg-blue-50 text-blue-700 border-blue-100',
+      yellow: 'bg-amber-50 text-amber-700 border-amber-100',
+      red: 'bg-red-50 text-red-700 border-red-100',
+    }
+
+    return (
+      <span className={`inline-flex border px-2.5 py-1 rounded-md text-xs font-medium ${styles[tone]}`}>
+        {children}
+      </span>
+    )
+  }
+
   return (
     <div>
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold">
-          Welcome back 👋
-        </h1>
+      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Overview
+          </p>
 
-        <p className="text-gray-500 mt-2">
-          {organisation?.name
-            ? `Here’s what’s happening at ${organisation.name}.`
-            : 'Manage your first aid training business from one place.'}
-        </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
+            Welcome back
+          </h1>
+
+          <p className="text-sm text-slate-500 mt-1">
+            {organisation?.name
+              ? `Here’s what’s happening at ${organisation.name}.`
+              : 'Manage your training business from one place.'}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/dashboard/bookings"
+            className="bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800"
+          >
+            Create booking
+          </Link>
+
+          <Link
+            href="/dashboard/clients"
+            className="bg-white border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50"
+          >
+            Add client
+          </Link>
+        </div>
       </div>
 
-      {/* Main Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <Link
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+        <StatCard
+          label="Invoice value"
+          value={`£${totalRevenue.toFixed(2)}`}
           href="/dashboard/invoices"
-          className="bg-white border rounded-2xl p-6 shadow-sm hover:shadow-md transition"
-        >
-          <p className="text-gray-500">Invoice Value</p>
+          detail="Total recorded invoice value"
+        />
 
-          <h2 className="text-3xl font-bold mt-2">
-            £{totalRevenue.toFixed(2)}
-          </h2>
-        </Link>
-
-        <Link
+        <StatCard
+          label="Clients"
+          value={clients.length}
           href="/dashboard/clients"
-          className="bg-white border rounded-2xl p-6 shadow-sm hover:shadow-md transition"
-        >
-          <p className="text-gray-500">Clients</p>
+          detail="Active client records"
+        />
 
-          <h2 className="text-3xl font-bold mt-2">
-            {clients.length}
-          </h2>
-        </Link>
-
-        <Link
+        <StatCard
+          label="Upcoming bookings"
+          value={upcomingBookings.length}
           href="/dashboard/bookings"
-          className="bg-white border rounded-2xl p-6 shadow-sm hover:shadow-md transition"
-        >
-          <p className="text-gray-500">Upcoming Bookings</p>
+          detail="Scheduled from today onwards"
+        />
 
-          <h2 className="text-3xl font-bold mt-2">
-            {upcomingBookings.length}
-          </h2>
-        </Link>
-
-        <Link
+        <StatCard
+          label="Expiring soon"
+          value={expiringCertificates.length}
           href="/dashboard/certificates"
-          className="bg-white border rounded-2xl p-6 shadow-sm hover:shadow-md transition"
-        >
-          <p className="text-gray-500">Expiring Soon</p>
-
-          <h2 className="text-3xl font-bold mt-2">
-            {expiringCertificates.length}
-          </h2>
-        </Link>
+          detail="Certificates within 60 days"
+        />
       </div>
 
-      {/* Secondary Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Completed Bookings</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <StatCard
+          label="Completed bookings"
+          value={completedBookings.length}
+          detail="Marked as completed"
+        />
 
-          <h2 className="text-3xl font-bold mt-2">
-            {completedBookings.length}
-          </h2>
-        </div>
+        <StatCard
+          label="Unpaid invoices"
+          value={unpaidInvoices.length}
+          detail="Draft or sent invoices"
+        />
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Unpaid Invoices</p>
-
-          <h2 className="text-3xl font-bold mt-2">
-            {unpaidInvoices.length}
-          </h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Expired Certificates</p>
-
-          <h2 className="text-3xl font-bold mt-2">
-            {expiredCertificates.length}
-          </h2>
-        </div>
+        <StatCard
+          label="Expired certificates"
+          value={expiredCertificates.length}
+          detail="Past expiry date"
+        />
       </div>
 
-      {/* Main Dashboard Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        {/* Upcoming Bookings */}
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-2xl font-semibold">
-              Upcoming Bookings
-            </h2>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="bg-white border border-slate-200 rounded-lg">
+          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Upcoming Bookings
+              </h2>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                Next scheduled sessions
+              </p>
+            </div>
 
             <Link
               href="/dashboard/bookings"
-              className="text-sm text-gray-500 hover:text-black"
+              className="text-xs font-medium text-slate-500 hover:text-slate-950"
             >
               View all
             </Link>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="divide-y divide-slate-100">
             {upcomingBookings.slice(0, 5).map((booking) => (
               <div
                 key={booking.id}
-                className="bg-gray-50 p-4 rounded-xl"
+                className="px-4 py-3"
               >
-                <p className="font-semibold">
-                  {booking.course_name}
-                </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-950">
+                      {booking.course_name}
+                    </p>
 
-                <p className="text-sm text-gray-500 mt-1">
-                  {booking.client_name}
-                </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {booking.client_name}
+                    </p>
 
-                <p className="text-sm text-gray-600 mt-2">
-                  {booking.date}
-                  {booking.start_time
-                    ? ` at ${booking.start_time}`
-                    : ''}
-                </p>
+                    <p className="text-xs text-slate-600 mt-1">
+                      {booking.date}
+                      {booking.start_time ? ` · ${booking.start_time}` : ''}
+                    </p>
+                  </div>
 
-                <div className="mt-3 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs w-fit">
-                  {booking.status}
+                  <StatusPill tone="blue">
+                    {booking.status}
+                  </StatusPill>
                 </div>
               </div>
             ))}
 
             {upcomingBookings.length === 0 && (
-              <p className="text-gray-500">
+              <div className="px-4 py-6 text-sm text-slate-500">
                 No upcoming bookings yet.
-              </p>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Unpaid Invoices */}
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-2xl font-semibold">
-              Unpaid Invoices
-            </h2>
+        <div className="bg-white border border-slate-200 rounded-lg">
+          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Unpaid Invoices
+              </h2>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                Outstanding payments
+              </p>
+            </div>
 
             <Link
               href="/dashboard/invoices"
-              className="text-sm text-gray-500 hover:text-black"
+              className="text-xs font-medium text-slate-500 hover:text-slate-950"
             >
               View all
             </Link>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="divide-y divide-slate-100">
             {unpaidInvoices.slice(0, 5).map((invoice) => (
               <div
                 key={invoice.id}
-                className="bg-gray-50 p-4 rounded-xl"
+                className="px-4 py-3"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-semibold">
+                    <p className="text-sm font-medium text-slate-950">
                       {invoice.invoice_number || 'Invoice'}
                     </p>
 
-                    <p className="text-sm text-gray-500 mt-1">
+                    <p className="text-xs text-slate-500 mt-1">
                       {invoice.client_name}
+                    </p>
+
+                    <p className="text-xs text-slate-600 mt-1">
+                      Due: {invoice.due_date || 'Not set'}
                     </p>
                   </div>
 
-                  <p className="font-semibold">
-                    £{Number(invoice.total_amount || invoice.amount || 0).toFixed(2)}
-                  </p>
-                </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-slate-950">
+                      £{Number(invoice.total_amount || invoice.amount || 0).toFixed(2)}
+                    </p>
 
-                <p className="text-sm text-gray-600 mt-2">
-                  Due: {invoice.due_date || 'Not set'}
-                </p>
-
-                <div className="mt-3 bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs w-fit">
-                  {invoice.status}
+                    <div className="mt-2">
+                      <StatusPill tone="yellow">
+                        {invoice.status}
+                      </StatusPill>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
 
             {unpaidInvoices.length === 0 && (
-              <p className="text-gray-500">
+              <div className="px-4 py-6 text-sm text-slate-500">
                 No unpaid invoices.
-              </p>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Expiring Certificates */}
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-2xl font-semibold">
-              Expiring Certificates
-            </h2>
+        <div className="bg-white border border-slate-200 rounded-lg">
+          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Expiring Certificates
+              </h2>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                Certificates needing attention
+              </p>
+            </div>
 
             <Link
               href="/dashboard/certificates"
-              className="text-sm text-gray-500 hover:text-black"
+              className="text-xs font-medium text-slate-500 hover:text-slate-950"
             >
               View all
             </Link>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="divide-y divide-slate-100">
             {expiringCertificates.slice(0, 5).map((certificate) => {
               const days = getDaysUntilExpiry(certificate.expiry_date)
               const clientEmail = getClientEmailForCertificate(certificate)
@@ -344,75 +419,82 @@ export default function Dashboard() {
               return (
                 <div
                   key={certificate.id}
-                  className="bg-orange-50 border border-orange-100 p-4 rounded-xl"
+                  className="px-4 py-3"
                 >
-                  <p className="font-semibold">
-                    {certificate.learner_name}
-                  </p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-950">
+                        {certificate.learner_name}
+                      </p>
 
-                  <p className="text-sm text-gray-500 mt-1">
-                    {certificate.course_name}
-                  </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {certificate.course_name}
+                      </p>
 
-                  <p className="text-sm text-gray-600 mt-2">
-                    Expires: {certificate.expiry_date}
-                  </p>
+                      <p className="text-xs text-slate-600 mt-1">
+                        Expires: {certificate.expiry_date}
+                      </p>
 
-                  {clientEmail && (
-                    <p className="text-sm text-gray-600">
-                      Email: {clientEmail}
-                    </p>
-                  )}
+                      {clientEmail && (
+                        <p className="text-xs text-slate-500 mt-1 break-all">
+                          {clientEmail}
+                        </p>
+                      )}
+                    </div>
 
-                  <div className="mt-3 bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs w-fit">
-                    {days === 0
-                      ? 'Expires today'
-                      : `Expires in ${days} days`}
+                    <StatusPill tone={days <= 7 ? 'red' : 'yellow'}>
+                      {days === 0 ? 'Today' : `${days}d`}
+                    </StatusPill>
                   </div>
                 </div>
               )
             })}
 
             {expiringCertificates.length === 0 && (
-              <p className="text-gray-500">
+              <div className="px-4 py-6 text-sm text-slate-500">
                 No certificates expiring within 60 days.
-              </p>
+              </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="bg-white border rounded-2xl p-6 shadow-sm mt-8">
-        <h2 className="text-2xl font-semibold mb-5">
-          Quick Actions
-        </h2>
+      <div className="bg-white border border-slate-200 rounded-lg mt-4">
+        <div className="px-4 py-3 border-b border-slate-200">
+          <h2 className="text-sm font-semibold text-slate-950">
+            Quick Actions
+          </h2>
 
-        <div className="flex flex-wrap gap-3">
+          <p className="text-xs text-slate-500 mt-0.5">
+            Jump straight into common workflows
+          </p>
+        </div>
+
+        <div className="p-4 flex flex-wrap gap-2">
           <Link
             href="/dashboard/clients"
-            className="bg-black text-white px-4 py-2 rounded-lg"
+            className="bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800"
           >
             Add Client
           </Link>
 
           <Link
             href="/dashboard/bookings"
-            className="border px-4 py-2 rounded-lg"
+            className="border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50"
           >
             Create Booking
           </Link>
 
           <Link
             href="/dashboard/invoices"
-            className="border px-4 py-2 rounded-lg"
+            className="border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50"
           >
             Create Invoice
           </Link>
 
           <Link
             href="/dashboard/certificates"
-            className="border px-4 py-2 rounded-lg"
+            className="border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50"
           >
             Issue Certificate
           </Link>
