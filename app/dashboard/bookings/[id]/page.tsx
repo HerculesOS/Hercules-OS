@@ -20,7 +20,6 @@ export default function BookingDetailPage() {
   const [certificates, setCertificates] = useState<any[]>([])
   const [delegates, setDelegates] = useState<any[]>([])
   const [allClientDelegates, setAllClientDelegates] = useState<any[]>([])
-  const [bookingDelegateLinks, setBookingDelegateLinks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   const [editing, setEditing] = useState(false)
@@ -169,7 +168,6 @@ export default function BookingDetailPage() {
     setInvoices(invoicesData || [])
     setCertificates(certificatesData || [])
     setAllClientDelegates(allClientDelegatesData || [])
-    setBookingDelegateLinks(bookingLinksData || [])
     setDelegates(bookingDelegatesData)
 
     setEditTrainerId(bookingData.trainer_id || '')
@@ -669,6 +667,7 @@ export default function BookingDetailPage() {
           certificateNumber: certificate.certificate_number,
           verificationUrl,
           businessName: organisation?.name || 'Hercules OS',
+          organisationId: profile.organisation_id,
         }),
       })
 

@@ -6,10 +6,12 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 
 export default function CertificatesPage() {
+  const [profile, setProfile] = useState<any>(null)
   const [certificates, setCertificates] = useState<any[]>([])
   const [bookings, setBookings] = useState<any[]>([])
   const [clients, setClients] = useState<any[]>([])
   const [delegates, setDelegates] = useState<any[]>([])
+  const [organisation, setOrganisation] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   const [search, setSearch] = useState('')
@@ -17,12 +19,20 @@ export default function CertificatesPage() {
   const [linkFilter, setLinkFilter] = useState('all')
 
   const load = async () => {
-    const profile = await getOrCreateAccount()
+    const currentProfile = await getOrCreateAccount()
+
+    setProfile(currentProfile)
+
+    const { data: organisationData } = await supabase
+      .from('organisations')
+      .select('*')
+      .eq('id', currentProfile.organisation_id)
+      .single()
 
     const { data: certificatesData, error: certificatesError } = await supabase
       .from('certificates')
       .select('*')
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .order('created_at', { ascending: false })
 
     if (certificatesError) {
@@ -34,21 +44,22 @@ export default function CertificatesPage() {
     const { data: bookingsData } = await supabase
       .from('bookings')
       .select('*')
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .order('date', { ascending: false })
 
     const { data: clientsData } = await supabase
       .from('clients')
       .select('*')
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .order('company', { ascending: true })
 
     const { data: delegatesData } = await supabase
       .from('delegates')
       .select('*')
-      .eq('organisation_id', profile.organisation_id)
+      .eq('organisation_id', currentProfile.organisation_id)
       .order('full_name', { ascending: true })
 
+    setOrganisation(organisationData || null)
     setCertificates(certificatesData || [])
     setBookings(bookingsData || [])
     setClients(clientsData || [])
@@ -150,7 +161,8 @@ export default function CertificatesPage() {
         expiryDate: certificate.expiry_date,
         certificateNumber: certificate.certificate_number,
         verificationUrl,
-        businessName: 'Hercules OS',
+        businessName: organisation?.name || 'Hercules OS',
+        organisationId: profile.organisation_id,
       }),
     })
 
@@ -208,10 +220,6 @@ export default function CertificatesPage() {
 
   const expiredCertificates = certificates.filter(
     (certificate) => certificate.status === 'expired'
-  )
-
-  const revokedCertificates = certificates.filter(
-    (certificate) => certificate.status === 'revoked'
   )
 
   const linkedCertificates = certificates.filter(
