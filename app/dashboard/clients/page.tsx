@@ -17,6 +17,21 @@ export default function ClientsPage() {
   const [notes, setNotes] = useState('')
   const [search, setSearch] = useState('')
 
+  const inputClass =
+    'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+
+  const buttonPrimary =
+    'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
+
+  const buttonSecondary =
+    'border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400'
+
+  const panelClass =
+    'bg-white border border-slate-200 rounded-lg'
+
+  const panelHeaderClass =
+    'px-4 py-3 border-b border-slate-200'
+
   const load = async () => {
     const profile = await getOrCreateAccount()
 
@@ -69,6 +84,10 @@ export default function ClientsPage() {
     load()
   }
 
+  const clearSearch = () => {
+    setSearch('')
+  }
+
   const filteredClients = clients.filter((client) =>
     `
       ${client.company || ''}
@@ -82,172 +101,257 @@ export default function ClientsPage() {
       .includes(search.toLowerCase())
   )
 
+  const clientsWithEmail = clients.filter((client) => client.email)
+  const clientsWithPhone = clients.filter((client) => client.phone)
+
+  const StatCard = ({
+    label,
+    value,
+    detail,
+  }: {
+    label: string
+    value: string | number
+    detail?: string
+  }) => (
+    <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+
+      <h2 className="text-2xl font-semibold tracking-tight text-slate-950 mt-2">
+        {value}
+      </h2>
+
+      {detail && (
+        <p className="text-xs text-slate-500 mt-1">
+          {detail}
+        </p>
+      )}
+    </div>
+  )
+
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold">
-          Clients
-        </h1>
-
-        <p className="text-gray-500 mt-1">
-          Manage companies, schools, nurseries and training customers
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">
-            Total Clients
+      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Clients
           </p>
 
-          <h2 className="text-3xl font-bold mt-2">
-            {clients.length}
-          </h2>
-        </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
+            Client records
+          </h1>
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">
-            Companies
+          <p className="text-sm text-slate-500 mt-1">
+            Manage companies, schools, nurseries and training customers.
           </p>
-
-          <h2 className="text-3xl font-bold mt-2">
-            {clients.length}
-          </h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">
-            Search Results
-          </p>
-
-          <h2 className="text-3xl font-bold mt-2">
-            {filteredClients.length}
-          </h2>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <h2 className="text-xl font-semibold mb-4">
-            Add Company / Client
-          </h2>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+        <StatCard
+          label="Total clients"
+          value={clients.length}
+          detail="All client records"
+        />
 
-          <div className="flex flex-col gap-3">
+        <StatCard
+          label="With email"
+          value={clientsWithEmail.length}
+          detail="Can receive booking emails"
+        />
+
+        <StatCard
+          label="With phone"
+          value={clientsWithPhone.length}
+          detail="Phone number saved"
+        />
+
+        <StatCard
+          label="Search results"
+          value={filteredClients.length}
+          detail="Matching current filter"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+        <div className={`xl:col-span-4 ${panelClass} h-fit`}>
+          <div className={panelHeaderClass}>
+            <h2 className="text-sm font-semibold text-slate-950">
+              Add client
+            </h2>
+
+            <p className="text-xs text-slate-500 mt-0.5">
+              Create a company, school or customer profile.
+            </p>
+          </div>
+
+          <div className="p-4 flex flex-col gap-3">
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Company / school name"
               value={company}
               onChange={(e) => setCompany(e.target.value)}
             />
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Primary contact name"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Primary contact email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Primary contact phone"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
             />
 
             <textarea
-              className="border p-3 rounded-lg"
+              className={`${inputClass} min-h-20`}
               placeholder="Address"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
             />
 
             <textarea
-              className="border p-3 rounded-lg"
+              className={`${inputClass} min-h-20`}
               placeholder="Notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
 
             <button
-              className="bg-black text-white p-3 rounded-lg"
+              className={buttonPrimary}
               onClick={addClient}
             >
-              Add Client
+              Add client
             </button>
           </div>
         </div>
 
-        <div className="lg:col-span-2">
-          <div className="bg-white border rounded-2xl p-4 shadow-sm mb-4">
-            <input
-              className="w-full border p-3 rounded-lg"
-              placeholder="Search clients..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+        <div className="xl:col-span-8 grid gap-4">
+          <div className={panelClass}>
+            <div className={panelHeaderClass}>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Search clients
+              </h2>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                Find clients by company, contact, email, phone, address or notes.
+              </p>
+            </div>
+
+            <div className="p-4">
+              <div className="flex flex-col md:flex-row gap-3">
+                <input
+                  className={`${inputClass} flex-1`}
+                  placeholder="Search clients..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+
+                <button
+                  className={buttonSecondary}
+                  onClick={clearSearch}
+                >
+                  Clear
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-500 mt-3">
+                Showing {filteredClients.length} of {clients.length} clients
+              </p>
+            </div>
           </div>
 
-          <div className="grid gap-4">
-            {filteredClients.map((client) => (
-              <Link
-                href={`/dashboard/clients/${client.id}`}
-                key={client.id}
-                className="bg-white border rounded-2xl p-5 shadow-sm hover:shadow-md transition block"
-              >
-                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                  <div>
-                    <h2 className="text-xl font-semibold">
-                      {client.company || 'Unnamed company'}
-                    </h2>
+          <div className={panelClass}>
+            <div className={`${panelHeaderClass} flex items-center justify-between`}>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-950">
+                  Client list
+                </h2>
 
-                    <p className="text-gray-500 mt-1">
-                      Primary contact: {client.name || 'Not set'}
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Open a client to view bookings, delegates and history.
+                </p>
+              </div>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {filteredClients.map((client) => (
+                <Link
+                  href={`/dashboard/clients/${client.id}`}
+                  key={client.id}
+                  className="block p-4 hover:bg-slate-50 transition"
+                >
+                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-sm font-semibold text-slate-950">
+                          {client.company || 'Unnamed company'}
+                        </h3>
+
+                        <span className="border border-emerald-100 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-md text-xs font-medium">
+                          Active
+                        </span>
+                      </div>
+
+                      <p className="text-sm text-slate-600 mt-1">
+                        Primary contact: {client.name || 'Not set'}
+                      </p>
+                    </div>
+
+                    <p className="text-xs text-slate-500">
+                      View profile →
                     </p>
                   </div>
 
-                  <div className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm w-fit">
-                    Active
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-4 text-xs text-slate-600">
+                    <div>
+                      <p className="text-slate-400">Email</p>
+                      <p className="font-medium text-slate-800 mt-1 break-all">
+                        {client.email || 'Not set'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-slate-400">Phone</p>
+                      <p className="font-medium text-slate-800 mt-1">
+                        {client.phone || 'Not set'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-slate-400">Address</p>
+                      <p className="font-medium text-slate-800 mt-1">
+                        {client.address || 'Not set'}
+                      </p>
+                    </div>
                   </div>
+
+                  {client.notes && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-md p-3 mt-4 text-xs text-slate-600">
+                      {client.notes}
+                    </div>
+                  )}
+                </Link>
+              ))}
+
+              {filteredClients.length === 0 && (
+                <div className="p-6 text-sm text-slate-500">
+                  No clients found.
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 text-sm text-gray-600">
-                  <p>
-                    Email: {client.email || 'Not set'}
-                  </p>
-
-                  <p>
-                    Phone: {client.phone || 'Not set'}
-                  </p>
-
-                  <p className="md:col-span-2">
-                    Address: {client.address || 'Not set'}
-                  </p>
-                </div>
-
-                {client.notes && (
-                  <div className="bg-gray-50 border rounded-xl p-3 mt-4 text-sm text-gray-600">
-                    {client.notes}
-                  </div>
-                )}
-
-                <p className="text-sm text-gray-400 mt-4">
-                  Click to view company profile
-                </p>
-              </Link>
-            ))}
-
-            {filteredClients.length === 0 && (
-              <div className="bg-white border rounded-2xl p-6 shadow-sm text-gray-500">
-                No clients found.
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>

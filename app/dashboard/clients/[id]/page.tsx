@@ -40,6 +40,24 @@ export default function ClientDetailPage() {
   const [editDelegatePhone, setEditDelegatePhone] = useState('')
   const [editDelegateNotes, setEditDelegateNotes] = useState('')
 
+  const inputClass =
+    'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+
+  const buttonPrimary =
+    'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
+
+  const buttonSecondary =
+    'border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400'
+
+  const buttonDanger =
+    'border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-red-50'
+
+  const panelClass =
+    'bg-white border border-slate-200 rounded-lg'
+
+  const panelHeaderClass =
+    'px-4 py-3 border-b border-slate-200'
+
   const load = async () => {
     const currentProfile = await getOrCreateAccount()
     const clientId = params.id as string
@@ -341,27 +359,55 @@ export default function ClientDetailPage() {
   })
 
   const getBookingStatusStyle = (status: string) => {
-    if (status === 'completed') return 'bg-green-100 text-green-700'
-    if (status === 'cancelled') return 'bg-red-100 text-red-700'
-    return 'bg-blue-100 text-blue-700'
+    if (status === 'completed') return 'bg-emerald-50 text-emerald-700 border-emerald-100'
+    if (status === 'cancelled') return 'bg-red-50 text-red-700 border-red-100'
+    return 'bg-blue-50 text-blue-700 border-blue-100'
   }
 
   const getInvoiceStatusStyle = (status: string) => {
-    if (status === 'paid') return 'bg-green-100 text-green-700'
-    if (status === 'sent') return 'bg-blue-100 text-blue-700'
-    return 'bg-yellow-100 text-yellow-700'
+    if (status === 'paid') return 'bg-emerald-50 text-emerald-700 border-emerald-100'
+    if (status === 'sent') return 'bg-blue-50 text-blue-700 border-blue-100'
+    return 'bg-amber-50 text-amber-700 border-amber-100'
   }
 
   const getCertificateStatusStyle = (status: string) => {
-    if (status === 'revoked') return 'bg-red-100 text-red-700'
-    if (status === 'expired') return 'bg-yellow-100 text-yellow-700'
-    return 'bg-green-100 text-green-700'
+    if (status === 'revoked') return 'bg-red-50 text-red-700 border-red-100'
+    if (status === 'expired') return 'bg-amber-50 text-amber-700 border-amber-100'
+    return 'bg-emerald-50 text-emerald-700 border-emerald-100'
   }
+
+  const StatCard = ({
+    label,
+    value,
+    detail,
+  }: {
+    label: string
+    value: string | number
+    detail?: string
+  }) => (
+    <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+
+      <h2 className="text-2xl font-semibold tracking-tight text-slate-950 mt-2">
+        {value}
+      </h2>
+
+      {detail && (
+        <p className="text-xs text-slate-500 mt-1">
+          {detail}
+        </p>
+      )}
+    </div>
+  )
 
   if (loading) {
     return (
-      <div className="bg-white border rounded-2xl p-6 shadow-sm">
-        Loading company profile...
+      <div className={panelClass}>
+        <div className="p-4 text-sm text-slate-500">
+          Loading company profile...
+        </div>
       </div>
     )
   }
@@ -371,13 +417,15 @@ export default function ClientDetailPage() {
       <div>
         <Link
           href="/dashboard/clients"
-          className="text-sm text-gray-500 hover:text-black"
+          className="text-sm text-slate-500 hover:text-slate-950"
         >
           ← Back to clients
         </Link>
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm mt-6">
-          Client not found.
+        <div className={`${panelClass} mt-4`}>
+          <div className="p-4 text-sm text-slate-500">
+            Client not found.
+          </div>
         </div>
       </div>
     )
@@ -385,52 +433,62 @@ export default function ClientDetailPage() {
 
   return (
     <div>
-      <div className="mb-8">
+      <div className="mb-6">
         <Link
           href="/dashboard/clients"
-          className="text-sm text-gray-500 hover:text-black"
+          className="text-sm text-slate-500 hover:text-slate-950"
         >
           ← Back to clients
         </Link>
 
-        <div className="mt-4 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+        <div className="mt-3 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
           <div>
-            <h1 className="text-4xl font-bold">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Client profile
+            </p>
+
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
               {client.company || 'Unnamed company'}
             </h1>
 
-            <p className="text-gray-500 mt-2">
-              Company profile, delegates, bookings, invoices and certificates
+            <p className="text-sm text-slate-500 mt-1">
+              Company profile, delegates, bookings, invoices and certificates.
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2">
             {!editing && (
               <button
-                className="bg-black text-white px-4 py-2 rounded-lg"
+                className={buttonPrimary}
                 onClick={startEditing}
               >
-                Edit Company
+                Edit company
               </button>
             )}
 
-            <div className="bg-green-100 text-green-700 px-4 py-2 rounded-full text-sm w-fit">
-              Active Client
-            </div>
+            <span className="border border-emerald-100 bg-emerald-50 text-emerald-700 px-2.5 py-2 rounded-md text-xs font-medium">
+              Active client
+            </span>
           </div>
         </div>
       </div>
 
-      <div className="bg-white border rounded-2xl p-6 shadow-sm mb-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
-          <h2 className="text-2xl font-semibold">
-            Company Details
-          </h2>
+      <div className={`${panelClass} mb-4`}>
+        <div className={`${panelHeaderClass} flex flex-col md:flex-row md:items-center md:justify-between gap-3`}>
+          <div>
+            <h2 className="text-sm font-semibold text-slate-950">
+              Company details
+            </h2>
+
+            <p className="text-xs text-slate-500 mt-0.5">
+              Primary contact and company information.
+            </p>
+          </div>
 
           {editing && (
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <button
-                className="border px-4 py-2 rounded-lg"
+                className={buttonSecondary}
                 onClick={cancelEditing}
                 disabled={saving}
               >
@@ -438,534 +496,564 @@ export default function ClientDetailPage() {
               </button>
 
               <button
-                className="bg-black text-white px-4 py-2 rounded-lg disabled:bg-gray-400"
+                className={buttonPrimary}
                 onClick={saveClient}
                 disabled={saving}
               >
-                {saving ? 'Saving...' : 'Save Changes'}
+                {saving ? 'Saving...' : 'Save changes'}
               </button>
             </div>
           )}
         </div>
 
-        {!editing ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 text-sm text-gray-700">
-            <div>
-              <p className="text-gray-500">Company</p>
-              <p className="font-medium mt-1">{client.company || 'Not set'}</p>
-            </div>
-
-            <div>
-              <p className="text-gray-500">Primary contact</p>
-              <p className="font-medium mt-1">{client.name || 'Not set'}</p>
-            </div>
-
-            <div>
-              <p className="text-gray-500">Email</p>
-              <p className="font-medium mt-1 break-all">{client.email || 'Not set'}</p>
-            </div>
-
-            <div>
-              <p className="text-gray-500">Phone</p>
-              <p className="font-medium mt-1">{client.phone || 'Not set'}</p>
-            </div>
-
-            <div className="md:col-span-2">
-              <p className="text-gray-500">Address</p>
-              <p className="font-medium mt-1 whitespace-pre-line">
-                {client.address || 'Not set'}
-              </p>
-            </div>
-
-            <div className="md:col-span-2">
-              <p className="text-gray-500">Notes</p>
-              <p className="font-medium mt-1 whitespace-pre-line">
-                {client.notes || 'No notes'}
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input
-              className="border p-3 rounded-lg"
-              placeholder="Company / school name"
-              value={editCompany}
-              onChange={(e) => setEditCompany(e.target.value)}
-            />
-
-            <input
-              className="border p-3 rounded-lg"
-              placeholder="Primary contact name"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-            />
-
-            <input
-              className="border p-3 rounded-lg"
-              placeholder="Primary contact email"
-              value={editEmail}
-              onChange={(e) => setEditEmail(e.target.value)}
-            />
-
-            <input
-              className="border p-3 rounded-lg"
-              placeholder="Primary contact phone"
-              value={editPhone}
-              onChange={(e) => setEditPhone(e.target.value)}
-            />
-
-            <textarea
-              className="border p-3 rounded-lg md:col-span-2"
-              placeholder="Address"
-              value={editAddress}
-              onChange={(e) => setEditAddress(e.target.value)}
-            />
-
-            <textarea
-              className="border p-3 rounded-lg md:col-span-2"
-              placeholder="Notes"
-              value={editNotes}
-              onChange={(e) => setEditNotes(e.target.value)}
-            />
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-6 mb-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Bookings</p>
-          <h2 className="text-3xl font-bold mt-2">{bookings.length}</h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Upcoming</p>
-          <h2 className="text-3xl font-bold mt-2">{upcomingBookings.length}</h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Completed</p>
-          <h2 className="text-3xl font-bold mt-2">{completedBookings.length}</h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Delegates</p>
-          <h2 className="text-3xl font-bold mt-2">{delegates.length}</h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Invoice Value</p>
-          <h2 className="text-3xl font-bold mt-2">
-            £{totalInvoiceValue.toFixed(2)}
-          </h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Valid Certs</p>
-          <h2 className="text-3xl font-bold mt-2">
-            {validCertificates.length}
-          </h2>
-        </div>
-      </div>
-
-      {unpaidInvoices.length > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-5 mb-8 text-yellow-800">
-          This client has {unpaidInvoices.length} unpaid invoice
-          {unpaidInvoices.length === 1 ? '' : 's'}.
-        </div>
-      )}
-
-      <div className="bg-white border rounded-2xl p-6 shadow-sm mb-8">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
-          <div>
-            <h2 className="text-2xl font-semibold">
-              Delegates
-            </h2>
-
-            <p className="text-gray-500 mt-1">
-              Learner profiles connected to this company
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <div className="bg-gray-100 px-4 py-2 rounded-full text-sm text-gray-700">
-              {delegates.length} total
-            </div>
-
-            <div className="bg-gray-100 px-4 py-2 rounded-full text-sm text-gray-700">
-              {delegatesWithEmail.length} with email
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-gray-50 border rounded-2xl p-5 mb-6">
-          <h3 className="text-lg font-semibold mb-4">
-            Add Delegate
-          </h3>
-
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-            <input
-              className="border p-3 rounded-lg"
-              placeholder="Delegate full name"
-              value={delegateName}
-              onChange={(e) => setDelegateName(e.target.value)}
-            />
-
-            <input
-              className="border p-3 rounded-lg"
-              placeholder="Email optional"
-              value={delegateEmail}
-              onChange={(e) => setDelegateEmail(e.target.value)}
-            />
-
-            <input
-              className="border p-3 rounded-lg"
-              placeholder="Phone optional"
-              value={delegatePhone}
-              onChange={(e) => setDelegatePhone(e.target.value)}
-            />
-
-            <button
-              className="bg-black text-white p-3 rounded-lg"
-              onClick={addDelegate}
-            >
-              Add Delegate
-            </button>
-
-            <textarea
-              className="border p-3 rounded-lg lg:col-span-4"
-              placeholder="Notes optional"
-              value={delegateNotes}
-              onChange={(e) => setDelegateNotes(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <input
-          className="border p-3 rounded-lg w-full mb-5"
-          placeholder="Search delegates by name, email, phone, course or date..."
-          value={delegateSearch}
-          onChange={(e) => setDelegateSearch(e.target.value)}
-        />
-
-        <div className="grid gap-4">
-          {filteredDelegates.map((delegate) => {
-            const delegateBookings = getBookingsForDelegate(delegate)
-            const delegateCertificates = getCertificatesForDelegate(delegate)
-            const isEditingDelegate = editingDelegateId === delegate.id
-
-            return (
-              <div
-                key={delegate.id}
-                className="bg-gray-50 border rounded-xl p-4"
-              >
-                {!isEditingDelegate ? (
-                  <>
-                    <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                      <div>
-                        <Link
-                          href={`/dashboard/delegates/${delegate.id}`}
-                          className="font-semibold hover:underline"
-                        >
-                          {delegate.full_name}
-                        </Link>
-
-                        <div className="text-sm text-gray-600 mt-2 space-y-1">
-                          <p>Email: {delegate.email || 'Not set'}</p>
-                          <p>Phone: {delegate.phone || 'Not set'}</p>
-
-                          {delegate.notes && (
-                            <p>Notes: {delegate.notes}</p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="text-sm text-gray-600 lg:text-right">
-                        <p className="font-medium text-gray-900">
-                          {delegateBookings.length} booking
-                          {delegateBookings.length === 1 ? '' : 's'}
-                        </p>
-
-                        <p className="mt-1">
-                          {delegateCertificates.length} certificate
-                          {delegateCertificates.length === 1 ? '' : 's'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 mt-4">
-                      {delegateBookings.length > 0 ? (
-                        delegateBookings.slice(0, 3).map((booking) => (
-                          <Link
-                            key={booking.id}
-                            href={`/dashboard/bookings/${booking.id}`}
-                            className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs"
-                          >
-                            {booking.date} - {booking.course_name}
-                          </Link>
-                        ))
-                      ) : (
-                        <div className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs">
-                          No bookings yet
-                        </div>
-                      )}
-
-                      {delegateCertificates.length > 0 ? (
-                        delegateCertificates.map((certificate) => (
-                          <div
-                            key={certificate.id}
-                            className={`px-3 py-1 rounded-full text-xs ${getCertificateStatusStyle(
-                              certificate.status
-                            )}`}
-                          >
-                            Certificate: {certificate.status}
-                          </div>
-                        ))
-                      ) : (
-                        <div className="bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-xs">
-                          No certificates yet
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap gap-3 mt-4">
-                      <Link
-                        href={`/dashboard/delegates/${delegate.id}`}
-                        className="bg-black text-white px-4 py-2 rounded-lg"
-                      >
-                        View Profile
-                      </Link>
-
-                      <button
-                        className="border px-4 py-2 rounded-lg bg-white"
-                        onClick={() => startEditingDelegate(delegate)}
-                      >
-                        Edit
-                      </button>
-
-                      <button
-                        className="border border-red-300 text-red-600 px-4 py-2 rounded-lg bg-white"
-                        onClick={() => deleteDelegate(delegate.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder="Delegate full name"
-                        value={editDelegateName}
-                        onChange={(e) => setEditDelegateName(e.target.value)}
-                      />
-
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder="Email"
-                        value={editDelegateEmail}
-                        onChange={(e) => setEditDelegateEmail(e.target.value)}
-                      />
-
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder="Phone"
-                        value={editDelegatePhone}
-                        onChange={(e) => setEditDelegatePhone(e.target.value)}
-                      />
-
-                      <textarea
-                        className="border p-3 rounded-lg"
-                        placeholder="Notes"
-                        value={editDelegateNotes}
-                        onChange={(e) => setEditDelegateNotes(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="flex flex-wrap gap-3 mt-4">
-                      <button
-                        className="bg-black text-white px-4 py-2 rounded-lg"
-                        onClick={() => saveDelegate(delegate.id)}
-                      >
-                        Save Delegate
-                      </button>
-
-                      <button
-                        className="border px-4 py-2 rounded-lg bg-white"
-                        onClick={cancelEditingDelegate}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </>
-                )}
+        <div className="p-4">
+          {!editing ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 text-sm">
+              <div>
+                <p className="text-xs text-slate-500">Company</p>
+                <p className="font-medium text-slate-950 mt-1">
+                  {client.company || 'Not set'}
+                </p>
               </div>
-            )
-          })}
 
-          {filteredDelegates.length === 0 && (
-            <div className="bg-gray-50 border rounded-xl p-4 text-gray-500">
-              No delegates found for this company.
+              <div>
+                <p className="text-xs text-slate-500">Primary contact</p>
+                <p className="font-medium text-slate-950 mt-1">
+                  {client.name || 'Not set'}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-slate-500">Email</p>
+                <p className="font-medium text-slate-950 mt-1 break-all">
+                  {client.email || 'Not set'}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-slate-500">Phone</p>
+                <p className="font-medium text-slate-950 mt-1">
+                  {client.phone || 'Not set'}
+                </p>
+              </div>
+
+              <div className="md:col-span-2">
+                <p className="text-xs text-slate-500">Address</p>
+                <p className="font-medium text-slate-950 mt-1 whitespace-pre-line">
+                  {client.address || 'Not set'}
+                </p>
+              </div>
+
+              <div className="md:col-span-2">
+                <p className="text-xs text-slate-500">Notes</p>
+                <p className="font-medium text-slate-950 mt-1 whitespace-pre-line">
+                  {client.notes || 'No notes'}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input
+                className={inputClass}
+                placeholder="Company / school name"
+                value={editCompany}
+                onChange={(e) => setEditCompany(e.target.value)}
+              />
+
+              <input
+                className={inputClass}
+                placeholder="Primary contact name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+              />
+
+              <input
+                className={inputClass}
+                placeholder="Primary contact email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+              />
+
+              <input
+                className={inputClass}
+                placeholder="Primary contact phone"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+              />
+
+              <textarea
+                className={`${inputClass} md:col-span-2 min-h-20`}
+                placeholder="Address"
+                value={editAddress}
+                onChange={(e) => setEditAddress(e.target.value)}
+              />
+
+              <textarea
+                className={`${inputClass} md:col-span-2 min-h-20`}
+                placeholder="Notes"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+              />
             </div>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-2xl font-semibold">
-              Bookings
+      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-4">
+        <StatCard
+          label="Bookings"
+          value={bookings.length}
+          detail="Total sessions"
+        />
+
+        <StatCard
+          label="Upcoming"
+          value={upcomingBookings.length}
+          detail="Future sessions"
+        />
+
+        <StatCard
+          label="Completed"
+          value={completedBookings.length}
+          detail="Finished sessions"
+        />
+
+        <StatCard
+          label="Delegates"
+          value={delegates.length}
+          detail="Learner profiles"
+        />
+
+        <StatCard
+          label="Invoice value"
+          value={`£${totalInvoiceValue.toFixed(2)}`}
+          detail="Total invoiced"
+        />
+
+        <StatCard
+          label="Valid certs"
+          value={validCertificates.length}
+          detail="Current certificates"
+        />
+      </div>
+
+      {unpaidInvoices.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4 text-sm text-amber-800">
+          This client has {unpaidInvoices.length} unpaid invoice
+          {unpaidInvoices.length === 1 ? '' : 's'}.
+        </div>
+      )}
+
+      <div className={`${panelClass} mb-4`}>
+        <div className={`${panelHeaderClass} flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3`}>
+          <div>
+            <h2 className="text-sm font-semibold text-slate-950">
+              Delegates
             </h2>
+
+            <p className="text-xs text-slate-500 mt-0.5">
+              Learner profiles connected to this company.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <span className="border border-slate-200 bg-slate-50 px-2.5 py-1 rounded-md text-xs font-medium text-slate-700">
+              {delegates.length} total
+            </span>
+
+            <span className="border border-slate-200 bg-slate-50 px-2.5 py-1 rounded-md text-xs font-medium text-slate-700">
+              {delegatesWithEmail.length} with email
+            </span>
+          </div>
+        </div>
+
+        <div className="p-4">
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
+            <h3 className="text-sm font-semibold text-slate-950 mb-3">
+              Add delegate
+            </h3>
+
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+              <input
+                className={inputClass}
+                placeholder="Delegate full name"
+                value={delegateName}
+                onChange={(e) => setDelegateName(e.target.value)}
+              />
+
+              <input
+                className={inputClass}
+                placeholder="Email optional"
+                value={delegateEmail}
+                onChange={(e) => setDelegateEmail(e.target.value)}
+              />
+
+              <input
+                className={inputClass}
+                placeholder="Phone optional"
+                value={delegatePhone}
+                onChange={(e) => setDelegatePhone(e.target.value)}
+              />
+
+              <button
+                className={buttonPrimary}
+                onClick={addDelegate}
+              >
+                Add delegate
+              </button>
+
+              <textarea
+                className={`${inputClass} lg:col-span-4 min-h-20`}
+                placeholder="Notes optional"
+                value={delegateNotes}
+                onChange={(e) => setDelegateNotes(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <input
+            className={`${inputClass} w-full mb-4`}
+            placeholder="Search delegates by name, email, phone, course or date..."
+            value={delegateSearch}
+            onChange={(e) => setDelegateSearch(e.target.value)}
+          />
+
+          <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
+            {filteredDelegates.map((delegate) => {
+              const delegateBookings = getBookingsForDelegate(delegate)
+              const delegateCertificates = getCertificatesForDelegate(delegate)
+              const isEditingDelegate = editingDelegateId === delegate.id
+
+              return (
+                <div
+                  key={delegate.id}
+                  className="bg-white p-4"
+                >
+                  {!isEditingDelegate ? (
+                    <>
+                      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                        <div>
+                          <Link
+                            href={`/dashboard/delegates/${delegate.id}`}
+                            className="text-sm font-semibold text-slate-950 hover:underline"
+                          >
+                            {delegate.full_name}
+                          </Link>
+
+                          <div className="text-xs text-slate-600 mt-2 space-y-1">
+                            <p>Email: {delegate.email || 'Not set'}</p>
+                            <p>Phone: {delegate.phone || 'Not set'}</p>
+
+                            {delegate.notes && (
+                              <p>Notes: {delegate.notes}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="text-xs text-slate-600 lg:text-right">
+                          <p className="font-medium text-slate-950">
+                            {delegateBookings.length} booking
+                            {delegateBookings.length === 1 ? '' : 's'}
+                          </p>
+
+                          <p className="mt-1">
+                            {delegateCertificates.length} certificate
+                            {delegateCertificates.length === 1 ? '' : 's'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        {delegateBookings.length > 0 ? (
+                          delegateBookings.slice(0, 3).map((booking) => (
+                            <Link
+                              key={booking.id}
+                              href={`/dashboard/bookings/${booking.id}`}
+                              className="border bg-blue-50 text-blue-700 border-blue-100 px-2.5 py-1 rounded-md text-xs font-medium"
+                            >
+                              {booking.date} - {booking.course_name}
+                            </Link>
+                          ))
+                        ) : (
+                          <span className="border bg-amber-50 text-amber-700 border-amber-100 px-2.5 py-1 rounded-md text-xs font-medium">
+                            No bookings yet
+                          </span>
+                        )}
+
+                        {delegateCertificates.length > 0 ? (
+                          delegateCertificates.map((certificate) => (
+                            <span
+                              key={certificate.id}
+                              className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getCertificateStatusStyle(
+                                certificate.status
+                              )}`}
+                            >
+                              Certificate: {certificate.status}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="border bg-slate-50 text-slate-700 border-slate-200 px-2.5 py-1 rounded-md text-xs font-medium">
+                            No certificates yet
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        <Link
+                          href={`/dashboard/delegates/${delegate.id}`}
+                          className={buttonPrimary}
+                        >
+                          View profile
+                        </Link>
+
+                        <button
+                          className={buttonSecondary}
+                          onClick={() => startEditingDelegate(delegate)}
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          className={buttonDanger}
+                          onClick={() => deleteDelegate(delegate.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input
+                          className={inputClass}
+                          placeholder="Delegate full name"
+                          value={editDelegateName}
+                          onChange={(e) => setEditDelegateName(e.target.value)}
+                        />
+
+                        <input
+                          className={inputClass}
+                          placeholder="Email"
+                          value={editDelegateEmail}
+                          onChange={(e) => setEditDelegateEmail(e.target.value)}
+                        />
+
+                        <input
+                          className={inputClass}
+                          placeholder="Phone"
+                          value={editDelegatePhone}
+                          onChange={(e) => setEditDelegatePhone(e.target.value)}
+                        />
+
+                        <textarea
+                          className={`${inputClass} min-h-20`}
+                          placeholder="Notes"
+                          value={editDelegateNotes}
+                          onChange={(e) => setEditDelegateNotes(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        <button
+                          className={buttonPrimary}
+                          onClick={() => saveDelegate(delegate.id)}
+                        >
+                          Save delegate
+                        </button>
+
+                        <button
+                          className={buttonSecondary}
+                          onClick={cancelEditingDelegate}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            })}
+
+            {filteredDelegates.length === 0 && (
+              <div className="bg-white p-4 text-sm text-slate-500">
+                No delegates found for this company.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className={panelClass}>
+          <div className={`${panelHeaderClass} flex items-center justify-between`}>
+            <div>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Bookings
+              </h2>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                Recent bookings for this client.
+              </p>
+            </div>
 
             <Link
               href="/dashboard/bookings"
-              className="text-sm text-gray-500 hover:text-black"
+              className="text-xs font-medium text-slate-500 hover:text-slate-950"
             >
               Manage
             </Link>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="divide-y divide-slate-100">
             {bookings.slice(0, 10).map((booking) => (
               <Link
                 key={booking.id}
                 href={`/dashboard/bookings/${booking.id}`}
-                className="bg-gray-50 p-4 rounded-xl hover:bg-gray-100 transition block"
+                className="block p-4 hover:bg-slate-50 transition"
               >
-                <p className="font-semibold">{booking.course_name}</p>
-
-                <p className="text-sm text-gray-500 mt-1">
-                  {booking.date}
-                  {booking.start_time ? ` at ${booking.start_time}` : ''}
+                <p className="text-sm font-semibold text-slate-950">
+                  {booking.course_name}
                 </p>
 
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="text-xs text-slate-500 mt-1">
+                  {booking.date}
+                  {booking.start_time ? ` · ${booking.start_time}` : ''}
+                </p>
+
+                <p className="text-xs text-slate-600 mt-1">
                   {booking.location || 'No location set'}
                 </p>
 
-                <div className={`mt-3 px-3 py-1 rounded-full text-xs w-fit ${getBookingStatusStyle(booking.status)}`}>
+                <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getBookingStatusStyle(booking.status)}`}>
                   {booking.status}
-                </div>
-
-                <p className="text-xs text-gray-400 mt-3">
-                  View booking →
-                </p>
+                </span>
               </Link>
             ))}
 
             {bookings.length === 0 && (
-              <p className="text-gray-500">
+              <div className="p-4 text-sm text-slate-500">
                 No bookings for this company yet.
-              </p>
+              </div>
             )}
           </div>
         </div>
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-2xl font-semibold">
-              Invoices
-            </h2>
+        <div className={panelClass}>
+          <div className={`${panelHeaderClass} flex items-center justify-between`}>
+            <div>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Invoices
+              </h2>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                Invoices created from this client’s bookings.
+              </p>
+            </div>
 
             <Link
               href="/dashboard/invoices"
-              className="text-sm text-gray-500 hover:text-black"
+              className="text-xs font-medium text-slate-500 hover:text-slate-950"
             >
               Manage
             </Link>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="divide-y divide-slate-100">
             {invoices.slice(0, 10).map((invoice) => {
               const booking = getBookingForInvoice(invoice)
 
               return (
                 <div
                   key={invoice.id}
-                  className="bg-gray-50 p-4 rounded-xl"
+                  className="p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-semibold">
+                      <p className="text-sm font-semibold text-slate-950">
                         {invoice.invoice_number || 'Invoice'}
                       </p>
 
-                      <p className="text-sm text-gray-500 mt-1">
+                      <p className="text-xs text-slate-500 mt-1">
                         {booking?.course_name || 'Booking'}
                       </p>
                     </div>
 
-                    <p className="font-semibold">
+                    <p className="text-sm font-semibold text-slate-950">
                       £{Number(invoice.total_amount || invoice.amount || 0).toFixed(2)}
                     </p>
                   </div>
 
-                  <p className="text-sm text-gray-600 mt-2">
+                  <p className="text-xs text-slate-600 mt-2">
                     Due: {invoice.due_date || 'Not set'}
                   </p>
 
-                  <div className={`mt-3 px-3 py-1 rounded-full text-xs w-fit ${getInvoiceStatusStyle(invoice.status)}`}>
+                  <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getInvoiceStatusStyle(invoice.status)}`}>
                     {invoice.status}
-                  </div>
+                  </span>
                 </div>
               )
             })}
 
             {invoices.length === 0 && (
-              <p className="text-gray-500">
+              <div className="p-4 text-sm text-slate-500">
                 No invoices for this company yet.
-              </p>
+              </div>
             )}
           </div>
         </div>
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-2xl font-semibold">
-              Certificates
-            </h2>
+        <div className={panelClass}>
+          <div className={`${panelHeaderClass} flex items-center justify-between`}>
+            <div>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Certificates
+              </h2>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                Certificates issued to this client’s delegates.
+              </p>
+            </div>
 
             <Link
               href="/dashboard/certificates"
-              className="text-sm text-gray-500 hover:text-black"
+              className="text-xs font-medium text-slate-500 hover:text-slate-950"
             >
               Manage
             </Link>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="divide-y divide-slate-100">
             {certificates.slice(0, 10).map((certificate) => {
               const booking = getBookingForCertificate(certificate)
 
               return (
                 <div
                   key={certificate.id}
-                  className="bg-gray-50 p-4 rounded-xl"
+                  className="p-4"
                 >
-                  <p className="font-semibold">
+                  <p className="text-sm font-semibold text-slate-950">
                     {certificate.learner_name}
                   </p>
 
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className="text-xs text-slate-500 mt-1">
                     {certificate.course_name || booking?.course_name}
                   </p>
 
-                  <p className="text-sm text-gray-600 mt-2">
+                  <p className="text-xs text-slate-600 mt-2">
                     Expires: {certificate.expiry_date}
                   </p>
 
-                  <div className={`mt-3 px-3 py-1 rounded-full text-xs w-fit ${getCertificateStatusStyle(certificate.status)}`}>
+                  <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getCertificateStatusStyle(certificate.status)}`}>
                     {certificate.status}
-                  </div>
+                  </span>
                 </div>
               )
             })}
 
             {certificates.length === 0 && (
-              <p className="text-gray-500">
+              <div className="p-4 text-sm text-slate-500">
                 No certificates for this company yet.
-              </p>
+              </div>
             )}
           </div>
         </div>
