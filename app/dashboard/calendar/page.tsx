@@ -31,6 +31,21 @@ export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(today.getMonth())
   const [currentYear, setCurrentYear] = useState(today.getFullYear())
 
+  const inputClass =
+    'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+
+  const buttonPrimary =
+    'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
+
+  const buttonSecondary =
+    'border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400'
+
+  const panelClass =
+    'bg-white border border-slate-200 rounded-lg'
+
+  const panelHeaderClass =
+    'px-4 py-3 border-b border-slate-200'
+
   const load = async () => {
     const profile = await getOrCreateAccount()
 
@@ -78,8 +93,22 @@ export default function CalendarPage() {
     return `${year}-${monthValue}-${dayValue}`
   }
 
+  const todayString = formatDate(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  )
+
   const getBookingsForDate = (dateValue: string) => {
     return bookings.filter((booking) => booking.date === dateValue)
+  }
+
+  const getClientForBooking = (booking: any) => {
+    return clients.find((client) => client.id === booking.client_id)
+  }
+
+  const getClientDisplayName = (booking: any) => {
+    return getClientForBooking(booking)?.company || booking.client_name || 'No client'
   }
 
   const openCreateForm = (dateValue: string) => {
@@ -178,6 +207,12 @@ export default function CalendarPage() {
     setCurrentMonth(currentMonth + 1)
   }
 
+  const goToToday = () => {
+    setCurrentMonth(today.getMonth())
+    setCurrentYear(today.getFullYear())
+    setSelectedDate(todayString)
+  }
+
   const monthName = new Date(currentYear, currentMonth).toLocaleString(
     'default',
     {
@@ -208,115 +243,299 @@ export default function CalendarPage() {
     return bookingDate >= todayDate && booking.status !== 'cancelled'
   })
 
+  const completedBookings = bookings.filter(
+    (booking) => booking.status === 'completed'
+  )
+
+  const cancelledBookings = bookings.filter(
+    (booking) => booking.status === 'cancelled'
+  )
+
+  const currentMonthBookings = bookings.filter((booking) => {
+    if (!booking.date) return false
+
+    const bookingDate = new Date(booking.date)
+
+    return (
+      bookingDate.getMonth() === currentMonth &&
+      bookingDate.getFullYear() === currentYear
+    )
+  })
+
+  const selectedDateBookings = selectedDate
+    ? getBookingsForDate(selectedDate)
+    : []
+
+  const busiestDay = Array.from({ length: daysInMonth }, (_, index) => {
+    const dateValue = formatDate(currentYear, currentMonth, index + 1)
+
+    return {
+      date: dateValue,
+      count: getBookingsForDate(dateValue).length,
+    }
+  }).sort((a, b) => b.count - a.count)[0]
+
   const getStatusStyle = (status: string) => {
-    if (status === 'completed') return 'bg-green-100 text-green-700'
-    if (status === 'cancelled') return 'bg-red-100 text-red-700'
-    return 'bg-blue-100 text-blue-700'
+    if (status === 'completed') {
+      return 'bg-emerald-50 text-emerald-700 border-emerald-100'
+    }
+
+    if (status === 'cancelled') {
+      return 'bg-red-50 text-red-700 border-red-100'
+    }
+
+    return 'bg-blue-50 text-blue-700 border-blue-100'
   }
+
+  const getBookingAccent = (status: string) => {
+    if (status === 'completed') {
+      return 'border-l-emerald-500 bg-emerald-50 hover:bg-emerald-100'
+    }
+
+    if (status === 'cancelled') {
+      return 'border-l-red-500 bg-red-50 hover:bg-red-100'
+    }
+
+    return 'border-l-blue-500 bg-blue-50 hover:bg-blue-100'
+  }
+
+  const StatCard = ({
+    label,
+    value,
+    detail,
+  }: {
+    label: string
+    value: string | number
+    detail?: string
+  }) => (
+    <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+
+      <h2 className="text-2xl font-semibold tracking-tight text-slate-950 mt-2">
+        {value}
+      </h2>
+
+      {detail && (
+        <p className="text-xs text-slate-500 mt-1">
+          {detail}
+        </p>
+      )}
+    </div>
+  )
 
   if (loading) {
     return (
-      <div className="bg-white border rounded-2xl p-6 shadow-sm">
-        Loading calendar...
+      <div className={panelClass}>
+        <div className="p-4 text-sm text-slate-500">
+          Loading calendar...
+        </div>
       </div>
     )
   }
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold">
-          Calendar
-        </h1>
+      <div className="mb-6 overflow-hidden rounded-lg border border-slate-900 bg-slate-950 text-white">
+        <div className="px-5 py-5 lg:px-6 lg:py-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Calendar
+            </p>
 
-        <p className="text-gray-500 mt-1">
-          View bookings by date and create new training sessions
-        </p>
-      </div>
+            <h1 className="text-3xl font-semibold tracking-tight mt-1">
+              Training schedule
+            </h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Total Bookings</p>
-          <h2 className="text-3xl font-bold mt-2">{bookings.length}</h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Upcoming</p>
-          <h2 className="text-3xl font-bold mt-2">{upcomingBookings.length}</h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Current Month</p>
-          <h2 className="text-3xl font-bold mt-2">
-            {monthName}
-          </h2>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <div className="xl:col-span-2 bg-white border rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <button
-              className="border px-4 py-2 rounded-lg"
-              onClick={previousMonth}
-            >
-              ← Previous
-            </button>
-
-            <h2 className="text-2xl font-semibold">
-              {monthName} {currentYear}
-            </h2>
-
-            <button
-              className="border px-4 py-2 rounded-lg"
-              onClick={nextMonth}
-            >
-              Next →
-            </button>
+            <p className="text-sm text-slate-300 mt-2 max-w-2xl">
+              View your month at a glance, spot busy days, and create new bookings directly from the calendar.
+            </p>
           </div>
 
-          <div className="grid grid-cols-7 gap-2 text-center text-sm text-gray-500 mb-2">
-            <div>Sun</div>
-            <div>Mon</div>
-            <div>Tue</div>
-            <div>Wed</div>
-            <div>Thu</div>
-            <div>Fri</div>
-            <div>Sat</div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="bg-white text-slate-950 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-100"
+              onClick={goToToday}
+            >
+              Today
+            </button>
+
+            <button
+              className="border border-slate-700 px-3 py-2 rounded-md text-sm font-medium text-slate-200 hover:bg-slate-900"
+              onClick={() => openCreateForm(todayString)}
+            >
+              New booking
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 border-t border-slate-800">
+          <div className="p-4 border-b md:border-b-0 md:border-r border-slate-800">
+            <p className="text-xs uppercase tracking-wide text-slate-400">
+              This month
+            </p>
+
+            <p className="text-2xl font-semibold mt-1">
+              {monthName}
+            </p>
+
+            <p className="text-xs text-slate-400 mt-1">
+              {currentYear}
+            </p>
           </div>
 
-          <div className="grid grid-cols-7 gap-2">
+          <div className="p-4 border-b md:border-b-0 md:border-r border-slate-800">
+            <p className="text-xs uppercase tracking-wide text-slate-400">
+              Month bookings
+            </p>
+
+            <p className="text-2xl font-semibold mt-1">
+              {currentMonthBookings.length}
+            </p>
+
+            <p className="text-xs text-slate-400 mt-1">
+              Scheduled in view
+            </p>
+          </div>
+
+          <div className="p-4 border-b md:border-b-0 md:border-r border-slate-800">
+            <p className="text-xs uppercase tracking-wide text-slate-400">
+              Upcoming
+            </p>
+
+            <p className="text-2xl font-semibold mt-1">
+              {upcomingBookings.length}
+            </p>
+
+            <p className="text-xs text-slate-400 mt-1">
+              Future active bookings
+            </p>
+          </div>
+
+          <div className="p-4">
+            <p className="text-xs uppercase tracking-wide text-slate-400">
+              Busiest day
+            </p>
+
+            <p className="text-2xl font-semibold mt-1">
+              {busiestDay?.count > 0
+                ? new Date(busiestDay.date).toLocaleDateString(undefined, {
+                    day: 'numeric',
+                    month: 'short',
+                  })
+                : 'None'}
+            </p>
+
+            <p className="text-xs text-slate-400 mt-1">
+              {busiestDay?.count || 0} booking{busiestDay?.count === 1 ? '' : 's'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+        <StatCard
+          label="Total bookings"
+          value={bookings.length}
+          detail="All calendar records"
+        />
+
+        <StatCard
+          label="Upcoming"
+          value={upcomingBookings.length}
+          detail="Future active sessions"
+        />
+
+        <StatCard
+          label="Completed"
+          value={completedBookings.length}
+          detail="Finished sessions"
+        />
+
+        <StatCard
+          label="Cancelled"
+          value={cancelledBookings.length}
+          detail="Removed from active schedule"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+        <div className={`xl:col-span-8 ${panelClass} overflow-hidden`}>
+          <div className="bg-white border-b border-slate-200 px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-950">
+                {monthName} {currentYear}
+              </h2>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                Click a date number or plus button to create a booking.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                className={buttonSecondary}
+                onClick={previousMonth}
+              >
+                ← Previous
+              </button>
+
+              <button
+                className={buttonSecondary}
+                onClick={goToToday}
+              >
+                Today
+              </button>
+
+              <button
+                className={buttonSecondary}
+                onClick={nextMonth}
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-slate-950 grid grid-cols-7 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+            <div className="py-3 border-r border-slate-800">Sun</div>
+            <div className="py-3 border-r border-slate-800">Mon</div>
+            <div className="py-3 border-r border-slate-800">Tue</div>
+            <div className="py-3 border-r border-slate-800">Wed</div>
+            <div className="py-3 border-r border-slate-800">Thu</div>
+            <div className="py-3 border-r border-slate-800">Fri</div>
+            <div className="py-3">Sat</div>
+          </div>
+
+          <div className="grid grid-cols-7 bg-slate-200 gap-px">
             {calendarDays.map((day, index) => {
               if (!day) {
                 return (
                   <div
                     key={`blank-${index}`}
-                    className="min-h-28 bg-gray-50 rounded-xl"
+                    className="min-h-32 bg-slate-50"
                   />
                 )
               }
 
               const dateValue = formatDate(currentYear, currentMonth, day)
               const dayBookings = getBookingsForDate(dateValue)
-              const isToday = dateValue === formatDate(
-                today.getFullYear(),
-                today.getMonth(),
-                today.getDate()
-              )
+              const isToday = dateValue === todayString
+              const isSelected = dateValue === selectedDate
 
               return (
                 <div
                   key={dateValue}
-                  className={`min-h-28 border rounded-xl p-2 bg-white ${
-                    isToday ? 'border-black' : ''
-                  }`}
+                  className={`min-h-32 bg-white p-2 transition ${
+                    isSelected ? 'ring-2 ring-inset ring-slate-950' : ''
+                  } ${isToday ? 'bg-slate-50' : ''}`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <button
-                      className={`w-7 h-7 rounded-full text-sm ${
+                      className={`w-8 h-8 rounded-md text-sm font-semibold transition ${
                         isToday
-                          ? 'bg-black text-white'
-                          : 'bg-gray-100 text-gray-700'
+                          ? 'bg-slate-950 text-white'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                       }`}
                       onClick={() => openCreateForm(dateValue)}
                     >
@@ -324,7 +543,7 @@ export default function CalendarPage() {
                     </button>
 
                     <button
-                      className="text-xs text-gray-400 hover:text-black"
+                      className="w-7 h-7 rounded-md border border-slate-200 text-slate-500 text-sm hover:bg-slate-950 hover:text-white hover:border-slate-950 transition"
                       onClick={() => openCreateForm(dateValue)}
                     >
                       +
@@ -336,22 +555,31 @@ export default function CalendarPage() {
                       <Link
                         key={booking.id}
                         href={`/dashboard/bookings/${booking.id}`}
-                        className="bg-gray-100 hover:bg-gray-200 rounded-lg p-2 text-left block"
+                        className={`border border-transparent border-l-4 rounded-md px-2 py-1.5 text-left block transition ${getBookingAccent(
+                          booking.status
+                        )}`}
                       >
-                        <p className="text-xs font-semibold truncate">
+                        <p className="text-[11px] font-semibold truncate text-slate-950">
+                          {booking.start_time ? `${booking.start_time} · ` : ''}
                           {booking.course_name}
                         </p>
 
-                        <p className="text-xs text-gray-500 truncate">
-                          {booking.client_name}
+                        <p className="text-[11px] text-slate-600 truncate">
+                          {getClientDisplayName(booking)}
                         </p>
                       </Link>
                     ))}
 
                     {dayBookings.length > 3 && (
-                      <p className="text-xs text-gray-400">
+                      <button
+                        className="text-[11px] text-slate-500 hover:text-slate-950 text-left"
+                        onClick={() => {
+                          setSelectedDate(dateValue)
+                          setShowCreateForm(false)
+                        }}
+                      >
                         +{dayBookings.length - 3} more
-                      </p>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -360,162 +588,272 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <h2 className="text-2xl font-semibold mb-5">
-            {showCreateForm ? 'Create Booking' : 'Upcoming Bookings'}
-          </h2>
+        <div className="xl:col-span-4 grid gap-4 h-fit">
+          <div className={panelClass}>
+            <div className={panelHeaderClass}>
+              <h2 className="text-sm font-semibold text-slate-950">
+                {showCreateForm ? 'Create booking' : selectedDate ? 'Selected date' : 'Upcoming bookings'}
+              </h2>
 
-          {!showCreateForm ? (
-            <div className="flex flex-col gap-4">
-              {upcomingBookings.slice(0, 10).map((booking) => (
-                <Link
-                  key={booking.id}
-                  href={`/dashboard/bookings/${booking.id}`}
-                  className="bg-gray-50 rounded-xl p-4 hover:bg-gray-100 transition block"
-                >
-                  <p className="font-semibold">
-                    {booking.course_name}
-                  </p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {showCreateForm
+                  ? 'Add a session directly from the calendar.'
+                  : selectedDate
+                    ? 'Bookings for the selected day.'
+                    : 'Your next scheduled sessions.'}
+              </p>
+            </div>
 
-                  <p className="text-sm text-gray-500 mt-1">
-                    {booking.client_name}
-                  </p>
+            {!showCreateForm ? (
+              <div className="p-4">
+                {selectedDate && (
+                  <div className="bg-slate-950 text-white rounded-lg p-4 mb-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      Selected date
+                    </p>
 
-                  <p className="text-sm text-gray-600 mt-2">
-                    {booking.date}
-                    {booking.start_time ? ` at ${booking.start_time}` : ''}
-                  </p>
+                    <p className="text-lg font-semibold mt-1">
+                      {new Date(selectedDate).toLocaleDateString(undefined, {
+                        weekday: 'long',
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric',
+                      })}
+                    </p>
 
-                  <div className={`mt-3 px-3 py-1 rounded-full text-xs w-fit ${getStatusStyle(booking.status)}`}>
-                    {booking.status}
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      <button
+                        className="bg-white text-slate-950 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-100"
+                        onClick={() => openCreateForm(selectedDate)}
+                      >
+                        Add booking
+                      </button>
+
+                      <button
+                        className="border border-slate-700 px-3 py-2 rounded-md text-sm font-medium text-slate-200 hover:bg-slate-900"
+                        onClick={() => setSelectedDate('')}
+                      >
+                        Clear
+                      </button>
+                    </div>
                   </div>
-                </Link>
-              ))}
+                )}
 
-              {upcomingBookings.length === 0 && (
-                <p className="text-gray-500">
-                  No upcoming bookings.
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <div className="bg-gray-50 border rounded-xl p-3 text-sm text-gray-600">
-                Creating booking for:
-                <span className="font-semibold text-gray-900 ml-1">
-                  {selectedDate}
-                </span>
+                <div className="flex flex-col gap-3">
+                  {(selectedDate ? selectedDateBookings : upcomingBookings.slice(0, 10)).map((booking) => (
+                    <Link
+                      key={booking.id}
+                      href={`/dashboard/bookings/${booking.id}`}
+                      className="border border-slate-200 bg-white rounded-lg p-4 hover:bg-slate-50 transition block"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-950">
+                            {booking.course_name}
+                          </p>
+
+                          <p className="text-xs text-slate-500 mt-1">
+                            {getClientDisplayName(booking)}
+                          </p>
+                        </div>
+
+                        <span className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(booking.status)}`}>
+                          {booking.status}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mt-3 text-xs text-slate-600">
+                        <div>
+                          <p className="text-slate-400">Date</p>
+
+                          <p className="font-medium text-slate-800 mt-1">
+                            {booking.date}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-slate-400">Time</p>
+
+                          <p className="font-medium text-slate-800 mt-1">
+                            {booking.start_time || 'Not set'}
+                          </p>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+
+                  {(selectedDate ? selectedDateBookings : upcomingBookings).length === 0 && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-500">
+                      {selectedDate
+                        ? 'No bookings for this date.'
+                        : 'No upcoming bookings.'}
+                    </div>
+                  )}
+                </div>
               </div>
+            ) : (
+              <div className="p-4 flex flex-col gap-3">
+                <div className="bg-slate-950 text-white rounded-lg p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Creating booking for
+                  </p>
 
-              <select
-                className="border p-3 rounded-lg"
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-              >
-                <option value="">Select Client</option>
+                  <p className="text-lg font-semibold mt-1">
+                    {selectedDate
+                      ? new Date(selectedDate).toLocaleDateString(undefined, {
+                          weekday: 'long',
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric',
+                        })
+                      : date}
+                  </p>
+                </div>
 
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.company} - {client.name}
-                  </option>
-                ))}
-              </select>
+                <select
+                  className={inputClass}
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                >
+                  <option value="">Select client</option>
 
-              <select
-                className="border p-3 rounded-lg"
-                value={trainerId}
-                onChange={(e) => setTrainerId(e.target.value)}
-              >
-                <option value="">Assign Trainer</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.company} - {client.name}
+                    </option>
+                  ))}
+                </select>
 
-                {trainers.map((trainer) => (
-                  <option key={trainer.id} value={trainer.id}>
-                    {trainer.name}
-                  </option>
-                ))}
-              </select>
+                <select
+                  className={inputClass}
+                  value={trainerId}
+                  onChange={(e) => setTrainerId(e.target.value)}
+                >
+                  <option value="">Assign trainer</option>
 
-              <select
-                className="border p-3 rounded-lg"
-                value={courseTemplateId}
-                onChange={(e) => applyCourseTemplate(e.target.value)}
-              >
-                <option value="">Select Course Template</option>
+                  {trainers.map((trainer) => (
+                    <option key={trainer.id} value={trainer.id}>
+                      {trainer.name}
+                    </option>
+                  ))}
+                </select>
 
-                {courseTemplates.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.code ? `${course.code} - ` : ''}
-                    {course.name}
-                  </option>
-                ))}
-              </select>
+                <select
+                  className={inputClass}
+                  value={courseTemplateId}
+                  onChange={(e) => applyCourseTemplate(e.target.value)}
+                >
+                  <option value="">Select course template</option>
 
-              <input
-                className="border p-3 rounded-lg"
-                placeholder="Course name"
-                value={courseName}
-                onChange={(e) => setCourseName(e.target.value)}
-              />
+                  {courseTemplates.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.code ? `${course.code} - ` : ''}
+                      {course.name}
+                    </option>
+                  ))}
+                </select>
 
-              <input
-                className="border p-3 rounded-lg"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
-
-              <div className="grid grid-cols-2 gap-3">
                 <input
-                  className="border p-3 rounded-lg"
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
+                  className={inputClass}
+                  placeholder="Course name"
+                  value={courseName}
+                  onChange={(e) => setCourseName(e.target.value)}
                 />
 
                 <input
-                  className="border p-3 rounded-lg"
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
+                  className={inputClass}
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
                 />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    className={inputClass}
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                  />
+
+                  <input
+                    className={inputClass}
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                  />
+                </div>
+
+                <input
+                  className={inputClass}
+                  placeholder="Location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                />
+
+                <input
+                  className={inputClass}
+                  placeholder="Price"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                />
+
+                <textarea
+                  className={`${inputClass} min-h-24`}
+                  placeholder="Notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+
+                {courseTemplateId && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600">
+                    Course template applied. You can still edit the course name, price or notes before saving.
+                  </div>
+                )}
+
+                <button
+                  className={buttonPrimary}
+                  onClick={createBooking}
+                >
+                  Create booking
+                </button>
+
+                <button
+                  className={buttonSecondary}
+                  onClick={closeCreateForm}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-slate-950 text-white border border-slate-900 rounded-lg p-4">
+            <p className="text-sm font-semibold">
+              Calendar key
+            </p>
+
+            <div className="grid gap-3 mt-4 text-xs text-slate-300">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-sm bg-blue-500" />
+                Scheduled booking
               </div>
 
-              <input
-                className="border p-3 rounded-lg"
-                placeholder="Location"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-              />
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-sm bg-emerald-500" />
+                Completed booking
+              </div>
 
-              <input
-                className="border p-3 rounded-lg"
-                placeholder="Price"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-              />
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-sm bg-red-500" />
+                Cancelled booking
+              </div>
 
-              <textarea
-                className="border p-3 rounded-lg"
-                placeholder="Notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-
-              <button
-                className="bg-black text-white p-3 rounded-lg"
-                onClick={createBooking}
-              >
-                Create Booking
-              </button>
-
-              <button
-                className="border p-3 rounded-lg"
-                onClick={closeCreateForm}
-              >
-                Cancel
-              </button>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-sm bg-white" />
+                Today
+              </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
