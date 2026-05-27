@@ -458,143 +458,132 @@ export default function BookingsPage() {
 
   const getStatusStyle = (status: string) => {
     if (status === 'completed') {
-      return 'bg-green-100 text-green-700'
+      return 'bg-emerald-50 text-emerald-700 border-emerald-100'
     }
 
     if (status === 'cancelled') {
-      return 'bg-red-100 text-red-700'
+      return 'bg-red-50 text-red-700 border-red-100'
     }
 
-    return 'bg-blue-100 text-blue-700'
+    return 'bg-blue-50 text-blue-700 border-blue-100'
   }
+
+  const StatCard = ({
+    label,
+    value,
+    detail,
+  }: {
+    label: string
+    value: string | number
+    detail?: string
+  }) => (
+    <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+
+      <h2 className="text-2xl font-semibold tracking-tight text-slate-950 mt-2">
+        {value}
+      </h2>
+
+      {detail && (
+        <p className="text-xs text-slate-500 mt-1">
+          {detail}
+        </p>
+      )}
+    </div>
+  )
+
+  const inputClass =
+    'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+
+  const buttonSecondary =
+    'border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400'
+
+  const buttonPrimary =
+    'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold">
-          Bookings
-        </h1>
-
-        <p className="text-gray-500 mt-1">
-          Schedule, edit, filter, confirm and remind clients about training sessions
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Total Bookings</p>
-          <h2 className="text-3xl font-bold mt-2">
-            {bookings.length}
-          </h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Scheduled</p>
-          <h2 className="text-3xl font-bold mt-2">
-            {scheduledBookings.length}
-          </h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Completed</p>
-          <h2 className="text-3xl font-bold mt-2">
-            {completedBookings.length}
-          </h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Estimated Value</p>
-          <h2 className="text-3xl font-bold mt-2">
-            £{estimatedValue.toFixed(2)}
-          </h2>
-        </div>
-      </div>
-
-      <div className="bg-white border rounded-2xl p-5 shadow-sm mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-          <input
-            className="border p-3 rounded-lg md:col-span-2"
-            placeholder="Search by company, contact, course, date, trainer, location..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-
-          <select
-            className="border p-3 rounded-lg"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="all">All Statuses</option>
-            <option value="scheduled">Scheduled</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-
-          <select
-            className="border p-3 rounded-lg"
-            value={trainerFilter}
-            onChange={(e) => setTrainerFilter(e.target.value)}
-          >
-            <option value="all">All Trainers</option>
-
-            {trainers.map((trainer) => (
-              <option key={trainer.id} value={trainer.id}>
-                {trainer.name}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="border p-3 rounded-lg"
-            value={dateSort}
-            onChange={(e) => setDateSort(e.target.value)}
-          >
-            <option value="ascending">Oldest First</option>
-            <option value="descending">Newest First</option>
-          </select>
-        </div>
-
-        <div className="flex items-center justify-between mt-4">
-          <p className="text-sm text-gray-500">
-            Showing {filteredBookings.length} of {bookings.length} bookings
+      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Bookings
           </p>
 
-          <button
-            className="border px-4 py-2 rounded-lg text-sm"
-            onClick={clearFilters}
-          >
-            Clear Filters
-          </button>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
+            Training bookings
+          </h1>
+
+          <p className="text-sm text-slate-500 mt-1">
+            Schedule sessions, manage client bookings and send confirmations or reminders.
+          </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <h2 className="text-xl font-semibold mb-4">
-            Create Booking
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+        <StatCard
+          label="Total bookings"
+          value={bookings.length}
+          detail="All bookings recorded"
+        />
+
+        <StatCard
+          label="Scheduled"
+          value={scheduledBookings.length}
+          detail="Upcoming or planned"
+        />
+
+        <StatCard
+          label="Completed"
+          value={completedBookings.length}
+          detail="Finished sessions"
+        />
+
+        <StatCard
+          label="Estimated value"
+          value={`£${estimatedValue.toFixed(2)}`}
+          detail="Booking revenue"
+        />
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-lg mb-4">
+        <div className="px-4 py-3 border-b border-slate-200">
+          <h2 className="text-sm font-semibold text-slate-950">
+            Filters
           </h2>
 
-          <div className="flex flex-col gap-3">
-            <select
-              className="border p-3 rounded-lg"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-            >
-              <option value="">Select Client</option>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Search and sort bookings by client, course, trainer or status.
+          </p>
+        </div>
 
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.company} - {client.name}
-                </option>
-              ))}
+        <div className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <input
+              className={`${inputClass} md:col-span-2`}
+              placeholder="Search bookings..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+
+            <select
+              className={inputClass}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All statuses</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
             </select>
 
             <select
-              className="border p-3 rounded-lg"
-              value={trainerId}
-              onChange={(e) => setTrainerId(e.target.value)}
+              className={inputClass}
+              value={trainerFilter}
+              onChange={(e) => setTrainerFilter(e.target.value)}
             >
-              <option value="">Assign Trainer</option>
+              <option value="all">All trainers</option>
 
               {trainers.map((trainer) => (
                 <option key={trainer.id} value={trainer.id}>
@@ -604,11 +593,77 @@ export default function BookingsPage() {
             </select>
 
             <select
-              className="border p-3 rounded-lg"
+              className={inputClass}
+              value={dateSort}
+              onChange={(e) => setDateSort(e.target.value)}
+            >
+              <option value="ascending">Oldest first</option>
+              <option value="descending">Newest first</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between mt-4">
+            <p className="text-xs text-slate-500">
+              Showing {filteredBookings.length} of {bookings.length} bookings
+            </p>
+
+            <button
+              className={buttonSecondary}
+              onClick={clearFilters}
+            >
+              Clear filters
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+        <div className="xl:col-span-4 bg-white border border-slate-200 rounded-lg h-fit">
+          <div className="px-4 py-3 border-b border-slate-200">
+            <h2 className="text-sm font-semibold text-slate-950">
+              Create booking
+            </h2>
+
+            <p className="text-xs text-slate-500 mt-0.5">
+              Add a new training session.
+            </p>
+          </div>
+
+          <div className="p-4 flex flex-col gap-3">
+            <select
+              className={inputClass}
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+            >
+              <option value="">Select client</option>
+
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.company} - {client.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className={inputClass}
+              value={trainerId}
+              onChange={(e) => setTrainerId(e.target.value)}
+            >
+              <option value="">Assign trainer</option>
+
+              {trainers.map((trainer) => (
+                <option key={trainer.id} value={trainer.id}>
+                  {trainer.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className={inputClass}
               value={courseTemplateId}
               onChange={(e) => applyCourseTemplate(e.target.value)}
             >
-              <option value="">Select Course Template</option>
+              <option value="">Select course template</option>
 
               {courseTemplates.map((course) => (
                 <option key={course.id} value={course.id}>
@@ -619,14 +674,14 @@ export default function BookingsPage() {
             </select>
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Course name"
               value={courseName}
               onChange={(e) => setCourseName(e.target.value)}
             />
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
@@ -634,14 +689,14 @@ export default function BookingsPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <input
-                className="border p-3 rounded-lg"
+                className={inputClass}
                 type="time"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
               />
 
               <input
-                className="border p-3 rounded-lg"
+                className={inputClass}
                 type="time"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
@@ -649,357 +704,394 @@ export default function BookingsPage() {
             </div>
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Location"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
             />
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Price"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
             />
 
             <textarea
-              className="border p-3 rounded-lg"
+              className={`${inputClass} min-h-24`}
               placeholder="Notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
 
             {courseTemplateId && (
-              <div className="bg-gray-50 border rounded-xl p-3 text-sm text-gray-600">
+              <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600">
                 Course template applied. You can still edit the course name, price or notes before saving.
               </div>
             )}
 
             <button
-              className="bg-black text-white p-3 rounded-lg"
+              className={buttonPrimary}
               onClick={addBooking}
             >
-              Create Booking
+              Create booking
             </button>
           </div>
         </div>
 
-        <div className="lg:col-span-2 grid gap-4">
-          {filteredBookings.map((booking) => {
-            const trainer = getTrainerForBooking(booking)
-            const client = getClientForBooking(booking)
-            const savedClientEmail = client?.email || ''
-            const isEditing = editingId === booking.id
+        <div className="xl:col-span-8 bg-white border border-slate-200 rounded-lg">
+          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Booking list
+              </h2>
 
-            return (
-              <div
-                key={booking.id}
-                className="bg-white border rounded-2xl p-5 shadow-sm"
-              >
-                {!isEditing ? (
-                  <>
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h2 className="text-xl font-semibold">
-                          {booking.course_name}
-                        </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Manage existing bookings and client communication.
+              </p>
+            </div>
 
-                        <p className="text-gray-500 mt-1">
-                          {client?.company || booking.client_name}
-                        </p>
+            {cancelledBookings.length > 0 && (
+              <p className="text-xs text-slate-500">
+                Cancelled: {cancelledBookings.length}
+              </p>
+            )}
+          </div>
 
-                        {client?.name && (
-                          <p className="text-sm text-gray-400 mt-1">
-                            Primary contact: {client.name}
+          <div className="divide-y divide-slate-100">
+            {filteredBookings.map((booking) => {
+              const trainer = getTrainerForBooking(booking)
+              const client = getClientForBooking(booking)
+              const savedClientEmail = client?.email || ''
+              const isEditing = editingId === booking.id
+
+              return (
+                <div
+                  key={booking.id}
+                  className="p-4"
+                >
+                  {!isEditing ? (
+                    <>
+                      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-sm font-semibold text-slate-950">
+                              {booking.course_name}
+                            </h3>
+
+                            <span
+                              className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(
+                                booking.status
+                              )}`}
+                            >
+                              {booking.status}
+                            </span>
+                          </div>
+
+                          <p className="text-sm text-slate-600 mt-1">
+                            {client?.company || booking.client_name}
                           </p>
-                        )}
-                      </div>
 
-                      <div
-                        className={`px-3 py-1 rounded-full text-sm ${getStatusStyle(
-                          booking.status
-                        )}`}
-                      >
-                        {booking.status}
-                      </div>
-                    </div>
+                          {client?.name && (
+                            <p className="text-xs text-slate-500 mt-1">
+                              Primary contact: {client.name}
+                            </p>
+                          )}
+                        </div>
 
-                    <div className="mt-4 text-sm text-gray-600 space-y-1">
-                      <p>Date: {booking.date}</p>
-                      <p>
-                        Time: {booking.start_time || 'Not set'} -{' '}
-                        {booking.end_time || 'Not set'}
-                      </p>
-                      <p>
-                        Location: {booking.location || 'Not set'}
-                      </p>
-                      <p>
-                        Trainer: {trainer?.name || 'Unassigned'}
-                      </p>
-                      <p>
-                        Price: £{Number(booking.price || 0).toFixed(2)}
-                      </p>
-
-                      {savedClientEmail && (
-                        <p>Client Email: {savedClientEmail}</p>
-                      )}
-
-                      {booking.notes && (
-                        <p>Notes: {booking.notes}</p>
-                      )}
-                    </div>
-
-                    <div className="mt-5 flex flex-col gap-3">
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder={savedClientEmail || 'Recipient email'}
-                        value={recipientEmails[booking.id] || ''}
-                        onChange={(e) =>
-                          setRecipientEmails((previous) => ({
-                            ...previous,
-                            [booking.id]: e.target.value,
-                          }))
-                        }
-                      />
-
-                      {savedClientEmail && (
-                        <p className="text-sm text-gray-500">
-                          Leave blank to send to saved client email.
-                        </p>
-                      )}
-
-                      <div className="flex flex-wrap gap-3">
                         <Link
                           href={`/dashboard/bookings/${booking.id}`}
-                          className="bg-black text-white px-4 py-2 rounded-lg"
+                          className={buttonPrimary}
                         >
-                          View Booking
+                          View booking
                         </Link>
+                      </div>
 
-                        <button
-                          className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
-                          onClick={() => sendBookingConfirmation(booking)}
-                          disabled={sendingId === booking.id}
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-4 text-xs text-slate-600">
+                        <div>
+                          <p className="text-slate-400">Date</p>
+                          <p className="font-medium text-slate-800 mt-1">
+                            {booking.date}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-slate-400">Time</p>
+                          <p className="font-medium text-slate-800 mt-1">
+                            {booking.start_time || 'Not set'} - {booking.end_time || 'Not set'}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-slate-400">Trainer</p>
+                          <p className="font-medium text-slate-800 mt-1">
+                            {trainer?.name || 'Unassigned'}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-slate-400">Price</p>
+                          <p className="font-medium text-slate-800 mt-1">
+                            £{Number(booking.price || 0).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {(booking.location || booking.notes) && (
+                        <div className="mt-3 text-xs text-slate-600">
+                          {booking.location && (
+                            <p>
+                              <span className="text-slate-400">Location:</span> {booking.location}
+                            </p>
+                          )}
+
+                          {booking.notes && (
+                            <p className="mt-1">
+                              <span className="text-slate-400">Notes:</span> {booking.notes}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="mt-4 border-t border-slate-100 pt-4">
+                        <input
+                          className={`${inputClass} w-full`}
+                          placeholder={savedClientEmail || 'Recipient email'}
+                          value={recipientEmails[booking.id] || ''}
+                          onChange={(e) =>
+                            setRecipientEmails((previous) => ({
+                              ...previous,
+                              [booking.id]: e.target.value,
+                            }))
+                          }
+                        />
+
+                        {savedClientEmail && (
+                          <p className="text-xs text-slate-500 mt-2">
+                            Leave blank to send to saved client email: {savedClientEmail}
+                          </p>
+                        )}
+
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          <button
+                            className={buttonSecondary}
+                            onClick={() => sendBookingConfirmation(booking)}
+                            disabled={sendingId === booking.id}
+                          >
+                            {sendingId === booking.id
+                              ? 'Sending...'
+                              : 'Send confirmation'}
+                          </button>
+
+                          <button
+                            className={buttonSecondary}
+                            onClick={() => sendBookingReminder(booking)}
+                            disabled={remindingId === booking.id}
+                          >
+                            {remindingId === booking.id
+                              ? 'Sending...'
+                              : 'Send reminder'}
+                          </button>
+
+                          <button
+                            className={buttonSecondary}
+                            onClick={() => startEditing(booking)}
+                          >
+                            Edit
+                          </button>
+
+                          {booking.status !== 'scheduled' && (
+                            <button
+                              className={buttonSecondary}
+                              onClick={() =>
+                                updateBookingStatus(
+                                  booking.id,
+                                  'scheduled'
+                                )
+                              }
+                            >
+                              Mark scheduled
+                            </button>
+                          )}
+
+                          {booking.status !== 'completed' && (
+                            <button
+                              className={buttonSecondary}
+                              onClick={() =>
+                                updateBookingStatus(
+                                  booking.id,
+                                  'completed'
+                                )
+                              }
+                            >
+                              Mark completed
+                            </button>
+                          )}
+
+                          {booking.status !== 'cancelled' && (
+                            <button
+                              className={buttonSecondary}
+                              onClick={() =>
+                                updateBookingStatus(
+                                  booking.id,
+                                  'cancelled'
+                                )
+                              }
+                            >
+                              Cancel
+                            </button>
+                          )}
+
+                          <button
+                            className="border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-red-50"
+                            onClick={() => deleteBooking(booking.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="mb-4">
+                        <h3 className="text-sm font-semibold text-slate-950">
+                          Edit booking
+                        </h3>
+
+                        <p className="text-xs text-slate-500 mt-1">
+                          Update session details.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <select
+                          className={inputClass}
+                          value={editClientId}
+                          onChange={(e) => setEditClientId(e.target.value)}
                         >
-                          {sendingId === booking.id
-                            ? 'Sending...'
-                            : 'Send Confirmation'}
+                          <option value="">Select client</option>
+
+                          {clients.map((client) => (
+                            <option key={client.id} value={client.id}>
+                              {client.company} - {client.name}
+                            </option>
+                          ))}
+                        </select>
+
+                        <select
+                          className={inputClass}
+                          value={editTrainerId}
+                          onChange={(e) => setEditTrainerId(e.target.value)}
+                        >
+                          <option value="">Assign trainer</option>
+
+                          {trainers.map((trainer) => (
+                            <option key={trainer.id} value={trainer.id}>
+                              {trainer.name}
+                            </option>
+                          ))}
+                        </select>
+
+                        <select
+                          className={`${inputClass} md:col-span-2`}
+                          value={editCourseTemplateId}
+                          onChange={(e) => applyEditCourseTemplate(e.target.value)}
+                        >
+                          <option value="">Apply course template</option>
+
+                          {courseTemplates.map((course) => (
+                            <option key={course.id} value={course.id}>
+                              {course.code ? `${course.code} - ` : ''}
+                              {course.name}
+                            </option>
+                          ))}
+                        </select>
+
+                        <input
+                          className={inputClass}
+                          placeholder="Course name"
+                          value={editCourseName}
+                          onChange={(e) => setEditCourseName(e.target.value)}
+                        />
+
+                        <input
+                          className={inputClass}
+                          type="date"
+                          value={editDate}
+                          onChange={(e) => setEditDate(e.target.value)}
+                        />
+
+                        <input
+                          className={inputClass}
+                          type="time"
+                          value={editStartTime}
+                          onChange={(e) => setEditStartTime(e.target.value)}
+                        />
+
+                        <input
+                          className={inputClass}
+                          type="time"
+                          value={editEndTime}
+                          onChange={(e) => setEditEndTime(e.target.value)}
+                        />
+
+                        <input
+                          className={inputClass}
+                          placeholder="Location"
+                          value={editLocation}
+                          onChange={(e) => setEditLocation(e.target.value)}
+                        />
+
+                        <input
+                          className={inputClass}
+                          placeholder="Price"
+                          value={editPrice}
+                          onChange={(e) => setEditPrice(e.target.value)}
+                        />
+
+                        <textarea
+                          className={`${inputClass} md:col-span-2 min-h-24`}
+                          placeholder="Notes"
+                          value={editNotes}
+                          onChange={(e) => setEditNotes(e.target.value)}
+                        />
+                      </div>
+
+                      {editCourseTemplateId && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600 mt-4">
+                          Course template applied. You can still edit the course name, price or notes before saving.
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        <button
+                          className={buttonPrimary}
+                          onClick={() => saveBookingEdit(booking.id)}
+                          disabled={savingEdit}
+                        >
+                          {savingEdit ? 'Saving...' : 'Save changes'}
                         </button>
 
                         <button
-                          className="border px-4 py-2 rounded-lg disabled:bg-gray-100"
-                          onClick={() => sendBookingReminder(booking)}
-                          disabled={remindingId === booking.id}
+                          className={buttonSecondary}
+                          onClick={cancelEditing}
+                          disabled={savingEdit}
                         >
-                          {remindingId === booking.id
-                            ? 'Sending...'
-                            : 'Send Reminder'}
-                        </button>
-
-                        <button
-                          className="border px-4 py-2 rounded-lg"
-                          onClick={() => startEditing(booking)}
-                        >
-                          Edit
-                        </button>
-
-                        {booking.status !== 'scheduled' && (
-                          <button
-                            className="border px-4 py-2 rounded-lg"
-                            onClick={() =>
-                              updateBookingStatus(
-                                booking.id,
-                                'scheduled'
-                              )
-                            }
-                          >
-                            Mark Scheduled
-                          </button>
-                        )}
-
-                        {booking.status !== 'completed' && (
-                          <button
-                            className="border px-4 py-2 rounded-lg"
-                            onClick={() =>
-                              updateBookingStatus(
-                                booking.id,
-                                'completed'
-                              )
-                            }
-                          >
-                            Mark Completed
-                          </button>
-                        )}
-
-                        {booking.status !== 'cancelled' && (
-                          <button
-                            className="border px-4 py-2 rounded-lg"
-                            onClick={() =>
-                              updateBookingStatus(
-                                booking.id,
-                                'cancelled'
-                              )
-                            }
-                          >
-                            Cancel
-                          </button>
-                        )}
-
-                        <button
-                          className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
-                          onClick={() => deleteBooking(booking.id)}
-                        >
-                          Delete
+                          Cancel
                         </button>
                       </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="mb-5">
-                      <h2 className="text-xl font-semibold">
-                        Edit Booking
-                      </h2>
+                    </>
+                  )}
+                </div>
+              )
+            })}
 
-                      <p className="text-gray-500 mt-1">
-                        Update training session details
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <select
-                        className="border p-3 rounded-lg"
-                        value={editClientId}
-                        onChange={(e) => setEditClientId(e.target.value)}
-                      >
-                        <option value="">Select Client</option>
-
-                        {clients.map((client) => (
-                          <option key={client.id} value={client.id}>
-                            {client.company} - {client.name}
-                          </option>
-                        ))}
-                      </select>
-
-                      <select
-                        className="border p-3 rounded-lg"
-                        value={editTrainerId}
-                        onChange={(e) => setEditTrainerId(e.target.value)}
-                      >
-                        <option value="">Assign Trainer</option>
-
-                        {trainers.map((trainer) => (
-                          <option key={trainer.id} value={trainer.id}>
-                            {trainer.name}
-                          </option>
-                        ))}
-                      </select>
-
-                      <select
-                        className="border p-3 rounded-lg md:col-span-2"
-                        value={editCourseTemplateId}
-                        onChange={(e) => applyEditCourseTemplate(e.target.value)}
-                      >
-                        <option value="">Apply Course Template</option>
-
-                        {courseTemplates.map((course) => (
-                          <option key={course.id} value={course.id}>
-                            {course.code ? `${course.code} - ` : ''}
-                            {course.name}
-                          </option>
-                        ))}
-                      </select>
-
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder="Course name"
-                        value={editCourseName}
-                        onChange={(e) => setEditCourseName(e.target.value)}
-                      />
-
-                      <input
-                        className="border p-3 rounded-lg"
-                        type="date"
-                        value={editDate}
-                        onChange={(e) => setEditDate(e.target.value)}
-                      />
-
-                      <input
-                        className="border p-3 rounded-lg"
-                        type="time"
-                        value={editStartTime}
-                        onChange={(e) => setEditStartTime(e.target.value)}
-                      />
-
-                      <input
-                        className="border p-3 rounded-lg"
-                        type="time"
-                        value={editEndTime}
-                        onChange={(e) => setEditEndTime(e.target.value)}
-                      />
-
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder="Location"
-                        value={editLocation}
-                        onChange={(e) => setEditLocation(e.target.value)}
-                      />
-
-                      <input
-                        className="border p-3 rounded-lg"
-                        placeholder="Price"
-                        value={editPrice}
-                        onChange={(e) => setEditPrice(e.target.value)}
-                      />
-
-                      <textarea
-                        className="border p-3 rounded-lg md:col-span-2"
-                        placeholder="Notes"
-                        value={editNotes}
-                        onChange={(e) => setEditNotes(e.target.value)}
-                      />
-                    </div>
-
-                    {editCourseTemplateId && (
-                      <div className="bg-gray-50 border rounded-xl p-3 text-sm text-gray-600 mt-4">
-                        Course template applied. You can still edit the course name, price or notes before saving.
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap gap-3 mt-5">
-                      <button
-                        className="bg-black text-white px-4 py-2 rounded-lg disabled:bg-gray-400"
-                        onClick={() => saveBookingEdit(booking.id)}
-                        disabled={savingEdit}
-                      >
-                        {savingEdit ? 'Saving...' : 'Save Changes'}
-                      </button>
-
-                      <button
-                        className="border px-4 py-2 rounded-lg"
-                        onClick={cancelEditing}
-                        disabled={savingEdit}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </>
-                )}
+            {filteredBookings.length === 0 && (
+              <div className="p-6 text-sm text-slate-500">
+                No bookings match your filters.
               </div>
-            )
-          })}
-
-          {filteredBookings.length === 0 && (
-            <div className="bg-white border rounded-2xl p-6 shadow-sm text-gray-500">
-              No bookings match your filters.
-            </div>
-          )}
-
-          {cancelledBookings.length > 0 && (
-            <div className="text-sm text-gray-500">
-              Cancelled bookings: {cancelledBookings.length}
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
