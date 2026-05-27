@@ -13,6 +13,7 @@ export default function ClientDetailPage() {
   const [bookings, setBookings] = useState<any[]>([])
   const [invoices, setInvoices] = useState<any[]>([])
   const [certificates, setCertificates] = useState<any[]>([])
+  const [delegates, setDelegates] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   const [editing, setEditing] = useState(false)
@@ -24,6 +25,8 @@ export default function ClientDetailPage() {
   const [editPhone, setEditPhone] = useState('')
   const [editAddress, setEditAddress] = useState('')
   const [editNotes, setEditNotes] = useState('')
+
+  const [delegateSearch, setDelegateSearch] = useState('')
 
   const load = async () => {
     const profile = await getOrCreateAccount()
@@ -49,6 +52,13 @@ export default function ClientDetailPage() {
       .eq('client_id', clientId)
       .eq('organisation_id', profile.organisation_id)
       .order('date', { ascending: false })
+
+    const { data: delegatesData } = await supabase
+      .from('delegates')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('organisation_id', profile.organisation_id)
+      .order('full_name', { ascending: true })
 
     const bookingIds = (bookingsData || []).map((booking) => booking.id)
 
@@ -78,6 +88,7 @@ export default function ClientDetailPage() {
     setBookings(bookingsData || [])
     setInvoices(invoicesData)
     setCertificates(certificatesData)
+    setDelegates(delegatesData || [])
 
     setEditCompany(clientData.company || '')
     setEditName(clientData.name || '')
@@ -179,6 +190,35 @@ export default function ClientDetailPage() {
     return bookings.find((booking) => booking.id === certificate.booking_id)
   }
 
+  const getBookingForDelegate = (delegate: any) => {
+    return bookings.find((booking) => booking.id === delegate.booking_id)
+  }
+
+  const getCertificatesForDelegate = (delegate: any) => {
+    return certificates.filter(
+      (certificate) =>
+        certificate.booking_id === delegate.booking_id &&
+        certificate.learner_name?.toLowerCase() === delegate.full_name?.toLowerCase()
+    )
+  }
+
+  const filteredDelegates = delegates.filter((delegate) => {
+    const booking = getBookingForDelegate(delegate)
+
+    const searchableText = `
+      ${delegate.full_name || ''}
+      ${delegate.email || ''}
+      ${delegate.phone || ''}
+      ${delegate.notes || ''}
+      ${booking?.course_name || ''}
+      ${booking?.date || ''}
+    `.toLowerCase()
+
+    return searchableText.includes(delegateSearch.toLowerCase())
+  })
+
+  const delegatesWithEmail = delegates.filter((delegate) => delegate.email)
+
   const getBookingStatusStyle = (status: string) => {
     if (status === 'completed') return 'bg-green-100 text-green-700'
     if (status === 'cancelled') return 'bg-red-100 text-red-700'
@@ -239,7 +279,7 @@ export default function ClientDetailPage() {
             </h1>
 
             <p className="text-gray-500 mt-2">
-              Company profile and training history
+              Company profile, bookings, delegates, invoices and certificates
             </p>
           </div>
 
@@ -370,7 +410,7 @@ export default function ClientDetailPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-6 mb-8">
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <p className="text-gray-500">Bookings</p>
           <h2 className="text-3xl font-bold mt-2">{bookings.length}</h2>
@@ -387,6 +427,11 @@ export default function ClientDetailPage() {
         </div>
 
         <div className="bg-white border rounded-2xl p-6 shadow-sm">
+          <p className="text-gray-500">Delegates</p>
+          <h2 className="text-3xl font-bold mt-2">{delegates.length}</h2>
+        </div>
+
+        <div className="bg-white border rounded-2xl p-6 shadow-sm">
           <p className="text-gray-500">Invoice Value</p>
           <h2 className="text-3xl font-bold mt-2">
             £{totalInvoiceValue.toFixed(2)}
@@ -398,6 +443,119 @@ export default function ClientDetailPage() {
           <h2 className="text-3xl font-bold mt-2">
             {validCertificates.length}
           </h2>
+        </div>
+      </div>
+
+      {unpaidInvoices.length > 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-5 mb-8 text-yellow-800">
+          This client has {unpaidInvoices.length} unpaid invoice
+          {unpaidInvoices.length === 1 ? '' : 's'}.
+        </div>
+      )}
+
+      <div className="bg-white border rounded-2xl p-6 shadow-sm mb-8">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
+          <div>
+            <h2 className="text-2xl font-semibold">
+              Delegates
+            </h2>
+
+            <p className="text-gray-500 mt-1">
+              All learners trained for this company across all bookings
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <div className="bg-gray-100 px-4 py-2 rounded-full text-sm text-gray-700">
+              {delegates.length} total
+            </div>
+
+            <div className="bg-gray-100 px-4 py-2 rounded-full text-sm text-gray-700">
+              {delegatesWithEmail.length} with email
+            </div>
+          </div>
+        </div>
+
+        <input
+          className="border p-3 rounded-lg w-full mb-5"
+          placeholder="Search delegates by name, email, phone, course or date..."
+          value={delegateSearch}
+          onChange={(e) => setDelegateSearch(e.target.value)}
+        />
+
+        <div className="grid gap-4">
+          {filteredDelegates.map((delegate) => {
+            const booking = getBookingForDelegate(delegate)
+            const delegateCertificates = getCertificatesForDelegate(delegate)
+
+            return (
+              <div
+                key={delegate.id}
+                className="bg-gray-50 border rounded-xl p-4"
+              >
+                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                  <div>
+                    <h3 className="font-semibold">
+                      {delegate.full_name}
+                    </h3>
+
+                    <div className="text-sm text-gray-600 mt-2 space-y-1">
+                      <p>Email: {delegate.email || 'Not set'}</p>
+                      <p>Phone: {delegate.phone || 'Not set'}</p>
+
+                      {delegate.notes && (
+                        <p>Notes: {delegate.notes}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-sm text-gray-600 lg:text-right">
+                    <p className="font-medium text-gray-900">
+                      {booking?.course_name || 'Unknown booking'}
+                    </p>
+
+                    <p className="mt-1">
+                      {booking?.date || 'No date'}
+                    </p>
+
+                    {booking && (
+                      <Link
+                        href={`/dashboard/bookings/${booking.id}`}
+                        className="inline-block mt-2 text-gray-500 hover:text-black"
+                      >
+                        View booking →
+                      </Link>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {delegateCertificates.length > 0 ? (
+                    delegateCertificates.map((certificate) => (
+                      <div
+                        key={certificate.id}
+                        className={`px-3 py-1 rounded-full text-xs ${getCertificateStatusStyle(
+                          certificate.status
+                        )}`}
+                      >
+                        Certificate: {certificate.status}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-xs">
+                      No certificate yet
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+
+          {filteredDelegates.length === 0 && (
+            <div className="bg-gray-50 border rounded-xl p-4 text-gray-500">
+              No delegates found for this company.
+            </div>
+          )}
         </div>
       </div>
 
