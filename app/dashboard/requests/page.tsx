@@ -15,6 +15,24 @@ export default function RequestsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
 
+  const inputClass =
+    'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+
+  const buttonPrimary =
+    'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
+
+  const buttonSecondary =
+    'border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400'
+
+  const buttonDanger =
+    'border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-red-50'
+
+  const panelClass =
+    'bg-white border border-slate-200 rounded-lg'
+
+  const panelHeaderClass =
+    'px-4 py-3 border-b border-slate-200'
+
   const load = async () => {
     const profile = await getOrCreateAccount()
     const { data: userData } = await supabase.auth.getUser()
@@ -224,258 +242,332 @@ export default function RequestsPage() {
   const convertedRequests = requests.filter(
     (request) => request.status === 'converted'
   )
+  const closedRequests = requests.filter((request) => request.status === 'closed')
 
   const getStatusStyle = (status: string) => {
     if (status === 'converted') {
-      return 'bg-green-100 text-green-700'
+      return 'bg-emerald-50 text-emerald-700 border-emerald-100'
     }
 
     if (status === 'contacted') {
-      return 'bg-blue-100 text-blue-700'
+      return 'bg-blue-50 text-blue-700 border-blue-100'
     }
 
     if (status === 'closed') {
-      return 'bg-gray-200 text-gray-700'
+      return 'bg-slate-50 text-slate-700 border-slate-200'
     }
 
-    return 'bg-yellow-100 text-yellow-700'
+    return 'bg-amber-50 text-amber-700 border-amber-100'
   }
+
+  const StatCard = ({
+    label,
+    value,
+    detail,
+  }: {
+    label: string
+    value: string | number
+    detail?: string
+  }) => (
+    <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+
+      <h2 className="text-2xl font-semibold tracking-tight text-slate-950 mt-2">
+        {value}
+      </h2>
+
+      {detail && (
+        <p className="text-xs text-slate-500 mt-1">
+          {detail}
+        </p>
+      )}
+    </div>
+  )
 
   if (loading) {
     return (
-      <div className="bg-white border rounded-2xl p-6 shadow-sm">
-        Loading training requests...
+      <div className={panelClass}>
+        <div className="p-4 text-sm text-slate-500">
+          Loading training requests...
+        </div>
       </div>
     )
   }
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold">
-          Training Requests
-        </h1>
+      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Requests
+          </p>
 
-        <p className="text-gray-500 mt-1">
-          Review enquiries submitted through your public training request link
-        </p>
-      </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
+            Training requests
+          </h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Total Requests</p>
-          <h2 className="text-3xl font-bold mt-2">{requests.length}</h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">New</p>
-          <h2 className="text-3xl font-bold mt-2">{newRequests.length}</h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Contacted</p>
-          <h2 className="text-3xl font-bold mt-2">{contactedRequests.length}</h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Converted</p>
-          <h2 className="text-3xl font-bold mt-2">{convertedRequests.length}</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Review enquiries submitted through your public training request link.
+          </p>
         </div>
       </div>
 
-      <div className="bg-white border rounded-2xl p-5 shadow-sm mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <input
-            className="border p-3 rounded-lg md:col-span-2"
-            placeholder="Search requests..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+        <StatCard
+          label="Total"
+          value={requests.length}
+          detail="All submitted requests"
+        />
 
-          <select
-            className="border p-3 rounded-lg"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="all">All Statuses</option>
-            <option value="new">New</option>
-            <option value="contacted">Contacted</option>
-            <option value="converted">Converted</option>
-            <option value="closed">Closed</option>
-          </select>
+        <StatCard
+          label="New"
+          value={newRequests.length}
+          detail="Awaiting action"
+        />
 
-          <button
-            className="border px-4 py-2 rounded-lg"
-            onClick={clearFilters}
-          >
-            Clear Filters
-          </button>
-        </div>
+        <StatCard
+          label="Contacted"
+          value={contactedRequests.length}
+          detail="Follow-up started"
+        />
 
-        <p className="text-sm text-gray-500 mt-4">
-          Showing {filteredRequests.length} of {requests.length} requests
-        </p>
+        <StatCard
+          label="Converted"
+          value={convertedRequests.length}
+          detail="Client or booking created"
+        />
+
+        <StatCard
+          label="Closed"
+          value={closedRequests.length}
+          detail="No further action"
+        />
       </div>
 
-      <div className="grid gap-4">
-        {filteredRequests.map((request) => (
-          <div
-            key={request.id}
-            className="bg-white border rounded-2xl p-5 shadow-sm"
-          >
-            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-semibold">
-                  {request.company_name || 'Unnamed company'}
-                </h2>
+      <div className={`${panelClass} mb-4`}>
+        <div className={panelHeaderClass}>
+          <h2 className="text-sm font-semibold text-slate-950">
+            Filters
+          </h2>
 
-                <p className="text-gray-500 mt-1">
-                  {request.contact_name || 'No contact name'}
-                </p>
-              </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Search enquiries by company, contact, course, location or notes.
+          </p>
+        </div>
 
-              <div
-                className={`px-3 py-1 rounded-full text-sm w-fit ${getStatusStyle(
-                  request.status
-                )}`}
-              >
-                {request.status || 'new'}
-              </div>
-            </div>
+        <div className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <input
+              className={`${inputClass} md:col-span-2`}
+              placeholder="Search requests..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-5 text-sm text-gray-700">
-              <div>
-                <p className="text-gray-500">Course</p>
-                <p className="font-medium mt-1">
-                  {request.course_name || 'Not set'}
-                </p>
-              </div>
+            <select
+              className={inputClass}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All statuses</option>
+              <option value="new">New</option>
+              <option value="contacted">Contacted</option>
+              <option value="converted">Converted</option>
+              <option value="closed">Closed</option>
+            </select>
 
-              <div>
-                <p className="text-gray-500">Preferred date</p>
-                <p className="font-medium mt-1">
-                  {request.preferred_date || 'Not set'}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-gray-500">Learners</p>
-                <p className="font-medium mt-1">
-                  {request.learner_count || 'Not set'}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-gray-500">Location</p>
-                <p className="font-medium mt-1">
-                  {request.location || 'Not set'}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-gray-500">Email</p>
-                <p className="font-medium mt-1 break-all">
-                  {request.email || 'Not set'}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-gray-500">Phone</p>
-                <p className="font-medium mt-1">
-                  {request.phone || 'Not set'}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-gray-500">Submitted</p>
-                <p className="font-medium mt-1">
-                  {request.created_at
-                    ? new Date(request.created_at).toLocaleDateString()
-                    : 'Not set'}
-                </p>
-              </div>
-            </div>
-
-            {request.notes && (
-              <div className="bg-gray-50 border rounded-xl p-4 mt-5 text-sm text-gray-700">
-                <p className="text-gray-500 mb-1">Notes</p>
-                <p>{request.notes}</p>
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-3 mt-5">
-              {request.status !== 'converted' && (
-                <button
-                  className="bg-black text-white px-4 py-2 rounded-lg disabled:bg-gray-400"
-                  onClick={() => convertRequest(request)}
-                  disabled={convertingId === request.id}
-                >
-                  {convertingId === request.id
-                    ? 'Converting...'
-                    : 'Create Client & Booking'}
-                </button>
-              )}
-
-              {request.status !== 'contacted' && (
-                <button
-                  className="border px-4 py-2 rounded-lg"
-                  onClick={() => updateStatus(request.id, 'contacted')}
-                >
-                  Mark Contacted
-                </button>
-              )}
-
-              {request.status !== 'converted' && (
-                <button
-                  className="border px-4 py-2 rounded-lg"
-                  onClick={() => updateStatus(request.id, 'converted')}
-                >
-                  Mark Converted
-                </button>
-              )}
-
-              {request.status !== 'closed' && (
-                <button
-                  className="border px-4 py-2 rounded-lg"
-                  onClick={() => updateStatus(request.id, 'closed')}
-                >
-                  Close
-                </button>
-              )}
-
-              {request.status !== 'new' && (
-                <button
-                  className="border px-4 py-2 rounded-lg"
-                  onClick={() => updateStatus(request.id, 'new')}
-                >
-                  Mark New
-                </button>
-              )}
-
-              {request.status === 'converted' && (
-                <Link
-                  href="/dashboard/bookings"
-                  className="border px-4 py-2 rounded-lg"
-                >
-                  View Bookings
-                </Link>
-              )}
-
-              <button
-                className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
-                onClick={() => deleteRequest(request.id)}
-              >
-                Delete
-              </button>
-            </div>
+            <button
+              className={buttonSecondary}
+              onClick={clearFilters}
+            >
+              Clear filters
+            </button>
           </div>
-        ))}
 
-        {filteredRequests.length === 0 && (
-          <div className="bg-white border rounded-2xl p-6 shadow-sm text-gray-500">
-            No training requests found.
-          </div>
-        )}
+          <p className="text-xs text-slate-500 mt-3">
+            Showing {filteredRequests.length} of {requests.length} requests
+          </p>
+        </div>
+      </div>
+
+      <div className={panelClass}>
+        <div className={panelHeaderClass}>
+          <h2 className="text-sm font-semibold text-slate-950">
+            Request list
+          </h2>
+
+          <p className="text-xs text-slate-500 mt-0.5">
+            Convert enquiries into clients and bookings, or manage their status.
+          </p>
+        </div>
+
+        <div className="divide-y divide-slate-100">
+          {filteredRequests.map((request) => (
+            <div
+              key={request.id}
+              className="p-4"
+            >
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold text-slate-950">
+                      {request.company_name || 'Unnamed company'}
+                    </h3>
+
+                    <span
+                      className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(
+                        request.status
+                      )}`}
+                    >
+                      {request.status || 'new'}
+                    </span>
+                  </div>
+
+                  <p className="text-sm text-slate-600 mt-1">
+                    {request.contact_name || 'No contact name'}
+                  </p>
+
+                  <p className="text-xs text-slate-500 mt-1">
+                    Submitted:{' '}
+                    {request.created_at
+                      ? new Date(request.created_at).toLocaleDateString()
+                      : 'Not set'}
+                  </p>
+                </div>
+
+                {request.status !== 'converted' && (
+                  <button
+                    className={buttonPrimary}
+                    onClick={() => convertRequest(request)}
+                    disabled={convertingId === request.id}
+                  >
+                    {convertingId === request.id
+                      ? 'Converting...'
+                      : 'Create client & booking'}
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-4 text-xs text-slate-600">
+                <div>
+                  <p className="text-slate-400">Course</p>
+                  <p className="font-medium text-slate-800 mt-1">
+                    {request.course_name || 'Not set'}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-slate-400">Preferred date</p>
+                  <p className="font-medium text-slate-800 mt-1">
+                    {request.preferred_date || 'Not set'}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-slate-400">Learners</p>
+                  <p className="font-medium text-slate-800 mt-1">
+                    {request.learner_count || 'Not set'}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-slate-400">Location</p>
+                  <p className="font-medium text-slate-800 mt-1">
+                    {request.location || 'Not set'}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-slate-400">Email</p>
+                  <p className="font-medium text-slate-800 mt-1 break-all">
+                    {request.email || 'Not set'}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-slate-400">Phone</p>
+                  <p className="font-medium text-slate-800 mt-1">
+                    {request.phone || 'Not set'}
+                  </p>
+                </div>
+              </div>
+
+              {request.notes && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mt-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-2">
+                    Notes
+                  </p>
+
+                  <p className="text-xs text-slate-700 whitespace-pre-line leading-5">
+                    {request.notes}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 mt-4">
+                {request.status !== 'contacted' && (
+                  <button
+                    className={buttonSecondary}
+                    onClick={() => updateStatus(request.id, 'contacted')}
+                  >
+                    Mark contacted
+                  </button>
+                )}
+
+                {request.status !== 'converted' && (
+                  <button
+                    className={buttonSecondary}
+                    onClick={() => updateStatus(request.id, 'converted')}
+                  >
+                    Mark converted
+                  </button>
+                )}
+
+                {request.status !== 'closed' && (
+                  <button
+                    className={buttonSecondary}
+                    onClick={() => updateStatus(request.id, 'closed')}
+                  >
+                    Close
+                  </button>
+                )}
+
+                {request.status !== 'new' && (
+                  <button
+                    className={buttonSecondary}
+                    onClick={() => updateStatus(request.id, 'new')}
+                  >
+                    Mark new
+                  </button>
+                )}
+
+                {request.status === 'converted' && (
+                  <Link
+                    href="/dashboard/bookings"
+                    className={buttonSecondary}
+                  >
+                    View bookings
+                  </Link>
+                )}
+
+                <button
+                  className={buttonDanger}
+                  onClick={() => deleteRequest(request.id)}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {filteredRequests.length === 0 && (
+            <div className="p-6 text-sm text-slate-500">
+              No training requests found.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
