@@ -19,6 +19,8 @@ export default function BookingDetailPage() {
   const [invoices, setInvoices] = useState<any[]>([])
   const [certificates, setCertificates] = useState<any[]>([])
   const [delegates, setDelegates] = useState<any[]>([])
+  const [allClientDelegates, setAllClientDelegates] = useState<any[]>([])
+  const [bookingDelegateLinks, setBookingDelegateLinks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   const [editing, setEditing] = useState(false)
@@ -38,6 +40,7 @@ export default function BookingDetailPage() {
 
   const [recipientEmail, setRecipientEmail] = useState('')
 
+  const [existingDelegateId, setExistingDelegateId] = useState('')
   const [delegateName, setDelegateName] = useState('')
   const [delegateEmail, setDelegateEmail] = useState('')
   const [delegatePhone, setDelegatePhone] = useState('')
@@ -85,15 +88,15 @@ export default function BookingDetailPage() {
       .eq('organisation_id', currentProfile.organisation_id)
       .single()
 
-    if (bookingError) {
-      console.error(bookingError)
+    if (bookingError || !bookingData) {
+      setBooking(null)
       setLoading(false)
       return
     }
 
     let clientData = null
 
-    if (bookingData?.client_id) {
+    if (bookingData.client_id) {
       const { data } = await supabase
         .from('clients')
         .select('*')
@@ -130,12 +133,33 @@ export default function BookingDetailPage() {
       .eq('organisation_id', currentProfile.organisation_id)
       .order('created_at', { ascending: false })
 
-    const { data: delegatesData } = await supabase
+    const { data: allClientDelegatesData } = await supabase
       .from('delegates')
+      .select('*')
+      .eq('client_id', bookingData.client_id)
+      .eq('organisation_id', currentProfile.organisation_id)
+      .order('full_name', { ascending: true })
+
+    const { data: bookingLinksData } = await supabase
+      .from('booking_delegates')
       .select('*')
       .eq('booking_id', bookingId)
       .eq('organisation_id', currentProfile.organisation_id)
-      .order('full_name', { ascending: true })
+
+    const delegateIds = (bookingLinksData || []).map((link) => link.delegate_id)
+
+    let bookingDelegatesData: any[] = []
+
+    if (delegateIds.length > 0) {
+      const { data } = await supabase
+        .from('delegates')
+        .select('*')
+        .in('id', delegateIds)
+        .eq('organisation_id', currentProfile.organisation_id)
+        .order('full_name', { ascending: true })
+
+      bookingDelegatesData = data || []
+    }
 
     setOrganisation(organisationData || null)
     setBooking(bookingData)
@@ -144,7 +168,9 @@ export default function BookingDetailPage() {
     setCourseTemplates(courseTemplatesData || [])
     setInvoices(invoicesData || [])
     setCertificates(certificatesData || [])
-    setDelegates(delegatesData || [])
+    setAllClientDelegates(allClientDelegatesData || [])
+    setBookingDelegateLinks(bookingLinksData || [])
+    setDelegates(bookingDelegatesData)
 
     setEditTrainerId(bookingData.trainer_id || '')
     setEditCourseTemplateId('')
@@ -180,7 +206,7 @@ export default function BookingDetailPage() {
 
       const matchesOldCertificate =
         !certificate.delegate_id &&
-        certificate.booking_id === delegate.booking_id &&
+        certificate.booking_id === booking.id &&
         certificate.learner_name?.toLowerCase() === delegate.full_name?.toLowerCase()
 
       return matchesDelegateId || matchesOldCertificate
@@ -384,24 +410,42 @@ export default function BookingDetailPage() {
     alert('Booking reminder sent')
   }
 
-  const addDelegate = async () => {
+  const createDelegateAndAttach = async () => {
     if (!delegateName) {
       alert('Delegate name is required')
       return
     }
 
-    const { error } = await supabase.from('delegates').insert({
-      organisation_id: profile.organisation_id,
-      client_id: booking.client_id,
-      booking_id: booking.id,
-      full_name: delegateName,
-      email: delegateEmail || null,
-      phone: delegatePhone || null,
-      notes: delegateNotes || null,
-    })
+    const { data: delegateData, error: delegateError } = await supabase
+      .from('delegates')
+      .insert({
+        organisation_id: profile.organisation_id,
+        client_id: booking.client_id,
+        booking_id: booking.id,
+        full_name: delegateName,
+        email: delegateEmail || null,
+        phone: delegatePhone || null,
+        notes: delegateNotes || null,
+      })
+      .select('*')
+      .single()
 
-    if (error) {
-      alert(error.message)
+    if (delegateError) {
+      alert(delegateError.message)
+      return
+    }
+
+    const { error: linkError } = await supabase
+      .from('booking_delegates')
+      .insert({
+        organisation_id: profile.organisation_id,
+        client_id: booking.client_id,
+        booking_id: booking.id,
+        delegate_id: delegateData.id,
+      })
+
+    if (linkError) {
+      alert(linkError.message)
       return
     }
 
@@ -410,6 +454,35 @@ export default function BookingDetailPage() {
     setDelegatePhone('')
     setDelegateNotes('')
 
+    load()
+  }
+
+  const attachExistingDelegate = async () => {
+    if (!existingDelegateId) {
+      alert('Select a delegate first')
+      return
+    }
+
+    const { error } = await supabase
+      .from('booking_delegates')
+      .insert({
+        organisation_id: profile.organisation_id,
+        client_id: booking.client_id,
+        booking_id: booking.id,
+        delegate_id: existingDelegateId,
+      })
+
+    if (error) {
+      if (error.message.includes('duplicate')) {
+        alert('This delegate is already attached to this booking.')
+        return
+      }
+
+      alert(error.message)
+      return
+    }
+
+    setExistingDelegateId('')
     load()
   }
 
@@ -454,17 +527,18 @@ export default function BookingDetailPage() {
     load()
   }
 
-  const deleteDelegate = async (delegateId: string) => {
-    const confirmDelete = confirm(
-      'Are you sure you want to delete this delegate?'
+  const removeDelegateFromBooking = async (delegateId: string) => {
+    const confirmRemove = confirm(
+      'Remove this delegate from this booking? Their delegate profile will not be deleted.'
     )
 
-    if (!confirmDelete) return
+    if (!confirmRemove) return
 
     const { error } = await supabase
-      .from('delegates')
+      .from('booking_delegates')
       .delete()
-      .eq('id', delegateId)
+      .eq('booking_id', booking.id)
+      .eq('delegate_id', delegateId)
 
     if (error) {
       alert(error.message)
@@ -659,13 +733,22 @@ export default function BookingDetailPage() {
   }
 
   const trainer = getTrainer()
+
   const selectedDelegates = delegates.filter((delegate) =>
     selectedDelegateIds.includes(delegate.id)
   )
+
   const selectedWithCertificates = selectedDelegates.filter((delegate) =>
     getCertificateForDelegate(delegate)
   )
+
   const selectedWithEmail = selectedDelegates.filter((delegate) => delegate.email)
+
+  const linkedDelegateIds = delegates.map((delegate) => delegate.id)
+
+  const availableDelegates = allClientDelegates.filter(
+    (delegate) => !linkedDelegateIds.includes(delegate.id)
+  )
 
   return (
     <div>
@@ -970,41 +1053,85 @@ export default function BookingDetailPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 mb-6">
-          <input
-            className="border p-3 rounded-lg"
-            placeholder="Delegate full name"
-            value={delegateName}
-            onChange={(e) => setDelegateName(e.target.value)}
-          />
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+          <div className="bg-gray-50 border rounded-2xl p-5">
+            <h3 className="text-lg font-semibold mb-4">
+              Attach Existing Delegate
+            </h3>
 
-          <input
-            className="border p-3 rounded-lg"
-            placeholder="Email optional"
-            value={delegateEmail}
-            onChange={(e) => setDelegateEmail(e.target.value)}
-          />
+            <div className="flex flex-col gap-3">
+              <select
+                className="border p-3 rounded-lg bg-white"
+                value={existingDelegateId}
+                onChange={(e) => setExistingDelegateId(e.target.value)}
+              >
+                <option value="">Select existing delegate</option>
 
-          <input
-            className="border p-3 rounded-lg"
-            placeholder="Phone optional"
-            value={delegatePhone}
-            onChange={(e) => setDelegatePhone(e.target.value)}
-          />
+                {availableDelegates.map((delegate) => (
+                  <option key={delegate.id} value={delegate.id}>
+                    {delegate.full_name}
+                    {delegate.email ? ` - ${delegate.email}` : ''}
+                  </option>
+                ))}
+              </select>
 
-          <button
-            className="bg-black text-white p-3 rounded-lg"
-            onClick={addDelegate}
-          >
-            Add Delegate
-          </button>
+              <button
+                className="bg-black text-white p-3 rounded-lg"
+                onClick={attachExistingDelegate}
+              >
+                Attach to Booking
+              </button>
 
-          <textarea
-            className="border p-3 rounded-lg lg:col-span-4"
-            placeholder="Delegate notes optional"
-            value={delegateNotes}
-            onChange={(e) => setDelegateNotes(e.target.value)}
-          />
+              {availableDelegates.length === 0 && (
+                <p className="text-sm text-gray-500">
+                  No unattached delegates available for this client.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-gray-50 border rounded-2xl p-5">
+            <h3 className="text-lg font-semibold mb-4">
+              Create New Delegate
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input
+                className="border p-3 rounded-lg bg-white"
+                placeholder="Delegate full name"
+                value={delegateName}
+                onChange={(e) => setDelegateName(e.target.value)}
+              />
+
+              <input
+                className="border p-3 rounded-lg bg-white"
+                placeholder="Email optional"
+                value={delegateEmail}
+                onChange={(e) => setDelegateEmail(e.target.value)}
+              />
+
+              <input
+                className="border p-3 rounded-lg bg-white"
+                placeholder="Phone optional"
+                value={delegatePhone}
+                onChange={(e) => setDelegatePhone(e.target.value)}
+              />
+
+              <button
+                className="bg-black text-white p-3 rounded-lg"
+                onClick={createDelegateAndAttach}
+              >
+                Create & Attach
+              </button>
+
+              <textarea
+                className="border p-3 rounded-lg bg-white md:col-span-2"
+                placeholder="Delegate notes optional"
+                value={delegateNotes}
+                onChange={(e) => setDelegateNotes(e.target.value)}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="bg-gray-50 border rounded-2xl p-5 mb-6">
@@ -1126,9 +1253,12 @@ export default function BookingDetailPage() {
 
                         <div>
                           <div className="flex flex-wrap items-center gap-3">
-                            <p className="font-semibold">
+                            <Link
+                              href={`/dashboard/delegates/${delegate.id}`}
+                              className="font-semibold hover:underline"
+                            >
                               {delegate.full_name}
-                            </p>
+                            </Link>
 
                             {certificate ? (
                               <div className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs">
@@ -1177,10 +1307,10 @@ export default function BookingDetailPage() {
                         </button>
 
                         <button
-                          className="border border-red-300 text-red-600 px-4 py-2 rounded-lg bg-white"
-                          onClick={() => deleteDelegate(delegate.id)}
+                          className="border px-4 py-2 rounded-lg bg-white"
+                          onClick={() => removeDelegateFromBooking(delegate.id)}
                         >
-                          Delete
+                          Remove from Booking
                         </button>
                       </div>
                     </div>
@@ -1240,7 +1370,7 @@ export default function BookingDetailPage() {
 
           {delegates.length === 0 && (
             <div className="bg-gray-50 border rounded-xl p-4 text-gray-500">
-              No delegates added yet.
+              No delegates attached to this booking yet.
             </div>
           )}
         </div>
