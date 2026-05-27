@@ -17,151 +17,166 @@ const getFutureDateString = (daysAhead: number) => {
 
 export async function GET(request: Request) {
   try {
-    const cronSecret = process.env.CRON_SECRET
-
-    if (cronSecret) {
-      const authHeader = request.headers.get('authorization')
-
-      if (authHeader !== `Bearer ${cronSecret}`) {
-        return Response.json(
-          { error: 'Unauthorized' },
-          { status: 401 }
-        )
-      }
-    }
-
     const today = getTodayString()
-    const reminderCutoffDate = getFutureDateString(60)
 
-    const { data: expiredCertificates, error: expiredFetchError } =
+    const { data: organisations, error: organisationsError } =
       await supabaseAdmin
-        .from('certificates')
+        .from('organisations')
         .select('*')
-        .eq('status', 'valid')
-        .lt('expiry_date', today)
 
-    if (expiredFetchError) {
+    if (organisationsError) {
       return Response.json(
-        { error: expiredFetchError.message },
+        { error: organisationsError.message },
         { status: 500 }
       )
     }
 
     let expiredUpdatedCount = 0
-
-    if (expiredCertificates && expiredCertificates.length > 0) {
-      const expiredIds = expiredCertificates.map((certificate) => certificate.id)
-
-      const { error: expiredUpdateError } = await supabaseAdmin
-        .from('certificates')
-        .update({
-          status: 'expired',
-          expired_checked_at: new Date().toISOString(),
-        })
-        .in('id', expiredIds)
-
-      if (expiredUpdateError) {
-        return Response.json(
-          { error: expiredUpdateError.message },
-          { status: 500 }
-        )
-      }
-
-      expiredUpdatedCount = expiredCertificates.length
-    }
-
-    const { data: expiringCertificates, error: expiringFetchError } =
-      await supabaseAdmin
-        .from('certificates')
-        .select('*')
-        .eq('status', 'valid')
-        .is('expiry_reminder_sent_at', null)
-        .gte('expiry_date', today)
-        .lte('expiry_date', reminderCutoffDate)
-
-    if (expiringFetchError) {
-      return Response.json(
-        { error: expiringFetchError.message },
-        { status: 500 }
-      )
-    }
-
     let remindersSentCount = 0
     let remindersFailedCount = 0
+    let organisationsCheckedCount = 0
 
-    for (const certificate of expiringCertificates || []) {
-      if (!certificate.delegate_id) {
-        continue
+    for (const organisation of organisations || []) {
+      organisationsCheckedCount += 1
+
+      const autoExpireEnabled =
+        organisation.auto_expire_certificates !== false
+
+      const remindersEnabled =
+        organisation.send_certificate_expiry_reminders !== false
+
+      const reminderDays =
+        Number(organisation.certificate_expiry_reminder_days || 60)
+
+      const reminderCutoffDate = getFutureDateString(reminderDays)
+
+      if (autoExpireEnabled) {
+        const { data: expiredCertificates, error: expiredFetchError } =
+          await supabaseAdmin
+            .from('certificates')
+            .select('*')
+            .eq('organisation_id', organisation.id)
+            .eq('status', 'valid')
+            .lt('expiry_date', today)
+
+        if (expiredFetchError) {
+          return Response.json(
+            { error: expiredFetchError.message },
+            { status: 500 }
+          )
+        }
+
+        if (expiredCertificates && expiredCertificates.length > 0) {
+          const expiredIds = expiredCertificates.map(
+            (certificate) => certificate.id
+          )
+
+          const { error: expiredUpdateError } = await supabaseAdmin
+            .from('certificates')
+            .update({
+              status: 'expired',
+              expired_checked_at: new Date().toISOString(),
+            })
+            .in('id', expiredIds)
+
+          if (expiredUpdateError) {
+            return Response.json(
+              { error: expiredUpdateError.message },
+              { status: 500 }
+            )
+          }
+
+          expiredUpdatedCount += expiredCertificates.length
+        }
       }
 
-      const { data: delegate } = await supabaseAdmin
-        .from('delegates')
-        .select('*')
-        .eq('id', certificate.delegate_id)
-        .maybeSingle()
+      if (remindersEnabled) {
+        const { data: expiringCertificates, error: expiringFetchError } =
+          await supabaseAdmin
+            .from('certificates')
+            .select('*')
+            .eq('organisation_id', organisation.id)
+            .eq('status', 'valid')
+            .is('expiry_reminder_sent_at', null)
+            .gte('expiry_date', today)
+            .lte('expiry_date', reminderCutoffDate)
 
-      if (!delegate?.email) {
-        continue
+        if (expiringFetchError) {
+          return Response.json(
+            { error: expiringFetchError.message },
+            { status: 500 }
+          )
+        }
+
+        for (const certificate of expiringCertificates || []) {
+          if (!certificate.delegate_id) {
+            continue
+          }
+
+          const { data: delegate } = await supabaseAdmin
+            .from('delegates')
+            .select('*')
+            .eq('id', certificate.delegate_id)
+            .maybeSingle()
+
+          if (!delegate?.email) {
+            continue
+          }
+
+          const baseUrl =
+            process.env.NEXT_PUBLIC_SITE_URL ||
+            request.headers.get('origin') ||
+            new URL(request.url).origin
+
+          const verificationUrl = certificate.verification_id
+            ? `${baseUrl}/verify/${certificate.verification_id}`
+            : ''
+
+          const response = await fetch(`${baseUrl}/api/send-expiry-reminder`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              to: delegate.email,
+              learnerName: certificate.learner_name || delegate.full_name,
+              courseName: certificate.course_name,
+              expiryDate: certificate.expiry_date,
+              certificateNumber: certificate.certificate_number,
+              verificationUrl,
+              businessName: organisation.name || 'Hercules OS',
+              businessEmail: organisation.email || '',
+              businessPhone: organisation.phone || '',
+              organisationId: organisation.id,
+            }),
+          })
+
+          if (!response.ok) {
+            remindersFailedCount += 1
+            continue
+          }
+
+          const { error: reminderUpdateError } = await supabaseAdmin
+            .from('certificates')
+            .update({
+              expiry_reminder_sent_at: new Date().toISOString(),
+            })
+            .eq('id', certificate.id)
+
+          if (reminderUpdateError) {
+            remindersFailedCount += 1
+            continue
+          }
+
+          remindersSentCount += 1
+        }
       }
-
-      const { data: organisation } = await supabaseAdmin
-        .from('organisations')
-        .select('*')
-        .eq('id', certificate.organisation_id)
-        .maybeSingle()
-
-      const verificationUrl = certificate.verification_id
-        ? `${process.env.NEXT_PUBLIC_SITE_URL || ''}/verify/${certificate.verification_id}`
-        : ''
-
-      const baseUrl =
-        process.env.NEXT_PUBLIC_SITE_URL ||
-        request.headers.get('origin') ||
-        new URL(request.url).origin
-
-      const response = await fetch(`${baseUrl}/api/send-expiry-reminder`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: delegate.email,
-          learnerName: certificate.learner_name || delegate.full_name,
-          courseName: certificate.course_name,
-          expiryDate: certificate.expiry_date,
-          certificateNumber: certificate.certificate_number,
-          verificationUrl,
-          businessName: organisation?.name || 'Hercules OS',
-          businessEmail: organisation?.email || '',
-          businessPhone: organisation?.phone || '',
-          organisationId: certificate.organisation_id,
-        }),
-      })
-
-      if (!response.ok) {
-        remindersFailedCount += 1
-        continue
-      }
-
-      const { error: reminderUpdateError } = await supabaseAdmin
-        .from('certificates')
-        .update({
-          expiry_reminder_sent_at: new Date().toISOString(),
-        })
-        .eq('id', certificate.id)
-
-      if (reminderUpdateError) {
-        remindersFailedCount += 1
-        continue
-      }
-
-      remindersSentCount += 1
     }
 
     return Response.json({
       success: true,
       today,
-      reminderCutoffDate,
+      organisationsCheckedCount,
       expiredUpdatedCount,
       remindersSentCount,
       remindersFailedCount,

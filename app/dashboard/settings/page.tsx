@@ -15,6 +15,10 @@ export default function SettingsPage() {
   const [phone, setPhone] = useState('')
   const [publicRequestSlug, setPublicRequestSlug] = useState('')
 
+  const [autoExpireCertificates, setAutoExpireCertificates] = useState(true)
+  const [sendCertificateExpiryReminders, setSendCertificateExpiryReminders] = useState(true)
+  const [certificateExpiryReminderDays, setCertificateExpiryReminderDays] = useState('60')
+
   const load = async () => {
     const profile = await getOrCreateAccount()
 
@@ -36,6 +40,10 @@ export default function SettingsPage() {
     setPhone(data?.phone || '')
     setPublicRequestSlug(data?.public_request_slug || '')
 
+    setAutoExpireCertificates(data?.auto_expire_certificates !== false)
+    setSendCertificateExpiryReminders(data?.send_certificate_expiry_reminders !== false)
+    setCertificateExpiryReminderDays(String(data?.certificate_expiry_reminder_days || 60))
+
     setLoading(false)
   }
 
@@ -48,6 +56,13 @@ export default function SettingsPage() {
 
     if (!name) {
       alert('Business name is required')
+      return
+    }
+
+    const reminderDays = Number(certificateExpiryReminderDays)
+
+    if (Number.isNaN(reminderDays) || reminderDays < 1 || reminderDays > 365) {
+      alert('Certificate reminder days must be between 1 and 365')
       return
     }
 
@@ -66,6 +81,9 @@ export default function SettingsPage() {
         email,
         phone,
         public_request_slug: cleanSlug || null,
+        auto_expire_certificates: autoExpireCertificates,
+        send_certificate_expiry_reminders: sendCertificateExpiryReminders,
+        certificate_expiry_reminder_days: reminderDays,
       })
       .eq('id', organisation.id)
 
@@ -83,8 +101,6 @@ export default function SettingsPage() {
   const publicRequestUrl = publicRequestSlug
     ? `${window.location.origin}/request-training/${publicRequestSlug}`
     : ''
-
-  const examplePublicRequestUrl = `${window.location.origin}/request-training/your-business-name`
 
   const copyPublicLink = async () => {
     if (!publicRequestUrl) {
@@ -112,132 +128,207 @@ export default function SettingsPage() {
         </h1>
 
         <p className="text-gray-500 mt-1">
-          Manage your business details, public enquiry link and automated templates
+          Manage your business details, public enquiry link, certificate automation and templates
         </p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <div className="xl:col-span-2 bg-white border rounded-2xl p-6 shadow-sm">
-          <h2 className="text-2xl font-semibold mb-5">
-            Business Details
-          </h2>
+        <div className="xl:col-span-2 grid gap-8">
+          <div className="bg-white border rounded-2xl p-6 shadow-sm">
+            <h2 className="text-2xl font-semibold mb-5">
+              Business Details
+            </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <label className="text-sm text-gray-500">
-                Business name
-              </label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="text-sm text-gray-500">
+                  Business name
+                </label>
 
-              <input
-                className="border p-3 rounded-lg w-full mt-1"
-                placeholder="Business name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
+                <input
+                  className="border p-3 rounded-lg w-full mt-1"
+                  placeholder="Business name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
 
-            <div>
-              <label className="text-sm text-gray-500">
-                Business email
-              </label>
+              <div>
+                <label className="text-sm text-gray-500">
+                  Business email
+                </label>
 
-              <input
-                className="border p-3 rounded-lg w-full mt-1"
-                placeholder="Business email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
+                <input
+                  className="border p-3 rounded-lg w-full mt-1"
+                  placeholder="Business email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
 
-            <div>
-              <label className="text-sm text-gray-500">
-                Business phone
-              </label>
+              <div>
+                <label className="text-sm text-gray-500">
+                  Business phone
+                </label>
 
-              <input
-                className="border p-3 rounded-lg w-full mt-1"
-                placeholder="Business phone"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-            </div>
+                <input
+                  className="border p-3 rounded-lg w-full mt-1"
+                  placeholder="Business phone"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+              </div>
 
-            <div className="md:col-span-2">
-              <label className="text-sm text-gray-500">
-                Public enquiry link name
-              </label>
+              <div className="md:col-span-2">
+                <label className="text-sm text-gray-500">
+                  Public enquiry link name
+                </label>
 
-              <input
-                className="border p-3 rounded-lg w-full mt-1"
-                placeholder="your-business-name"
-                value={publicRequestSlug}
-                onChange={(e) => setPublicRequestSlug(e.target.value)}
-              />
+                <input
+                  className="border p-3 rounded-lg w-full mt-1"
+                  placeholder="your-business-name"
+                  value={publicRequestSlug}
+                  onChange={(e) => setPublicRequestSlug(e.target.value)}
+                />
 
-              <p className="text-sm text-gray-500 mt-2">
-                Choose a short version of your business name. This creates a public link you can send to customers so they can request training.
-              </p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Choose a short version of your business name. This creates a public link you can send to customers so they can request training.
+                </p>
 
-              {!publicRequestSlug && (
-                <div className="bg-gray-50 border rounded-xl p-4 mt-3 text-sm text-gray-600">
-                  Example: if you enter <span className="font-semibold">whiteleaftraining</span>, your enquiry form link will become:
-                  <p className="font-medium break-all mt-2">
-                    {window.location.origin}/request-training/whiteleaftraining
+                {!publicRequestSlug && (
+                  <div className="bg-gray-50 border rounded-xl p-4 mt-3 text-sm text-gray-600">
+                    Example: if you enter <span className="font-semibold">whiteleaftraining</span>, your enquiry form link will become:
+                    <p className="font-medium break-all mt-2">
+                      {window.location.origin}/request-training/whiteleaftraining
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {publicRequestSlug ? (
+                <div className="md:col-span-2 bg-gray-50 border rounded-xl p-4">
+                  <p className="text-sm text-gray-500">
+                    Your public enquiry form
                   </p>
+
+                  <p className="font-medium break-all mt-1">
+                    {publicRequestUrl}
+                  </p>
+
+                  <p className="text-sm text-gray-500 mt-2">
+                    Send this link to customers when you want them to request training online.
+                  </p>
+
+                  <div className="flex flex-wrap gap-3 mt-4">
+                    <button
+                      className="border px-4 py-2 rounded-lg bg-white"
+                      onClick={copyPublicLink}
+                    >
+                      Copy Link
+                    </button>
+
+                    <Link
+                      href={`/request-training/${publicRequestSlug}`}
+                      className="bg-black text-white px-4 py-2 rounded-lg"
+                      target="_blank"
+                    >
+                      Open Form
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <div className="md:col-span-2 bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-yellow-800">
+                  Add a public enquiry link name before sharing your request form with customers.
                 </div>
               )}
             </div>
+          </div>
 
-            {publicRequestSlug ? (
-              <div className="md:col-span-2 bg-gray-50 border rounded-xl p-4">
-                <p className="text-sm text-gray-500">
-                  Your public enquiry form
-                </p>
+          <div className="bg-white border rounded-2xl p-6 shadow-sm">
+            <h2 className="text-2xl font-semibold mb-2">
+              Certificate Automation
+            </h2>
 
-                <p className="font-medium break-all mt-1">
-                  {publicRequestUrl}
-                </p>
+            <p className="text-gray-500 mb-5">
+              Control how Hercules OS handles expired certificates and upcoming expiry reminders.
+            </p>
+
+            <div className="grid gap-5">
+              <label className="flex items-start gap-3 bg-gray-50 border rounded-xl p-4 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={autoExpireCertificates}
+                  onChange={(e) => setAutoExpireCertificates(e.target.checked)}
+                />
+
+                <div>
+                  <p className="font-semibold">
+                    Automatically mark expired certificates
+                  </p>
+
+                  <p className="text-sm text-gray-500 mt-1">
+                    When a certificate expiry date has passed, Hercules OS will automatically change its status to expired during the daily expiry check.
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 bg-gray-50 border rounded-xl p-4 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={sendCertificateExpiryReminders}
+                  onChange={(e) => setSendCertificateExpiryReminders(e.target.checked)}
+                />
+
+                <div>
+                  <p className="font-semibold">
+                    Send automatic expiry reminder emails
+                  </p>
+
+                  <p className="text-sm text-gray-500 mt-1">
+                    Hercules OS will email delegates before their certificate expires, as long as the delegate has an email address.
+                  </p>
+                </div>
+              </label>
+
+              <div>
+                <label className="text-sm text-gray-500">
+                  Send expiry reminder this many days before expiry
+                </label>
+
+                <input
+                  className="border p-3 rounded-lg w-full mt-1"
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={certificateExpiryReminderDays}
+                  onChange={(e) => setCertificateExpiryReminderDays(e.target.value)}
+                />
 
                 <p className="text-sm text-gray-500 mt-2">
-                  Send this link to customers when you want them to request training online.
+                  Example: 60 means the reminder email will be sent when the certificate is within 60 days of expiring. Each certificate only gets one automatic reminder.
                 </p>
-
-                <div className="flex flex-wrap gap-3 mt-4">
-                  <button
-                    className="border px-4 py-2 rounded-lg bg-white"
-                    onClick={copyPublicLink}
-                  >
-                    Copy Link
-                  </button>
-
-                  <Link
-                    href={`/request-training/${publicRequestSlug}`}
-                    className="bg-black text-white px-4 py-2 rounded-lg"
-                    target="_blank"
-                  >
-                    Open Form
-                  </Link>
-                </div>
               </div>
-            ) : (
-              <div className="md:col-span-2 bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-yellow-800">
-                Add a public enquiry link name before sharing your request form with customers.
-              </div>
-            )}
 
-            <div className="md:col-span-2">
-              <button
-                className="bg-black text-white px-4 py-3 rounded-lg disabled:bg-gray-400"
-                onClick={saveSettings}
-                disabled={saving}
-              >
-                {saving ? 'Saving...' : 'Save Settings'}
-              </button>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-blue-800 text-sm">
+                Automatic checks run daily. The reminder email wording can be edited under Email Templates.
+              </div>
             </div>
+          </div>
+
+          <div>
+            <button
+              className="bg-black text-white px-4 py-3 rounded-lg disabled:bg-gray-400"
+              onClick={saveSettings}
+              disabled={saving}
+            >
+              {saving ? 'Saving...' : 'Save Settings'}
+            </button>
           </div>
         </div>
 
-        <div className="grid gap-5">
+        <div className="grid gap-5 h-fit">
           <Link
             href="/dashboard/settings/email-templates"
             className="bg-white border rounded-2xl p-6 shadow-sm hover:shadow-md transition block"
