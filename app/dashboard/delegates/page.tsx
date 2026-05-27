@@ -26,6 +26,24 @@ export default function DelegatesPage() {
   const [editPhone, setEditPhone] = useState('')
   const [editNotes, setEditNotes] = useState('')
 
+  const inputClass =
+    'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+
+  const buttonPrimary =
+    'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
+
+  const buttonSecondary =
+    'border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400'
+
+  const buttonDanger =
+    'border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-red-50'
+
+  const panelClass =
+    'bg-white border border-slate-200 rounded-lg'
+
+  const panelHeaderClass =
+    'px-4 py-3 border-b border-slate-200'
+
   const load = async () => {
     const profile = await getOrCreateAccount()
 
@@ -156,6 +174,10 @@ export default function DelegatesPage() {
     load()
   }
 
+  const clearSearch = () => {
+    setSearch('')
+  }
+
   const filteredDelegates = delegates.filter((delegate) => {
     const client = getClientForDelegate(delegate)
 
@@ -172,57 +194,108 @@ export default function DelegatesPage() {
   })
 
   const delegatesWithEmail = delegates.filter((delegate) => delegate.email)
+  const delegatesWithPhone = delegates.filter((delegate) => delegate.phone)
+  const delegatesWithClient = delegates.filter((delegate) => delegate.client_id)
+
+  const StatCard = ({
+    label,
+    value,
+    detail,
+  }: {
+    label: string
+    value: string | number
+    detail?: string
+  }) => (
+    <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+
+      <h2 className="text-2xl font-semibold tracking-tight text-slate-950 mt-2">
+        {value}
+      </h2>
+
+      {detail && (
+        <p className="text-xs text-slate-500 mt-1">
+          {detail}
+        </p>
+      )}
+    </div>
+  )
 
   if (loading) {
     return (
-      <div className="bg-white border rounded-2xl p-6 shadow-sm">
-        Loading delegates...
+      <div className={panelClass}>
+        <div className="p-4 text-sm text-slate-500">
+          Loading delegates...
+        </div>
       </div>
     )
   }
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold">
-          Delegates
-        </h1>
+      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Delegates
+          </p>
 
-        <p className="text-gray-500 mt-1">
-          Manage learners across all clients and bookings
-        </p>
-      </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
+            Learner records
+          </h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Total Delegates</p>
-          <h2 className="text-3xl font-bold mt-2">{delegates.length}</h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">With Email</p>
-          <h2 className="text-3xl font-bold mt-2">{delegatesWithEmail.length}</h2>
-        </div>
-
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Search Results</p>
-          <h2 className="text-3xl font-bold mt-2">{filteredDelegates.length}</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Manage learners across all clients, bookings and certificates.
+          </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <h2 className="text-xl font-semibold mb-4">
-            Add Delegate
-          </h2>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+        <StatCard
+          label="Total delegates"
+          value={delegates.length}
+          detail="All learner profiles"
+        />
 
-          <div className="flex flex-col gap-3">
+        <StatCard
+          label="With email"
+          value={delegatesWithEmail.length}
+          detail="Can receive certificates"
+        />
+
+        <StatCard
+          label="With phone"
+          value={delegatesWithPhone.length}
+          detail="Phone number saved"
+        />
+
+        <StatCard
+          label="Search results"
+          value={filteredDelegates.length}
+          detail="Matching current filter"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+        <div className={`xl:col-span-4 ${panelClass} h-fit`}>
+          <div className={panelHeaderClass}>
+            <h2 className="text-sm font-semibold text-slate-950">
+              Add delegate
+            </h2>
+
+            <p className="text-xs text-slate-500 mt-0.5">
+              Create a learner profile and assign them to a client.
+            </p>
+          </div>
+
+          <div className="p-4 flex flex-col gap-3">
             <select
-              className="border p-3 rounded-lg"
+              className={inputClass}
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
             >
-              <option value="">Select Client / Company</option>
+              <option value="">Select client / company</option>
 
               {clients.map((client) => (
                 <option key={client.id} value={client.id}>
@@ -232,211 +305,274 @@ export default function DelegatesPage() {
             </select>
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Delegate full name"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
             />
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Delegate email optional"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
 
             <input
-              className="border p-3 rounded-lg"
+              className={inputClass}
               placeholder="Delegate phone optional"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
             />
 
             <textarea
-              className="border p-3 rounded-lg"
+              className={`${inputClass} min-h-24`}
               placeholder="Notes optional"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
 
             <button
-              className="bg-black text-white p-3 rounded-lg"
+              className={buttonPrimary}
               onClick={addDelegate}
             >
-              Add Delegate
+              Add delegate
             </button>
           </div>
         </div>
 
-        <div className="lg:col-span-2">
-          <div className="bg-white border rounded-2xl p-4 shadow-sm mb-4">
-            <input
-              className="w-full border p-3 rounded-lg"
-              placeholder="Search delegates by name, email, client or notes..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+        <div className="xl:col-span-8 grid gap-4">
+          <div className={panelClass}>
+            <div className={panelHeaderClass}>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Search delegates
+              </h2>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                Find learners by name, email, phone, client or notes.
+              </p>
+            </div>
+
+            <div className="p-4">
+              <div className="flex flex-col md:flex-row gap-3">
+                <input
+                  className={`${inputClass} flex-1`}
+                  placeholder="Search delegates..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+
+                <button
+                  className={buttonSecondary}
+                  onClick={clearSearch}
+                >
+                  Clear
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-500 mt-3">
+                Showing {filteredDelegates.length} of {delegates.length} delegates · {delegatesWithClient.length} linked to clients
+              </p>
+            </div>
           </div>
 
-          <div className="grid gap-4">
-            {filteredDelegates.map((delegate) => {
-              const client = getClientForDelegate(delegate)
-              const isEditing = editingId === delegate.id
+          <div className={panelClass}>
+            <div className={`${panelHeaderClass} flex items-center justify-between`}>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-950">
+                  Delegate list
+                </h2>
 
-              return (
-                <div
-                  key={delegate.id}
-                  className="bg-white border rounded-2xl p-5 shadow-sm"
-                >
-                  {!isEditing ? (
-                    <>
-                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                        <div>
-                          <h2 className="text-xl font-semibold">
-                            {delegate.full_name}
-                          </h2>
-
-                          <p className="text-gray-500 mt-1">
-                            {client?.company || 'No client assigned'}
-                          </p>
-
-                          {client?.name && (
-                            <p className="text-sm text-gray-400 mt-1">
-                              Primary contact: {client.name}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm w-fit">
-                          Active
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 text-sm text-gray-600">
-                        <p>Email: {delegate.email || 'Not set'}</p>
-                        <p>Phone: {delegate.phone || 'Not set'}</p>
-
-                        {delegate.notes && (
-                          <p className="md:col-span-2">
-                            Notes: {delegate.notes}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap gap-3 mt-5">
-                        <Link
-                          href={`/dashboard/delegates/${delegate.id}`}
-                          className="bg-black text-white px-4 py-2 rounded-lg"
-                        >
-                          View Profile
-                        </Link>
-
-                        {client && (
-                          <Link
-                            href={`/dashboard/clients/${client.id}`}
-                            className="border px-4 py-2 rounded-lg"
-                          >
-                            View Client
-                          </Link>
-                        )}
-
-                        <button
-                          className="border px-4 py-2 rounded-lg"
-                          onClick={() => startEditing(delegate)}
-                        >
-                          Edit
-                        </button>
-
-                        <button
-                          className="border border-red-300 text-red-600 px-4 py-2 rounded-lg"
-                          onClick={() => deleteDelegate(delegate.id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="mb-5">
-                        <h2 className="text-xl font-semibold">
-                          Edit Delegate
-                        </h2>
-
-                        <p className="text-gray-500 mt-1">
-                          Update learner details
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <select
-                          className="border p-3 rounded-lg md:col-span-2"
-                          value={editClientId}
-                          onChange={(e) => setEditClientId(e.target.value)}
-                        >
-                          <option value="">Select Client / Company</option>
-
-                          {clients.map((client) => (
-                            <option key={client.id} value={client.id}>
-                              {client.company} - {client.name}
-                            </option>
-                          ))}
-                        </select>
-
-                        <input
-                          className="border p-3 rounded-lg"
-                          placeholder="Delegate full name"
-                          value={editFullName}
-                          onChange={(e) => setEditFullName(e.target.value)}
-                        />
-
-                        <input
-                          className="border p-3 rounded-lg"
-                          placeholder="Email"
-                          value={editEmail}
-                          onChange={(e) => setEditEmail(e.target.value)}
-                        />
-
-                        <input
-                          className="border p-3 rounded-lg"
-                          placeholder="Phone"
-                          value={editPhone}
-                          onChange={(e) => setEditPhone(e.target.value)}
-                        />
-
-                        <textarea
-                          className="border p-3 rounded-lg"
-                          placeholder="Notes"
-                          value={editNotes}
-                          onChange={(e) => setEditNotes(e.target.value)}
-                        />
-                      </div>
-
-                      <div className="flex flex-wrap gap-3 mt-5">
-                        <button
-                          className="bg-black text-white px-4 py-2 rounded-lg"
-                          onClick={() => saveDelegate(delegate.id)}
-                        >
-                          Save Delegate
-                        </button>
-
-                        <button
-                          className="border px-4 py-2 rounded-lg"
-                          onClick={cancelEditing}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )
-            })}
-
-            {filteredDelegates.length === 0 && (
-              <div className="bg-white border rounded-2xl p-6 shadow-sm text-gray-500">
-                No delegates found.
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Open a delegate to view bookings, certificates and history.
+                </p>
               </div>
-            )}
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {filteredDelegates.map((delegate) => {
+                const client = getClientForDelegate(delegate)
+                const isEditing = editingId === delegate.id
+
+                return (
+                  <div
+                    key={delegate.id}
+                    className="p-4"
+                  >
+                    {!isEditing ? (
+                      <>
+                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-sm font-semibold text-slate-950">
+                                {delegate.full_name}
+                              </h3>
+
+                              <span className="border border-emerald-100 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-md text-xs font-medium">
+                                Active
+                              </span>
+
+                              {delegate.email ? (
+                                <span className="border border-blue-100 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-xs font-medium">
+                                  Email set
+                                </span>
+                              ) : (
+                                <span className="border border-slate-200 bg-slate-50 text-slate-700 px-2.5 py-1 rounded-md text-xs font-medium">
+                                  No email
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-sm text-slate-600 mt-1">
+                              {client?.company || 'No client assigned'}
+                            </p>
+
+                            {client?.name && (
+                              <p className="text-xs text-slate-500 mt-1">
+                                Primary contact: {client.name}
+                              </p>
+                            )}
+                          </div>
+
+                          <Link
+                            href={`/dashboard/delegates/${delegate.id}`}
+                            className={buttonPrimary}
+                          >
+                            View profile
+                          </Link>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-4 text-xs text-slate-600">
+                          <div>
+                            <p className="text-slate-400">Email</p>
+                            <p className="font-medium text-slate-800 mt-1 break-all">
+                              {delegate.email || 'Not set'}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-slate-400">Phone</p>
+                            <p className="font-medium text-slate-800 mt-1">
+                              {delegate.phone || 'Not set'}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-slate-400">Notes</p>
+                            <p className="font-medium text-slate-800 mt-1">
+                              {delegate.notes || 'No notes'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 mt-4">
+                          {client && (
+                            <Link
+                              href={`/dashboard/clients/${client.id}`}
+                              className={buttonSecondary}
+                            >
+                              View client
+                            </Link>
+                          )}
+
+                          <button
+                            className={buttonSecondary}
+                            onClick={() => startEditing(delegate)}
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            className={buttonDanger}
+                            onClick={() => deleteDelegate(delegate.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="mb-4">
+                          <h3 className="text-sm font-semibold text-slate-950">
+                            Edit delegate
+                          </h3>
+
+                          <p className="text-xs text-slate-500 mt-1">
+                            Update learner details.
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <select
+                            className={`${inputClass} md:col-span-2`}
+                            value={editClientId}
+                            onChange={(e) => setEditClientId(e.target.value)}
+                          >
+                            <option value="">Select client / company</option>
+
+                            {clients.map((client) => (
+                              <option key={client.id} value={client.id}>
+                                {client.company} - {client.name}
+                              </option>
+                            ))}
+                          </select>
+
+                          <input
+                            className={inputClass}
+                            placeholder="Delegate full name"
+                            value={editFullName}
+                            onChange={(e) => setEditFullName(e.target.value)}
+                          />
+
+                          <input
+                            className={inputClass}
+                            placeholder="Email"
+                            value={editEmail}
+                            onChange={(e) => setEditEmail(e.target.value)}
+                          />
+
+                          <input
+                            className={inputClass}
+                            placeholder="Phone"
+                            value={editPhone}
+                            onChange={(e) => setEditPhone(e.target.value)}
+                          />
+
+                          <textarea
+                            className={`${inputClass} min-h-20`}
+                            placeholder="Notes"
+                            value={editNotes}
+                            onChange={(e) => setEditNotes(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 mt-4">
+                          <button
+                            className={buttonPrimary}
+                            onClick={() => saveDelegate(delegate.id)}
+                          >
+                            Save delegate
+                          </button>
+
+                          <button
+                            className={buttonSecondary}
+                            onClick={cancelEditing}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+
+              {filteredDelegates.length === 0 && (
+                <div className="p-6 text-sm text-slate-500">
+                  No delegates found.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

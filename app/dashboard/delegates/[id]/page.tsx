@@ -31,6 +31,24 @@ export default function DelegateProfilePage() {
   const [bookingToAttach, setBookingToAttach] = useState('')
   const [attaching, setAttaching] = useState(false)
 
+  const inputClass =
+    'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+
+  const buttonPrimary =
+    'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
+
+  const buttonSecondary =
+    'border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400'
+
+  const buttonDanger =
+    'border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-red-50'
+
+  const panelClass =
+    'bg-white border border-slate-200 rounded-lg'
+
+  const panelHeaderClass =
+    'px-4 py-3 border-b border-slate-200'
+
   const load = async () => {
     const currentProfile = await getOrCreateAccount()
     const delegateId = params.id as string
@@ -229,16 +247,42 @@ export default function DelegateProfilePage() {
   }
 
   const getBookingStatusStyle = (status: string) => {
-    if (status === 'completed') return 'bg-green-100 text-green-700'
-    if (status === 'cancelled') return 'bg-red-100 text-red-700'
-    return 'bg-blue-100 text-blue-700'
+    if (status === 'completed') return 'bg-emerald-50 text-emerald-700 border-emerald-100'
+    if (status === 'cancelled') return 'bg-red-50 text-red-700 border-red-100'
+    return 'bg-blue-50 text-blue-700 border-blue-100'
   }
 
   const getCertificateStatusStyle = (status: string) => {
-    if (status === 'revoked') return 'bg-red-100 text-red-700'
-    if (status === 'expired') return 'bg-yellow-100 text-yellow-700'
-    return 'bg-green-100 text-green-700'
+    if (status === 'revoked') return 'bg-red-50 text-red-700 border-red-100'
+    if (status === 'expired') return 'bg-amber-50 text-amber-700 border-amber-100'
+    return 'bg-emerald-50 text-emerald-700 border-emerald-100'
   }
+
+  const StatCard = ({
+    label,
+    value,
+    detail,
+  }: {
+    label: string
+    value: string | number
+    detail?: string
+  }) => (
+    <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+
+      <h2 className="text-2xl font-semibold tracking-tight text-slate-950 mt-2 break-all">
+        {value}
+      </h2>
+
+      {detail && (
+        <p className="text-xs text-slate-500 mt-1">
+          {detail}
+        </p>
+      )}
+    </div>
+  )
 
   const linkedBookingIds = linkedBookings.map((booking) => booking.id)
 
@@ -248,8 +292,10 @@ export default function DelegateProfilePage() {
 
   if (loading) {
     return (
-      <div className="bg-white border rounded-2xl p-6 shadow-sm">
-        Loading delegate profile...
+      <div className={panelClass}>
+        <div className="p-4 text-sm text-slate-500">
+          Loading delegate profile...
+        </div>
       </div>
     )
   }
@@ -259,13 +305,15 @@ export default function DelegateProfilePage() {
       <div>
         <Link
           href="/dashboard/delegates"
-          className="text-sm text-gray-500 hover:text-black"
+          className="text-sm text-slate-500 hover:text-slate-950"
         >
           ← Back to delegates
         </Link>
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm mt-6">
-          Delegate not found.
+        <div className={`${panelClass} mt-4`}>
+          <div className="p-4 text-sm text-slate-500">
+            Delegate not found.
+          </div>
         </div>
       </div>
     )
@@ -273,72 +321,82 @@ export default function DelegateProfilePage() {
 
   return (
     <div>
-      <div className="mb-8">
+      <div className="mb-6">
         <Link
           href="/dashboard/delegates"
-          className="text-sm text-gray-500 hover:text-black"
+          className="text-sm text-slate-500 hover:text-slate-950"
         >
           ← Back to delegates
         </Link>
 
-        <div className="mt-4 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+        <div className="mt-3 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
           <div>
-            <h1 className="text-4xl font-bold">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Delegate profile
+            </p>
+
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
               {delegate.full_name}
             </h1>
 
-            <p className="text-gray-500 mt-2">
-              Delegate profile, booking history and certificates
+            <p className="text-sm text-slate-500 mt-1">
+              Delegate details, booking history and certificates.
             </p>
           </div>
 
           {!editing && (
             <button
-              className="bg-black text-white px-4 py-2 rounded-lg"
+              className={buttonPrimary}
               onClick={startEditing}
             >
-              Edit Delegate
+              Edit delegate
             </button>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Bookings</p>
-          <h2 className="text-3xl font-bold mt-2">{linkedBookings.length}</h2>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+        <StatCard
+          label="Bookings"
+          value={linkedBookings.length}
+          detail="Linked sessions"
+        />
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Certificates</p>
-          <h2 className="text-3xl font-bold mt-2">{certificates.length}</h2>
-        </div>
+        <StatCard
+          label="Certificates"
+          value={certificates.length}
+          detail="Issued certificates"
+        />
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Email</p>
-          <h2 className="text-xl font-bold mt-2 break-all">
-            {delegate.email ? 'Set' : 'Missing'}
-          </h2>
-        </div>
+        <StatCard
+          label="Email"
+          value={delegate.email ? 'Set' : 'Missing'}
+          detail={delegate.email || 'No email saved'}
+        />
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <p className="text-gray-500">Client</p>
-          <h2 className="text-xl font-bold mt-2">
-            {client?.company || 'Not set'}
-          </h2>
-        </div>
+        <StatCard
+          label="Client"
+          value={client?.company || 'Not set'}
+          detail="Linked company"
+        />
       </div>
 
-      <div className="bg-white border rounded-2xl p-6 shadow-sm mb-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
-          <h2 className="text-2xl font-semibold">
-            Delegate Details
-          </h2>
+      <div className={`${panelClass} mb-4`}>
+        <div className={`${panelHeaderClass} flex flex-col md:flex-row md:items-center md:justify-between gap-3`}>
+          <div>
+            <h2 className="text-sm font-semibold text-slate-950">
+              Delegate details
+            </h2>
+
+            <p className="text-xs text-slate-500 mt-0.5">
+              Learner contact details and linked client.
+            </p>
+          </div>
 
           {editing && (
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-2">
               <button
-                className="border px-4 py-2 rounded-lg"
+                className={buttonSecondary}
                 onClick={cancelEditing}
                 disabled={saving}
               >
@@ -346,253 +404,271 @@ export default function DelegateProfilePage() {
               </button>
 
               <button
-                className="bg-black text-white px-4 py-2 rounded-lg disabled:bg-gray-400"
+                className={buttonPrimary}
                 onClick={saveDelegate}
                 disabled={saving}
               >
-                {saving ? 'Saving...' : 'Save Changes'}
+                {saving ? 'Saving...' : 'Save changes'}
               </button>
             </div>
           )}
         </div>
 
-        {!editing ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 text-sm text-gray-700">
-            <div>
-              <p className="text-gray-500">Full name</p>
-              <p className="font-medium mt-1">{delegate.full_name}</p>
-            </div>
+        <div className="p-4">
+          {!editing ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 text-sm">
+              <div>
+                <p className="text-xs text-slate-500">Full name</p>
+                <p className="font-medium text-slate-950 mt-1">
+                  {delegate.full_name}
+                </p>
+              </div>
 
-            <div>
-              <p className="text-gray-500">Client</p>
+              <div>
+                <p className="text-xs text-slate-500">Client</p>
 
-              {client ? (
-                <Link
-                  href={`/dashboard/clients/${client.id}`}
-                  className="font-medium mt-1 inline-block hover:underline"
-                >
-                  {client.company}
-                </Link>
-              ) : (
-                <p className="font-medium mt-1">Not set</p>
-              )}
-            </div>
+                {client ? (
+                  <Link
+                    href={`/dashboard/clients/${client.id}`}
+                    className="font-medium text-slate-950 mt-1 inline-block hover:underline"
+                  >
+                    {client.company}
+                  </Link>
+                ) : (
+                  <p className="font-medium text-slate-950 mt-1">
+                    Not set
+                  </p>
+                )}
+              </div>
 
-            <div>
-              <p className="text-gray-500">Email</p>
-              <p className="font-medium mt-1 break-all">
-                {delegate.email || 'Not set'}
-              </p>
-            </div>
+              <div>
+                <p className="text-xs text-slate-500">Email</p>
+                <p className="font-medium text-slate-950 mt-1 break-all">
+                  {delegate.email || 'Not set'}
+                </p>
+              </div>
 
-            <div>
-              <p className="text-gray-500">Phone</p>
-              <p className="font-medium mt-1">
-                {delegate.phone || 'Not set'}
-              </p>
-            </div>
+              <div>
+                <p className="text-xs text-slate-500">Phone</p>
+                <p className="font-medium text-slate-950 mt-1">
+                  {delegate.phone || 'Not set'}
+                </p>
+              </div>
 
-            <div className="md:col-span-2 xl:col-span-4">
-              <p className="text-gray-500">Notes</p>
-              <p className="font-medium mt-1 whitespace-pre-line">
-                {delegate.notes || 'No notes'}
-              </p>
+              <div className="md:col-span-2 xl:col-span-4">
+                <p className="text-xs text-slate-500">Notes</p>
+                <p className="font-medium text-slate-950 mt-1 whitespace-pre-line">
+                  {delegate.notes || 'No notes'}
+                </p>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <select
+                className={`${inputClass} md:col-span-2`}
+                value={editClientId}
+                onChange={(e) => setEditClientId(e.target.value)}
+              >
+                <option value="">Select client / company</option>
+
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.company} - {client.name}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                className={inputClass}
+                placeholder="Full name"
+                value={editFullName}
+                onChange={(e) => setEditFullName(e.target.value)}
+              />
+
+              <input
+                className={inputClass}
+                placeholder="Email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+              />
+
+              <input
+                className={inputClass}
+                placeholder="Phone"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+              />
+
+              <textarea
+                className={`${inputClass} min-h-20`}
+                placeholder="Notes"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className={`${panelClass} mb-4`}>
+        <div className={panelHeaderClass}>
+          <h2 className="text-sm font-semibold text-slate-950">
+            Attach to booking
+          </h2>
+
+          <p className="text-xs text-slate-500 mt-0.5">
+            Add this delegate to another booking for the same client.
+          </p>
+        </div>
+
+        <div className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <select
-              className="border p-3 rounded-lg md:col-span-2"
-              value={editClientId}
-              onChange={(e) => setEditClientId(e.target.value)}
+              className={`${inputClass} md:col-span-2`}
+              value={bookingToAttach}
+              onChange={(e) => setBookingToAttach(e.target.value)}
             >
-              <option value="">Select Client / Company</option>
+              <option value="">Select booking</option>
 
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.company} - {client.name}
+              {availableBookings.map((booking) => (
+                <option key={booking.id} value={booking.id}>
+                  {booking.date} - {booking.course_name}
                 </option>
               ))}
             </select>
 
-            <input
-              className="border p-3 rounded-lg"
-              placeholder="Full name"
-              value={editFullName}
-              onChange={(e) => setEditFullName(e.target.value)}
-            />
-
-            <input
-              className="border p-3 rounded-lg"
-              placeholder="Email"
-              value={editEmail}
-              onChange={(e) => setEditEmail(e.target.value)}
-            />
-
-            <input
-              className="border p-3 rounded-lg"
-              placeholder="Phone"
-              value={editPhone}
-              onChange={(e) => setEditPhone(e.target.value)}
-            />
-
-            <textarea
-              className="border p-3 rounded-lg"
-              placeholder="Notes"
-              value={editNotes}
-              onChange={(e) => setEditNotes(e.target.value)}
-            />
+            <button
+              className={buttonPrimary}
+              onClick={attachToBooking}
+              disabled={attaching}
+            >
+              {attaching ? 'Attaching...' : 'Attach'}
+            </button>
           </div>
-        )}
+
+          {availableBookings.length === 0 && (
+            <p className="text-xs text-slate-500 mt-3">
+              No available bookings to attach for this client.
+            </p>
+          )}
+        </div>
       </div>
 
-      <div className="bg-white border rounded-2xl p-6 shadow-sm mb-8">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
-          <div>
-            <h2 className="text-2xl font-semibold">
-              Attach to Booking
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className={panelClass}>
+          <div className={panelHeaderClass}>
+            <h2 className="text-sm font-semibold text-slate-950">
+              Booking history
             </h2>
 
-            <p className="text-gray-500 mt-1">
-              Add this delegate to another booking for the same client.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Sessions this delegate has been linked to.
             </p>
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <select
-            className="border p-3 rounded-lg md:col-span-2"
-            value={bookingToAttach}
-            onChange={(e) => setBookingToAttach(e.target.value)}
-          >
-            <option value="">Select booking</option>
-
-            {availableBookings.map((booking) => (
-              <option key={booking.id} value={booking.id}>
-                {booking.date} - {booking.course_name}
-              </option>
-            ))}
-          </select>
-
-          <button
-            className="bg-black text-white p-3 rounded-lg disabled:bg-gray-400"
-            onClick={attachToBooking}
-            disabled={attaching}
-          >
-            {attaching ? 'Attaching...' : 'Attach'}
-          </button>
-        </div>
-
-        {availableBookings.length === 0 && (
-          <p className="text-sm text-gray-500 mt-3">
-            No available bookings to attach for this client.
-          </p>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <h2 className="text-2xl font-semibold mb-5">
-            Booking History
-          </h2>
-
-          <div className="grid gap-4">
+          <div className="divide-y divide-slate-100">
             {linkedBookings.map((booking) => (
               <div
                 key={booking.id}
-                className="bg-gray-50 border rounded-xl p-4"
+                className="p-4"
               >
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                   <div>
                     <Link
                       href={`/dashboard/bookings/${booking.id}`}
-                      className="font-semibold hover:underline"
+                      className="text-sm font-semibold text-slate-950 hover:underline"
                     >
                       {booking.course_name}
                     </Link>
 
-                    <p className="text-sm text-gray-500 mt-1">
+                    <p className="text-xs text-slate-500 mt-1">
                       {booking.date}
-                      {booking.start_time ? ` at ${booking.start_time}` : ''}
+                      {booking.start_time ? ` · ${booking.start_time}` : ''}
                     </p>
 
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-xs text-slate-600 mt-1">
                       {booking.location || 'No location set'}
                     </p>
                   </div>
 
-                  <div className={`px-3 py-1 rounded-full text-xs w-fit ${getBookingStatusStyle(booking.status)}`}>
+                  <span className={`border px-2.5 py-1 rounded-md text-xs font-medium w-fit ${getBookingStatusStyle(booking.status)}`}>
                     {booking.status}
-                  </div>
+                  </span>
                 </div>
 
-                <div className="flex flex-wrap gap-3 mt-4">
+                <div className="flex flex-wrap gap-2 mt-4">
                   <Link
                     href={`/dashboard/bookings/${booking.id}`}
-                    className="border px-4 py-2 rounded-lg bg-white"
+                    className={buttonSecondary}
                   >
-                    View Booking
+                    View booking
                   </Link>
 
                   <button
-                    className="border border-red-300 text-red-600 px-4 py-2 rounded-lg bg-white"
+                    className={buttonDanger}
                     onClick={() => removeFromBooking(booking.id)}
                   >
-                    Remove Link
+                    Remove link
                   </button>
                 </div>
               </div>
             ))}
 
             {linkedBookings.length === 0 && (
-              <p className="text-gray-500">
+              <div className="p-4 text-sm text-slate-500">
                 No bookings linked to this delegate yet.
-              </p>
+              </div>
             )}
           </div>
         </div>
 
-        <div className="bg-white border rounded-2xl p-6 shadow-sm">
-          <h2 className="text-2xl font-semibold mb-5">
-            Certificates
-          </h2>
+        <div className={panelClass}>
+          <div className={panelHeaderClass}>
+            <h2 className="text-sm font-semibold text-slate-950">
+              Certificates
+            </h2>
 
-          <div className="grid gap-4">
+            <p className="text-xs text-slate-500 mt-0.5">
+              Certificates issued to this delegate.
+            </p>
+          </div>
+
+          <div className="divide-y divide-slate-100">
             {certificates.map((certificate) => (
               <div
                 key={certificate.id}
-                className="bg-gray-50 border rounded-xl p-4"
+                className="p-4"
               >
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                   <div>
-                    <p className="font-semibold">
+                    <p className="text-sm font-semibold text-slate-950">
                       {certificate.course_name}
                     </p>
 
-                    <p className="text-sm text-gray-500 mt-1">
+                    <p className="text-xs text-slate-500 mt-1">
                       Certificate No: {certificate.certificate_number}
                     </p>
 
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-xs text-slate-600 mt-1">
                       Issued: {certificate.issue_date}
                     </p>
 
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-xs text-slate-600 mt-1">
                       Expires: {certificate.expiry_date}
                     </p>
                   </div>
 
-                  <div className={`px-3 py-1 rounded-full text-xs w-fit ${getCertificateStatusStyle(certificate.status)}`}>
+                  <span className={`border px-2.5 py-1 rounded-md text-xs font-medium w-fit ${getCertificateStatusStyle(certificate.status)}`}>
                     {certificate.status}
-                  </div>
+                  </span>
                 </div>
               </div>
             ))}
 
             {certificates.length === 0 && (
-              <p className="text-gray-500">
+              <div className="p-4 text-sm text-slate-500">
                 No certificates linked to this delegate yet.
-              </p>
+              </div>
             )}
           </div>
         </div>
