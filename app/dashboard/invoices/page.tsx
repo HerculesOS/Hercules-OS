@@ -488,56 +488,60 @@ export default function InvoicesPage() {
   doc.save(`${invoice.invoice_number || 'invoice'}.pdf`)
 }
 
-  const sendInvoiceEmail = async (invoice: any) => {
-    const recipientEmail =
-      recipientEmails[invoice.id] || getClientEmailForInvoice(invoice)
+const sendInvoiceEmail = async (invoice: any) => {
+  const recipientEmail =
+    recipientEmails[invoice.id] || getClientEmailForInvoice(invoice)
 
-    if (!recipientEmail) {
-      alert('Enter a recipient email first')
-      return
-    }
-
-    setSendingId(invoice.id)
-
-    const response = await fetch('/api/send-invoice-email', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        to: recipientEmail,
-        invoiceNumber: invoice.invoice_number || invoice.id,
-        clientName: invoice.client_name,
-        amount: invoice.amount,
-        vatAmount: invoice.vat_amount,
-        totalAmount: invoice.total_amount || invoice.amount,
-        dueDate: invoice.due_date,
-        status: invoice.status,
-        businessName: organisation?.name || 'Hercules OS',
-        businessEmail: organisation?.email || '',
-        businessPhone: organisation?.phone || '',
-        paymentDetails: organisation?.invoice_payment_details || '',
-      }),
-    })
-
-    const result = await response.json()
-
-    setSendingId('')
-
-    if (!response.ok) {
-      alert(result.error?.message || result.error || 'Email failed')
-      return
-    }
-
-    await markAsSent(invoice.id)
-
-    alert('Invoice email sent')
-
-    setRecipientEmails((previous) => ({
-      ...previous,
-      [invoice.id]: '',
-    }))
+  if (!recipientEmail) {
+    alert('Enter a recipient email first')
+    return
   }
+
+  const booking = bookings.find((b) => b.id === invoice.booking_id)
+
+  setSendingId(invoice.id)
+
+  const response = await fetch('/api/send-invoice-email', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      to: recipientEmail,
+      invoiceNumber: invoice.invoice_number || invoice.id,
+      clientName: invoice.client_name,
+      courseName: booking?.course_name || 'Training course',
+      amount: invoice.amount,
+      vatAmount: invoice.vat_amount,
+      totalAmount: invoice.total_amount || invoice.amount,
+      dueDate: invoice.due_date,
+      status: invoice.status,
+      businessName: organisation?.name || 'Hercules OS',
+      businessEmail: organisation?.email || '',
+      businessPhone: organisation?.phone || '',
+      paymentDetails: organisation?.invoice_payment_details || '',
+      organisationId,
+    }),
+  })
+
+  const result = await response.json()
+
+  setSendingId('')
+
+  if (!response.ok) {
+    alert(result.error?.message || result.error || 'Email failed')
+    return
+  }
+
+  await markAsSent(invoice.id)
+
+  alert('Invoice email sent')
+
+  setRecipientEmails((previous) => ({
+    ...previous,
+    [invoice.id]: '',
+  }))
+}
 
   const clearFilters = () => {
     setSearch('')
