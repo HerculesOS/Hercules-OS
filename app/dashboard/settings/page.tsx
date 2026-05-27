@@ -198,6 +198,7 @@ export default function SettingsPage() {
                 {!publicRequestSlug && (
                   <div className="bg-gray-50 border rounded-xl p-4 mt-3 text-sm text-gray-600">
                     Example: if you enter <span className="font-semibold">whiteleaftraining</span>, your enquiry form link will become:
+
                     <p className="font-medium break-all mt-2">
                       {window.location.origin}/request-training/whiteleaftraining
                     </p>
@@ -346,19 +347,22 @@ export default function SettingsPage() {
             </p>
           </Link>
 
-          <div className="bg-white border rounded-2xl p-6 shadow-sm">
+          <Link
+            href="/dashboard/settings/certificate-templates"
+            className="bg-white border rounded-2xl p-6 shadow-sm hover:shadow-md transition block"
+          >
             <h2 className="text-2xl font-semibold">
               Certificate Templates
             </h2>
 
             <p className="text-gray-500 mt-2">
-              Coming soon: customise certificate wording, layout and course-specific certificate templates.
+              Customise certificate wording, signatures, validity periods and course-specific certificate templates.
             </p>
 
             <p className="text-sm text-gray-400 mt-5">
-              Added to build list
+              Open certificate templates →
             </p>
-          </div>
+          </Link>
 
           <div className="bg-white border rounded-2xl p-6 shadow-sm">
             <h2 className="text-2xl font-semibold">
