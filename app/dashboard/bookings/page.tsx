@@ -323,6 +323,7 @@ export default function BookingsPage() {
         businessName: organisation?.name || 'Hercules OS',
         businessEmail: organisation?.email || '',
         businessPhone: organisation?.phone || '',
+        organisationId,
       }),
     })
 
@@ -371,6 +372,7 @@ export default function BookingsPage() {
         businessName: organisation?.name || 'Hercules OS',
         businessEmail: organisation?.email || '',
         businessPhone: organisation?.phone || '',
+        organisationId,
       }),
     })
 
