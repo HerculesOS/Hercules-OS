@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
+import { formatAppDate } from '@/lib/formatters'
 import jsPDF from 'jspdf'
 
 export default function InvoicesPage() {
@@ -107,6 +108,14 @@ export default function InvoicesPage() {
     load()
   }, [])
 
+  const getFormattedDate = (dateValue: string | null | undefined) => {
+    if (!dateValue) return 'Not set'
+
+    const dateOnly = String(dateValue).split('T')[0]
+
+    return formatAppDate(dateOnly, organisation)
+  }
+
   const getBookingDeliveryType = (booking: any) => {
     return booking?.course_delivery_type || 'private'
   }
@@ -176,7 +185,7 @@ export default function InvoicesPage() {
   }
 
   const getBookingOptionLabel = (booking: any) => {
-    const dateText = booking.date || 'No date'
+    const dateText = getFormattedDate(booking.date)
     const clientText = getBookingClientName(booking)
     const courseText = booking.course_name || 'No course'
     const priceText = booking.price
@@ -517,8 +526,8 @@ export default function InvoicesPage() {
     const billTo = getInvoiceRecipientName(invoice)
 
     const invoiceDate = invoice.created_at
-      ? new Date(invoice.created_at).toLocaleDateString()
-      : new Date().toLocaleDateString()
+      ? getFormattedDate(invoice.created_at)
+      : getFormattedDate(new Date().toISOString())
 
     doc.setFillColor(248, 250, 252)
     doc.rect(0, 0, 210, 297, 'F')
@@ -559,7 +568,7 @@ export default function InvoicesPage() {
     doc.setTextColor(17, 24, 39)
     doc.text(`Invoice No: ${invoice.invoice_number || invoice.id}`, 28, 78)
     doc.text(`Date: ${invoiceDate}`, 28, 85)
-    doc.text(`Due Date: ${invoice.due_date || 'Not set'}`, 28, 92)
+    doc.text(`Due Date: ${getFormattedDate(invoice.due_date)}`, 28, 92)
     doc.text(`Status: ${invoice.status || 'draft'}`, 28, 99)
 
     doc.setFillColor(249, 250, 251)
@@ -668,12 +677,13 @@ export default function InvoicesPage() {
       body: JSON.stringify({
         to: recipientEmail,
         invoiceNumber: invoice.invoice_number || invoice.id,
+        recipientName: getInvoiceRecipientName(invoice),
         clientName: getInvoiceRecipientName(invoice),
         courseName: getInvoiceCourseName(invoice),
         amount: invoice.amount,
         vatAmount: invoice.vat_amount,
         totalAmount: invoice.total_amount || invoice.amount,
-        dueDate: invoice.due_date,
+        dueDate: getFormattedDate(invoice.due_date),
         status: invoice.status,
         businessName: organisation?.name || 'Hercules OS',
         businessEmail: organisation?.email || '',
@@ -728,49 +738,52 @@ export default function InvoicesPage() {
     return getBookingDeliveryType(booking) === 'public'
   })
 
-const filteredInvoices = invoices
-  .filter((invoice) => {
-    const booking = getBookingById(invoice.booking_id)
+  const filteredInvoices = invoices
+    .filter((invoice) => {
+      const booking = getBookingById(invoice.booking_id)
 
-    const invoiceClient = invoice.client_id
-      ? getClientById(invoice.client_id)
-      : null
+      const invoiceClient = invoice.client_id
+        ? getClientById(invoice.client_id)
+        : null
 
-    const bookingClient = booking?.client_id
-      ? getClientById(booking.client_id)
-      : null
+      const bookingClient = booking?.client_id
+        ? getClientById(booking.client_id)
+        : null
 
-    const delegate = invoice.delegate_id
-      ? getDelegateById(invoice.delegate_id)
-      : null
+      const delegate = invoice.delegate_id
+        ? getDelegateById(invoice.delegate_id)
+        : null
 
-    const delegateClient = delegate?.client_id
-      ? getClientById(delegate.client_id)
-      : null
+      const delegateClient = delegate?.client_id
+        ? getClientById(delegate.client_id)
+        : null
 
-    const searchableText = `
-      ${invoice.invoice_number || ''}
-      ${invoice.client_name || ''}
-      ${invoice.recipient_name || ''}
-      ${invoice.recipient_email || ''}
-      ${invoiceClient?.company || ''}
-      ${invoiceClient?.name || ''}
-      ${invoiceClient?.email || ''}
-      ${bookingClient?.company || ''}
-      ${bookingClient?.name || ''}
-      ${bookingClient?.email || ''}
-      ${delegateClient?.company || ''}
-      ${delegateClient?.name || ''}
-      ${delegateClient?.email || ''}
-      ${delegate?.full_name || ''}
-      ${delegate?.email || ''}
-      ${booking?.course_name || ''}
-      ${booking?.date || ''}
-      ${booking?.client_name || ''}
-      ${booking?.course_delivery_type || ''}
-      ${invoice.status || ''}
-      ${invoice.invoice_target_type || ''}
-    `.toLowerCase()
+      const searchableText = `
+        ${invoice.invoice_number || ''}
+        ${invoice.client_name || ''}
+        ${invoice.recipient_name || ''}
+        ${invoice.recipient_email || ''}
+        ${invoiceClient?.company || ''}
+        ${invoiceClient?.name || ''}
+        ${invoiceClient?.email || ''}
+        ${bookingClient?.company || ''}
+        ${bookingClient?.name || ''}
+        ${bookingClient?.email || ''}
+        ${delegateClient?.company || ''}
+        ${delegateClient?.name || ''}
+        ${delegateClient?.email || ''}
+        ${delegate?.full_name || ''}
+        ${delegate?.email || ''}
+        ${booking?.course_name || ''}
+        ${booking?.date || ''}
+        ${booking ? getFormattedDate(booking.date) : ''}
+        ${invoice.due_date || ''}
+        ${getFormattedDate(invoice.due_date)}
+        ${booking?.client_name || ''}
+        ${booking?.course_delivery_type || ''}
+        ${invoice.status || ''}
+        ${invoice.invoice_target_type || ''}
+      `.toLowerCase()
 
       const matchesSearch = searchableText.includes(search.toLowerCase())
 
@@ -1030,7 +1043,7 @@ const filteredInvoices = invoices
                 </p>
 
                 <p className="mt-1">
-                  {selectedBooking.date} · {selectedBookingDeliveryType === 'public' ? 'Public course' : 'Private course'}
+                  {getFormattedDate(selectedBooking.date)} · {selectedBookingDeliveryType === 'public' ? 'Public course' : 'Private course'}
                 </p>
 
                 {selectedBookingDeliveryType === 'public' && (
@@ -1265,7 +1278,7 @@ const filteredInvoices = invoices
                         <div>
                           <p className="text-slate-400">Due date</p>
                           <p className="font-medium text-slate-800 mt-1">
-                            {invoice.due_date || 'Not set'}
+                            {getFormattedDate(invoice.due_date)}
                           </p>
                         </div>
 

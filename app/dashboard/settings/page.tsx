@@ -15,6 +15,10 @@ export default function SettingsPage() {
   const [phone, setPhone] = useState('')
   const [publicRequestSlug, setPublicRequestSlug] = useState('')
 
+  const [timezone, setTimezone] = useState('Europe/London')
+  const [dateFormat, setDateFormat] = useState('DD/MM/YYYY')
+  const [timeFormat, setTimeFormat] = useState('24h')
+
   const [autoExpireCertificates, setAutoExpireCertificates] = useState(true)
   const [sendCertificateExpiryReminders, setSendCertificateExpiryReminders] = useState(true)
   const [certificateExpiryReminderDays, setCertificateExpiryReminderDays] = useState('60')
@@ -54,6 +58,10 @@ export default function SettingsPage() {
     setEmail(data?.email || '')
     setPhone(data?.phone || '')
     setPublicRequestSlug(data?.public_request_slug || '')
+
+    setTimezone(data?.timezone || 'Europe/London')
+    setDateFormat(data?.date_format || 'DD/MM/YYYY')
+    setTimeFormat(data?.time_format || '24h')
 
     setAutoExpireCertificates(data?.auto_expire_certificates !== false)
     setSendCertificateExpiryReminders(data?.send_certificate_expiry_reminders !== false)
@@ -96,6 +104,9 @@ export default function SettingsPage() {
         email,
         phone,
         public_request_slug: cleanSlug || null,
+        timezone,
+        date_format: dateFormat,
+        time_format: timeFormat,
         auto_expire_certificates: autoExpireCertificates,
         send_certificate_expiry_reminders: sendCertificateExpiryReminders,
         certificate_expiry_reminder_days: reminderDays,
@@ -150,7 +161,7 @@ export default function SettingsPage() {
           </h1>
 
           <p className="text-sm text-slate-500 mt-1">
-            Manage business details, public enquiry links, certificate automation and templates.
+            Manage business details, public enquiry links, date/time preferences, certificate automation and templates.
           </p>
         </div>
 
@@ -216,6 +227,101 @@ export default function SettingsPage() {
                     onChange={(e) => setPhone(e.target.value)}
                   />
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div className={panelClass}>
+            <div className={panelHeaderClass}>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Date, time and timezone
+              </h2>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                Choose how dates and times should appear across Hercules OS.
+              </p>
+            </div>
+
+            <div className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs text-slate-500">
+                    Timezone
+                  </label>
+
+                  <select
+                    className={`${inputClass} w-full mt-1`}
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                  >
+                    <option value="Europe/London">Europe/London</option>
+                    <option value="Europe/Dublin">Europe/Dublin</option>
+                    <option value="Europe/Paris">Europe/Paris</option>
+                    <option value="Europe/Berlin">Europe/Berlin</option>
+                    <option value="America/New_York">America/New_York</option>
+                    <option value="America/Chicago">America/Chicago</option>
+                    <option value="America/Denver">America/Denver</option>
+                    <option value="America/Los_Angeles">America/Los_Angeles</option>
+                    <option value="Australia/Sydney">Australia/Sydney</option>
+                    <option value="Australia/Melbourne">Australia/Melbourne</option>
+                    <option value="Asia/Dubai">Asia/Dubai</option>
+                    <option value="Asia/Singapore">Asia/Singapore</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-500">
+                    Date format
+                  </label>
+
+                  <select
+                    className={`${inputClass} w-full mt-1`}
+                    value={dateFormat}
+                    onChange={(e) => setDateFormat(e.target.value)}
+                  >
+                    <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                    <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                    <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                    <option value="DD MMM YYYY">DD MMM YYYY</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-500">
+                    Time format
+                  </label>
+
+                  <select
+                    className={`${inputClass} w-full mt-1`}
+                    value={timeFormat}
+                    onChange={(e) => setTimeFormat(e.target.value)}
+                  >
+                    <option value="24h">24-hour</option>
+                    <option value="12h">12-hour AM/PM</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mt-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Current display preference
+                </p>
+
+                <p className="text-sm text-slate-700 mt-2">
+                  Timezone: <span className="font-semibold text-slate-950">{timezone}</span>
+                </p>
+
+                <p className="text-sm text-slate-700 mt-1">
+                  Date format: <span className="font-semibold text-slate-950">{dateFormat}</span>
+                </p>
+
+                <p className="text-sm text-slate-700 mt-1">
+                  Time format: <span className="font-semibold text-slate-950">{timeFormat === '24h' ? '24-hour' : '12-hour AM/PM'}</span>
+                </p>
+
+                <p className="text-xs text-slate-500 mt-3">
+                  Next we’ll apply these preferences across bookings, calendars, invoices, certificates and emails.
+                </p>
               </div>
             </div>
           </div>
@@ -483,6 +589,18 @@ export default function SettingsPage() {
 
               <p>
                 {publicRequestSlug ? '✓' : '•'} Public enquiry link set
+              </p>
+
+              <p>
+                {timezone ? '✓' : '•'} Timezone selected
+              </p>
+
+              <p>
+                {dateFormat ? '✓' : '•'} Date format selected
+              </p>
+
+              <p>
+                {timeFormat ? '✓' : '•'} Time format selected
               </p>
 
               <p>

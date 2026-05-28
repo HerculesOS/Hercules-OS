@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
+import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
 
 export default function BookingDetailPage() {
   const params = useParams()
@@ -351,6 +352,17 @@ export default function BookingDetailPage() {
     load()
   }, [])
 
+  const getFormattedDate = (dateValue: string | null | undefined) => {
+    return formatAppDate(dateValue, organisation)
+  }
+
+  const getFormattedTimeRange = (
+    startTimeValue: string | null | undefined,
+    endTimeValue: string | null | undefined
+  ) => {
+    return formatAppTimeRange(startTimeValue, endTimeValue, organisation)
+  }
+
   const getTrainer = () => {
     return trainers.find((trainer) => trainer.id === booking?.trainer_id)
   }
@@ -552,9 +564,9 @@ export default function BookingDetailPage() {
         to: recipientEmail,
         clientName: getBookingClientDisplay(),
         courseName: booking.course_name,
-        date: booking.date,
-        startTime: booking.start_time,
-        endTime: booking.end_time,
+        date: getFormattedDate(booking.date),
+        startTime: getFormattedTimeRange(booking.start_time, null),
+        endTime: booking.end_time ? getFormattedTimeRange(booking.end_time, null) : '',
         location: booking.location,
         trainerName: trainer?.name || '',
         businessName: organisation?.name || 'Hercules OS',
@@ -595,9 +607,9 @@ export default function BookingDetailPage() {
         to: recipientEmail,
         clientName: getBookingClientDisplay(),
         courseName: booking.course_name,
-        date: booking.date,
-        startTime: booking.start_time,
-        endTime: booking.end_time,
+        date: getFormattedDate(booking.date),
+        startTime: getFormattedTimeRange(booking.start_time, null),
+        endTime: booking.end_time ? getFormattedTimeRange(booking.end_time, null) : '',
         location: booking.location,
         trainerName: trainer?.name || '',
         businessName: organisation?.name || 'Hercules OS',
@@ -835,8 +847,8 @@ export default function BookingDetailPage() {
         delegate_name: delegate.full_name || '',
         learner_name: delegate.full_name || '',
         course_name: booking.course_name || '',
-        issue_date: certificateIssueDate || '',
-        expiry_date: certificateExpiryDate || '',
+        issue_date: getFormattedDate(certificateIssueDate) || '',
+        expiry_date: getFormattedDate(certificateExpiryDate) || '',
         certificate_number: certificateNumber,
         business_name: organisation?.name || 'Hercules OS',
         trainer_name: getTrainer()?.name || '',
@@ -924,8 +936,8 @@ export default function BookingDetailPage() {
           to: delegate.email,
           learnerName: certificate.learner_name,
           courseName: certificate.course_name,
-          issueDate: certificate.issue_date,
-          expiryDate: certificate.expiry_date,
+          issueDate: getFormattedDate(certificate.issue_date),
+          expiryDate: getFormattedDate(certificate.expiry_date),
           certificateNumber: certificate.certificate_number,
           verificationUrl,
           businessName: organisation?.name || 'Hercules OS',
@@ -1042,7 +1054,7 @@ export default function BookingDetailPage() {
             </h1>
 
             <p className="text-sm text-slate-500 mt-1">
-              {getBookingClientDisplay()} · {booking.date}
+              {getBookingClientDisplay()} · {getFormattedDate(booking.date)}
             </p>
           </div>
 
@@ -1152,14 +1164,14 @@ export default function BookingDetailPage() {
                 <div>
                   <p className="text-xs text-slate-500">Date</p>
                   <p className="font-medium text-slate-950 mt-1">
-                    {booking.date}
+                    {getFormattedDate(booking.date)}
                   </p>
                 </div>
 
                 <div>
                   <p className="text-xs text-slate-500">Time</p>
                   <p className="font-medium text-slate-950 mt-1">
-                    {booking.start_time || 'Not set'} - {booking.end_time || 'Not set'}
+                    {getFormattedTimeRange(booking.start_time, booking.end_time)}
                   </p>
                 </div>
 
@@ -1856,7 +1868,7 @@ export default function BookingDetailPage() {
                     </p>
 
                     <p className="text-xs text-slate-500 mt-1">
-                      Due: {invoice.due_date || 'Not set'}
+                      Due: {getFormattedDate(invoice.due_date)}
                     </p>
                   </div>
 
@@ -1920,7 +1932,7 @@ export default function BookingDetailPage() {
                 )}
 
                 <p className="text-xs text-slate-600 mt-2">
-                  Expires: {certificate.expiry_date}
+                  Expires: {getFormattedDate(certificate.expiry_date)}
                 </p>
 
                 <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getCertificateStatusStyle(certificate.status)}`}>

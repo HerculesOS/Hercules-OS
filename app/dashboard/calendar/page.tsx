@@ -4,12 +4,14 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
+import { formatAppDate, formatAppTime, formatAppTimeRange } from '@/lib/formatters'
 
 export default function CalendarPage() {
   const [bookings, setBookings] = useState<any[]>([])
   const [clients, setClients] = useState<any[]>([])
   const [trainers, setTrainers] = useState<any[]>([])
   const [courseTemplates, setCourseTemplates] = useState<any[]>([])
+  const [organisation, setOrganisation] = useState<any>(null)
   const [organisationId, setOrganisationId] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -52,6 +54,12 @@ export default function CalendarPage() {
 
     setOrganisationId(profile.organisation_id)
 
+    const { data: organisationData } = await supabase
+      .from('organisations')
+      .select('*')
+      .eq('id', profile.organisation_id)
+      .single()
+
     const { data: clientsData } = await supabase
       .from('clients')
       .select('*')
@@ -76,6 +84,7 @@ export default function CalendarPage() {
       .eq('organisation_id', profile.organisation_id)
       .order('date', { ascending: true })
 
+    setOrganisation(organisationData || null)
     setClients(clientsData || [])
     setTrainers(trainersData || [])
     setCourseTemplates(courseTemplatesData || [])
@@ -86,6 +95,21 @@ export default function CalendarPage() {
   useEffect(() => {
     load()
   }, [])
+
+  const getFormattedDate = (dateValue: string | null | undefined) => {
+    return formatAppDate(dateValue, organisation)
+  }
+
+  const getFormattedTime = (timeValue: string | null | undefined) => {
+    return formatAppTime(timeValue, organisation)
+  }
+
+  const getFormattedTimeRange = (
+    startTimeValue: string | null | undefined,
+    endTimeValue: string | null | undefined
+  ) => {
+    return formatAppTimeRange(startTimeValue, endTimeValue, organisation)
+  }
 
   const formatDate = (year: number, month: number, day: number) => {
     const monthValue = String(month + 1).padStart(2, '0')
@@ -463,10 +487,7 @@ export default function CalendarPage() {
 
             <p className="text-2xl font-semibold mt-1">
               {busiestDay?.count > 0
-                ? new Date(busiestDay.date).toLocaleDateString(undefined, {
-                    day: 'numeric',
-                    month: 'short',
-                  })
+                ? getFormattedDate(busiestDay.date)
                 : 'None'}
             </p>
 
@@ -606,7 +627,7 @@ export default function CalendarPage() {
                           )}`}
                         >
                           <p className="text-[11px] font-semibold truncate text-slate-950">
-                            {booking.start_time ? `${booking.start_time} · ` : ''}
+                            {booking.start_time ? `${getFormattedTime(booking.start_time)} · ` : ''}
                             {booking.course_name}
                           </p>
 
@@ -666,12 +687,7 @@ export default function CalendarPage() {
                     </p>
 
                     <p className="text-lg font-semibold mt-1">
-                      {new Date(selectedDate).toLocaleDateString(undefined, {
-                        weekday: 'long',
-                        day: 'numeric',
-                        month: 'long',
-                        year: 'numeric',
-                      })}
+                      {getFormattedDate(selectedDate)}
                     </p>
 
                     <div className="flex flex-wrap gap-2 mt-4">
@@ -729,7 +745,7 @@ export default function CalendarPage() {
                             <p className="text-slate-400">Date</p>
 
                             <p className="font-medium text-slate-800 mt-1">
-                              {booking.date}
+                              {getFormattedDate(booking.date)}
                             </p>
                           </div>
 
@@ -737,7 +753,7 @@ export default function CalendarPage() {
                             <p className="text-slate-400">Time</p>
 
                             <p className="font-medium text-slate-800 mt-1">
-                              {booking.start_time || 'Not set'}
+                              {getFormattedTimeRange(booking.start_time, booking.end_time)}
                             </p>
                           </div>
                         </div>
@@ -762,14 +778,7 @@ export default function CalendarPage() {
                   </p>
 
                   <p className="text-lg font-semibold mt-1">
-                    {selectedDate
-                      ? new Date(selectedDate).toLocaleDateString(undefined, {
-                          weekday: 'long',
-                          day: 'numeric',
-                          month: 'long',
-                          year: 'numeric',
-                        })
-                      : date}
+                    {selectedDate ? getFormattedDate(selectedDate) : date}
                   </p>
                 </div>
 

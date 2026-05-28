@@ -6,6 +6,7 @@ import jsPDF from 'jspdf'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
+import { formatAppDate } from '@/lib/formatters'
 
 export default function CertificatesPage() {
   const [profile, setProfile] = useState<any>(null)
@@ -90,6 +91,14 @@ export default function CertificatesPage() {
   useEffect(() => {
     load()
   }, [])
+
+  const getFormattedDate = (dateValue: string | null | undefined) => {
+    if (!dateValue) return 'Not set'
+
+    const dateOnly = String(dateValue).split('T')[0]
+
+    return formatAppDate(dateOnly, organisation)
+  }
 
   const getDelegateForCertificate = (certificate: any) => {
     if (!certificate.delegate_id) return null
@@ -177,8 +186,8 @@ export default function CertificatesPage() {
         to: delegate.email,
         learnerName: certificate.learner_name,
         courseName: certificate.course_name,
-        issueDate: certificate.issue_date,
-        expiryDate: certificate.expiry_date,
+        issueDate: getFormattedDate(certificate.issue_date),
+        expiryDate: getFormattedDate(certificate.expiry_date),
         certificateNumber: certificate.certificate_number,
         verificationUrl,
         businessName: organisation?.name || 'Hercules OS',
@@ -217,7 +226,7 @@ export default function CertificatesPage() {
         to: delegate.email,
         learnerName: certificate.learner_name || delegate.full_name,
         courseName: certificate.course_name,
-        expiryDate: certificate.expiry_date,
+        expiryDate: getFormattedDate(certificate.expiry_date),
         certificateNumber: certificate.certificate_number,
         verificationUrl,
         businessName: organisation?.name || 'Hercules OS',
@@ -280,8 +289,8 @@ export default function CertificatesPage() {
       certificate.signature_title ||
       'Training Provider'
 
-    const issueDate = certificate.issue_date || 'Not set'
-    const expiryDate = certificate.expiry_date || 'Not set'
+    const issueDate = getFormattedDate(certificate.issue_date)
+    const expiryDate = getFormattedDate(certificate.expiry_date)
     const certificateNumber = certificate.certificate_number || 'Not set'
 
     const verificationUrl = certificate.verification_id
@@ -415,12 +424,17 @@ export default function CertificatesPage() {
       ${certificate.status || ''}
       ${certificate.certificate_title || ''}
       ${certificate.certificate_body || ''}
+      ${certificate.issue_date || ''}
+      ${certificate.expiry_date || ''}
+      ${getFormattedDate(certificate.issue_date)}
+      ${getFormattedDate(certificate.expiry_date)}
       ${delegate?.full_name || ''}
       ${delegate?.email || ''}
       ${client?.company || ''}
       ${client?.name || ''}
       ${booking?.course_name || ''}
       ${booking?.date || ''}
+      ${booking ? getFormattedDate(booking.date) : ''}
       ${booking?.location || ''}
     `.toLowerCase()
 
@@ -762,7 +776,7 @@ export default function CertificatesPage() {
                         href={`/dashboard/bookings/${booking.id}`}
                         className="font-medium text-slate-800 mt-1 inline-block hover:underline"
                       >
-                        {booking.date} - {booking.course_name}
+                        {getFormattedDate(booking.date)} - {booking.course_name}
                       </Link>
                     ) : (
                       <p className="font-medium text-slate-800 mt-1">
@@ -781,14 +795,14 @@ export default function CertificatesPage() {
                   <div>
                     <p className="text-slate-400">Issue date</p>
                     <p className="font-medium text-slate-800 mt-1">
-                      {certificate.issue_date || 'Not set'}
+                      {getFormattedDate(certificate.issue_date)}
                     </p>
                   </div>
 
                   <div>
                     <p className="text-slate-400">Expiry date</p>
                     <p className="font-medium text-slate-800 mt-1">
-                      {certificate.expiry_date || 'Not set'}
+                      {getFormattedDate(certificate.expiry_date)}
                     </p>
                   </div>
 

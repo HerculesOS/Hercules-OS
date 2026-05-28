@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
+import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
 
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<any[]>([])
@@ -115,6 +116,17 @@ export default function BookingsPage() {
   useEffect(() => {
     load()
   }, [])
+
+  const getFormattedDate = (dateValue: string | null | undefined) => {
+    return formatAppDate(dateValue, organisation)
+  }
+
+  const getFormattedTimeRange = (
+    startTimeValue: string | null | undefined,
+    endTimeValue: string | null | undefined
+  ) => {
+    return formatAppTimeRange(startTimeValue, endTimeValue, organisation)
+  }
 
   const getCertificateTemplateLabel = (template: any) => {
     const linkedCourse = courseTemplates.find(
@@ -420,9 +432,9 @@ export default function BookingsPage() {
         to: recipientEmail,
         clientName: booking.client_name || getBookingClientDisplay(booking),
         courseName: booking.course_name,
-        date: booking.date,
-        startTime: booking.start_time,
-        endTime: booking.end_time,
+        date: getFormattedDate(booking.date),
+        startTime: getFormattedTimeRange(booking.start_time, null),
+        endTime: booking.end_time ? getFormattedTimeRange(booking.end_time, null) : '',
         location: booking.location,
         trainerName: trainer?.name || '',
         businessName: organisation?.name || 'Hercules OS',
@@ -469,9 +481,9 @@ export default function BookingsPage() {
         to: recipientEmail,
         clientName: booking.client_name || getBookingClientDisplay(booking),
         courseName: booking.course_name,
-        date: booking.date,
-        startTime: booking.start_time,
-        endTime: booking.end_time,
+        date: getFormattedDate(booking.date),
+        startTime: getFormattedTimeRange(booking.start_time, null),
+        endTime: booking.end_time ? getFormattedTimeRange(booking.end_time, null) : '',
         location: booking.location,
         trainerName: trainer?.name || '',
         businessName: organisation?.name || 'Hercules OS',
@@ -548,6 +560,8 @@ export default function BookingsPage() {
         ${booking.location || ''}
         ${booking.notes || ''}
         ${booking.date || ''}
+        ${getFormattedDate(booking.date)}
+        ${getFormattedTimeRange(booking.start_time, booking.end_time)}
         ${trainer?.name || ''}
         ${certificateTemplate?.name || ''}
         ${booking.status || ''}
@@ -1007,14 +1021,14 @@ export default function BookingsPage() {
                         <div>
                           <p className="text-slate-400">Date</p>
                           <p className="font-medium text-slate-800 mt-1">
-                            {booking.date}
+                            {getFormattedDate(booking.date)}
                           </p>
                         </div>
 
                         <div>
                           <p className="text-slate-400">Time</p>
                           <p className="font-medium text-slate-800 mt-1">
-                            {booking.start_time || 'Not set'} - {booking.end_time || 'Not set'}
+                            {getFormattedTimeRange(booking.start_time, booking.end_time)}
                           </p>
                         </div>
 
