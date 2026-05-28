@@ -16,6 +16,7 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState('')
   const [showCreateForm, setShowCreateForm] = useState(false)
 
+  const [courseDeliveryType, setCourseDeliveryType] = useState('private')
   const [clientId, setClientId] = useState('')
   const [trainerId, setTrainerId] = useState('')
   const [courseTemplateId, setCourseTemplateId] = useState('')
@@ -104,11 +105,25 @@ export default function CalendarPage() {
   }
 
   const getClientForBooking = (booking: any) => {
+    if (!booking?.client_id) return null
+
     return clients.find((client) => client.id === booking.client_id)
   }
 
+  const getBookingDeliveryType = (booking: any) => {
+    return booking?.course_delivery_type || 'private'
+  }
+
   const getClientDisplayName = (booking: any) => {
-    return getClientForBooking(booking)?.company || booking.client_name || 'No client'
+    const client = getClientForBooking(booking)
+
+    if (client?.company) return client.company
+
+    if (getBookingDeliveryType(booking) === 'public') {
+      return 'Public course'
+    }
+
+    return booking.client_name || 'No client'
   }
 
   const openCreateForm = (dateValue: string) => {
@@ -120,6 +135,7 @@ export default function CalendarPage() {
   const closeCreateForm = () => {
     setShowCreateForm(false)
     setSelectedDate('')
+    setCourseDeliveryType('private')
     setClientId('')
     setTrainerId('')
     setCourseTemplateId('')
@@ -153,8 +169,13 @@ export default function CalendarPage() {
   }
 
   const createBooking = async () => {
-    if (!clientId || !courseName || !date) {
-      alert('Client, course and date are required')
+    if (courseDeliveryType === 'private' && !clientId) {
+      alert('Private bookings require a client')
+      return
+    }
+
+    if (!courseName || !date) {
+      alert('Course and date are required')
       return
     }
 
@@ -165,9 +186,13 @@ export default function CalendarPage() {
     const { error } = await supabase.from('bookings').insert({
       user_id: userData.user?.id,
       organisation_id: organisationId,
-      client_id: clientId,
+      course_delivery_type: courseDeliveryType,
+      client_id: clientId || null,
       trainer_id: trainerId || null,
-      client_name: selectedClient?.name,
+      client_name:
+        courseDeliveryType === 'public' && !selectedClient
+          ? 'Public course'
+          : selectedClient?.name || null,
       course_name: courseName,
       date,
       start_time: startTime || null,
@@ -251,6 +276,10 @@ export default function CalendarPage() {
     (booking) => booking.status === 'cancelled'
   )
 
+  const publicBookings = bookings.filter(
+    (booking) => getBookingDeliveryType(booking) === 'public'
+  )
+
   const currentMonthBookings = bookings.filter((booking) => {
     if (!booking.date) return false
 
@@ -287,13 +316,27 @@ export default function CalendarPage() {
     return 'bg-blue-50 text-blue-700 border-blue-100'
   }
 
-  const getBookingAccent = (status: string) => {
-    if (status === 'completed') {
+  const getDeliveryTypeStyle = (type: string) => {
+    if (type === 'public') {
+      return 'bg-purple-50 text-purple-700 border-purple-100'
+    }
+
+    return 'bg-slate-50 text-slate-700 border-slate-200'
+  }
+
+  const getBookingAccent = (booking: any) => {
+    const deliveryType = getBookingDeliveryType(booking)
+
+    if (booking.status === 'completed') {
       return 'border-l-emerald-500 bg-emerald-50 hover:bg-emerald-100'
     }
 
-    if (status === 'cancelled') {
+    if (booking.status === 'cancelled') {
       return 'border-l-red-500 bg-red-50 hover:bg-red-100'
+    }
+
+    if (deliveryType === 'public') {
+      return 'border-l-purple-500 bg-purple-50 hover:bg-purple-100'
     }
 
     return 'border-l-blue-500 bg-blue-50 hover:bg-blue-100'
@@ -349,7 +392,7 @@ export default function CalendarPage() {
             </h1>
 
             <p className="text-sm text-slate-300 mt-2 max-w-2xl">
-              View your month at a glance, spot busy days, and create new bookings directly from the calendar.
+              View private bookings and public open courses in one professional training calendar.
             </p>
           </div>
 
@@ -448,15 +491,15 @@ export default function CalendarPage() {
         />
 
         <StatCard
-          label="Completed"
-          value={completedBookings.length}
-          detail="Finished sessions"
+          label="Public courses"
+          value={publicBookings.length}
+          detail="Open course records"
         />
 
         <StatCard
-          label="Cancelled"
-          value={cancelledBookings.length}
-          detail="Removed from active schedule"
+          label="Completed"
+          value={completedBookings.length}
+          detail="Finished sessions"
         />
       </div>
 
@@ -551,24 +594,34 @@ export default function CalendarPage() {
                   </div>
 
                   <div className="flex flex-col gap-1">
-                    {dayBookings.slice(0, 3).map((booking) => (
-                      <Link
-                        key={booking.id}
-                        href={`/dashboard/bookings/${booking.id}`}
-                        className={`border border-transparent border-l-4 rounded-md px-2 py-1.5 text-left block transition ${getBookingAccent(
-                          booking.status
-                        )}`}
-                      >
-                        <p className="text-[11px] font-semibold truncate text-slate-950">
-                          {booking.start_time ? `${booking.start_time} · ` : ''}
-                          {booking.course_name}
-                        </p>
+                    {dayBookings.slice(0, 3).map((booking) => {
+                      const deliveryType = getBookingDeliveryType(booking)
 
-                        <p className="text-[11px] text-slate-600 truncate">
-                          {getClientDisplayName(booking)}
-                        </p>
-                      </Link>
-                    ))}
+                      return (
+                        <Link
+                          key={booking.id}
+                          href={`/dashboard/bookings/${booking.id}`}
+                          className={`border border-transparent border-l-4 rounded-md px-2 py-1.5 text-left block transition ${getBookingAccent(
+                            booking
+                          )}`}
+                        >
+                          <p className="text-[11px] font-semibold truncate text-slate-950">
+                            {booking.start_time ? `${booking.start_time} · ` : ''}
+                            {booking.course_name}
+                          </p>
+
+                          <p className="text-[11px] text-slate-600 truncate">
+                            {getClientDisplayName(booking)}
+                          </p>
+
+                          {deliveryType === 'public' && (
+                            <p className="text-[10px] font-medium text-purple-700 mt-0.5">
+                              Public
+                            </p>
+                          )}
+                        </Link>
+                      )
+                    })}
 
                     {dayBookings.length > 3 && (
                       <button
@@ -597,7 +650,7 @@ export default function CalendarPage() {
 
               <p className="text-xs text-slate-500 mt-0.5">
                 {showCreateForm
-                  ? 'Add a session directly from the calendar.'
+                  ? 'Add a private booking or public open course directly from the calendar.'
                   : selectedDate
                     ? 'Bookings for the selected day.'
                     : 'Your next scheduled sessions.'}
@@ -640,47 +693,57 @@ export default function CalendarPage() {
                 )}
 
                 <div className="flex flex-col gap-3">
-                  {(selectedDate ? selectedDateBookings : upcomingBookings.slice(0, 10)).map((booking) => (
-                    <Link
-                      key={booking.id}
-                      href={`/dashboard/bookings/${booking.id}`}
-                      className="border border-slate-200 bg-white rounded-lg p-4 hover:bg-slate-50 transition block"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-950">
-                            {booking.course_name}
-                          </p>
+                  {(selectedDate ? selectedDateBookings : upcomingBookings.slice(0, 10)).map((booking) => {
+                    const deliveryType = getBookingDeliveryType(booking)
 
-                          <p className="text-xs text-slate-500 mt-1">
-                            {getClientDisplayName(booking)}
-                          </p>
+                    return (
+                      <Link
+                        key={booking.id}
+                        href={`/dashboard/bookings/${booking.id}`}
+                        className="border border-slate-200 bg-white rounded-lg p-4 hover:bg-slate-50 transition block"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-950">
+                              {booking.course_name}
+                            </p>
+
+                            <p className="text-xs text-slate-500 mt-1">
+                              {getClientDisplayName(booking)}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-2">
+                            <span className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getDeliveryTypeStyle(deliveryType)}`}>
+                              {deliveryType === 'public' ? 'Public' : 'Private'}
+                            </span>
+
+                            <span className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(booking.status)}`}>
+                              {booking.status}
+                            </span>
+                          </div>
                         </div>
 
-                        <span className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(booking.status)}`}>
-                          {booking.status}
-                        </span>
-                      </div>
+                        <div className="grid grid-cols-2 gap-3 mt-3 text-xs text-slate-600">
+                          <div>
+                            <p className="text-slate-400">Date</p>
 
-                      <div className="grid grid-cols-2 gap-3 mt-3 text-xs text-slate-600">
-                        <div>
-                          <p className="text-slate-400">Date</p>
+                            <p className="font-medium text-slate-800 mt-1">
+                              {booking.date}
+                            </p>
+                          </div>
 
-                          <p className="font-medium text-slate-800 mt-1">
-                            {booking.date}
-                          </p>
+                          <div>
+                            <p className="text-slate-400">Time</p>
+
+                            <p className="font-medium text-slate-800 mt-1">
+                              {booking.start_time || 'Not set'}
+                            </p>
+                          </div>
                         </div>
-
-                        <div>
-                          <p className="text-slate-400">Time</p>
-
-                          <p className="font-medium text-slate-800 mt-1">
-                            {booking.start_time || 'Not set'}
-                          </p>
-                        </div>
-                      </div>
-                    </Link>
-                  ))}
+                      </Link>
+                    )
+                  })}
 
                   {(selectedDate ? selectedDateBookings : upcomingBookings).length === 0 && (
                     <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-500">
@@ -712,10 +775,31 @@ export default function CalendarPage() {
 
                 <select
                   className={inputClass}
+                  value={courseDeliveryType}
+                  onChange={(e) => {
+                    const selectedType = e.target.value
+
+                    setCourseDeliveryType(selectedType)
+
+                    if (selectedType === 'public') {
+                      setClientId('')
+                    }
+                  }}
+                >
+                  <option value="private">Private course</option>
+                  <option value="public">Public course</option>
+                </select>
+
+                <select
+                  className={inputClass}
                   value={clientId}
                   onChange={(e) => setClientId(e.target.value)}
                 >
-                  <option value="">Select client</option>
+                  <option value="">
+                    {courseDeliveryType === 'public'
+                      ? 'Optional main client'
+                      : 'Select client'}
+                  </option>
 
                   {clients.map((client) => (
                     <option key={client.id} value={client.id}>
@@ -804,6 +888,12 @@ export default function CalendarPage() {
                   onChange={(e) => setNotes(e.target.value)}
                 />
 
+                {courseDeliveryType === 'public' && (
+                  <div className="bg-purple-50 border border-purple-100 rounded-md p-3 text-xs text-purple-700">
+                    Public courses can have delegates from multiple clients. The main client can be left blank.
+                  </div>
+                )}
+
                 {courseTemplateId && (
                   <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600">
                     Course template applied. You can still edit the course name, price or notes before saving.
@@ -835,7 +925,12 @@ export default function CalendarPage() {
             <div className="grid gap-3 mt-4 text-xs text-slate-300">
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-sm bg-blue-500" />
-                Scheduled booking
+                Private scheduled booking
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-sm bg-purple-500" />
+                Public open course
               </div>
 
               <div className="flex items-center gap-2">
@@ -846,11 +941,6 @@ export default function CalendarPage() {
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-sm bg-red-500" />
                 Cancelled booking
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-sm bg-white" />
-                Today
               </div>
             </div>
           </div>

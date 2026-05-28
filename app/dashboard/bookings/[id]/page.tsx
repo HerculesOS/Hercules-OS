@@ -13,6 +13,7 @@ export default function BookingDetailPage() {
   const [profile, setProfile] = useState<any>(null)
   const [booking, setBooking] = useState<any>(null)
   const [client, setClient] = useState<any>(null)
+  const [clients, setClients] = useState<any[]>([])
   const [trainers, setTrainers] = useState<any[]>([])
   const [courseTemplates, setCourseTemplates] = useState<any[]>([])
   const [certificateTemplates, setCertificateTemplates] = useState<any[]>([])
@@ -43,6 +44,7 @@ export default function BookingDetailPage() {
   const [recipientEmail, setRecipientEmail] = useState('')
 
   const [existingDelegateId, setExistingDelegateId] = useState('')
+  const [delegateClientId, setDelegateClientId] = useState('')
   const [delegateName, setDelegateName] = useState('')
   const [delegateEmail, setDelegateEmail] = useState('')
   const [delegatePhone, setDelegatePhone] = useState('')
@@ -100,6 +102,34 @@ export default function BookingDetailPage() {
     })
 
     return output
+  }
+
+  const isPublicBooking = () => {
+    return booking?.course_delivery_type === 'public'
+  }
+
+  const getClientForDelegate = (delegate: any) => {
+    if (!delegate?.client_id) return null
+
+    return clients.find((clientItem) => clientItem.id === delegate.client_id)
+  }
+
+  const getDelegateClientDisplay = (delegate: any) => {
+    const delegateClient = getClientForDelegate(delegate)
+
+    if (delegateClient?.company) return delegateClient.company
+
+    if (delegate.client_id) return 'Client not found'
+
+    return 'No client / individual learner'
+  }
+
+  const getBookingClientDisplay = () => {
+    if (client?.company) return client.company
+
+    if (booking?.course_delivery_type === 'public') return 'Public course'
+
+    return booking?.client_name || 'No client'
   }
 
   const getCertificateTemplateFromLists = (
@@ -164,6 +194,12 @@ export default function BookingDetailPage() {
       .eq('id', currentProfile.organisation_id)
       .single()
 
+    const { data: clientsData } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('organisation_id', currentProfile.organisation_id)
+      .order('company', { ascending: true })
+
     const { data: bookingData, error: bookingError } = await supabase
       .from('bookings')
       .select('*')
@@ -223,12 +259,26 @@ export default function BookingDetailPage() {
       .eq('organisation_id', currentProfile.organisation_id)
       .order('created_at', { ascending: false })
 
-    const { data: allClientDelegatesData } = await supabase
-      .from('delegates')
-      .select('*')
-      .eq('client_id', bookingData.client_id)
-      .eq('organisation_id', currentProfile.organisation_id)
-      .order('full_name', { ascending: true })
+    let allClientDelegatesData: any[] = []
+
+    if (bookingData.course_delivery_type === 'public') {
+      const { data } = await supabase
+        .from('delegates')
+        .select('*')
+        .eq('organisation_id', currentProfile.organisation_id)
+        .order('full_name', { ascending: true })
+
+      allClientDelegatesData = data || []
+    } else {
+      const { data } = await supabase
+        .from('delegates')
+        .select('*')
+        .eq('client_id', bookingData.client_id)
+        .eq('organisation_id', currentProfile.organisation_id)
+        .order('full_name', { ascending: true })
+
+      allClientDelegatesData = data || []
+    }
 
     const { data: bookingLinksData } = await supabase
       .from('booking_delegates')
@@ -258,6 +308,7 @@ export default function BookingDetailPage() {
     )
 
     setOrganisation(organisationData || null)
+    setClients(clientsData || [])
     setBooking(bookingData)
     setClient(clientData)
     setTrainers(trainersData || [])
@@ -279,6 +330,11 @@ export default function BookingDetailPage() {
     setEditPrice(bookingData.price ? String(bookingData.price) : '')
     setEditNotes(bookingData.notes || '')
     setRecipientEmail(clientData?.email || '')
+    setDelegateClientId(
+      bookingData.course_delivery_type === 'public'
+        ? ''
+        : bookingData.client_id || ''
+    )
 
     if (!certificateIssueDate) {
       const issueDate = bookingData.date || getDateString(new Date())
@@ -494,7 +550,7 @@ export default function BookingDetailPage() {
       },
       body: JSON.stringify({
         to: recipientEmail,
-        clientName: booking.client_name,
+        clientName: getBookingClientDisplay(),
         courseName: booking.course_name,
         date: booking.date,
         startTime: booking.start_time,
@@ -537,7 +593,7 @@ export default function BookingDetailPage() {
       },
       body: JSON.stringify({
         to: recipientEmail,
-        clientName: booking.client_name,
+        clientName: getBookingClientDisplay(),
         courseName: booking.course_name,
         date: booking.date,
         startTime: booking.start_time,
@@ -569,11 +625,20 @@ export default function BookingDetailPage() {
       return
     }
 
+    const selectedClientId = isPublicBooking()
+      ? delegateClientId || null
+      : booking.client_id
+
+    if (!isPublicBooking() && !selectedClientId) {
+      alert('Private bookings require delegates to belong to the booking client.')
+      return
+    }
+
     const { data: delegateData, error: delegateError } = await supabase
       .from('delegates')
       .insert({
         organisation_id: profile.organisation_id,
-        client_id: booking.client_id,
+        client_id: selectedClientId,
         booking_id: booking.id,
         full_name: delegateName,
         email: delegateEmail || null,
@@ -592,7 +657,7 @@ export default function BookingDetailPage() {
       .from('booking_delegates')
       .insert({
         organisation_id: profile.organisation_id,
-        client_id: booking.client_id,
+        client_id: selectedClientId,
         booking_id: booking.id,
         delegate_id: delegateData.id,
       })
@@ -602,6 +667,7 @@ export default function BookingDetailPage() {
       return
     }
 
+    setDelegateClientId(isPublicBooking() ? '' : booking.client_id || '')
     setDelegateName('')
     setDelegateEmail('')
     setDelegatePhone('')
@@ -616,11 +682,15 @@ export default function BookingDetailPage() {
       return
     }
 
+    const selectedDelegate = allClientDelegates.find(
+      (delegate) => delegate.id === existingDelegateId
+    )
+
     const { error } = await supabase
       .from('booking_delegates')
       .insert({
         organisation_id: profile.organisation_id,
-        client_id: booking.client_id,
+        client_id: selectedDelegate?.client_id || booking.client_id || null,
         booking_id: booking.id,
         delegate_id: existingDelegateId,
       })
@@ -886,6 +956,11 @@ export default function BookingDetailPage() {
     return 'bg-blue-50 text-blue-700 border-blue-100'
   }
 
+  const getDeliveryTypeStyle = (type: string) => {
+    if (type === 'public') return 'bg-purple-50 text-purple-700 border-purple-100'
+    return 'bg-slate-50 text-slate-700 border-slate-200'
+  }
+
   const getInvoiceStatusStyle = (status: string) => {
     if (status === 'paid') return 'bg-emerald-50 text-emerald-700 border-emerald-100'
     if (status === 'sent') return 'bg-blue-50 text-blue-700 border-blue-100'
@@ -967,7 +1042,7 @@ export default function BookingDetailPage() {
             </h1>
 
             <p className="text-sm text-slate-500 mt-1">
-              {client?.company || booking.client_name} · {booking.date}
+              {getBookingClientDisplay()} · {booking.date}
             </p>
           </div>
 
@@ -980,6 +1055,10 @@ export default function BookingDetailPage() {
                 Edit booking
               </button>
             )}
+
+            <span className={`border px-2.5 py-2 rounded-md text-xs font-medium ${getDeliveryTypeStyle(booking.course_delivery_type || 'private')}`}>
+              {booking.course_delivery_type === 'public' ? 'Public course' : 'Private course'}
+            </span>
 
             <span className={`border px-2.5 py-2 rounded-md text-xs font-medium ${getStatusStyle(booking.status)}`}>
               {booking.status}
@@ -1026,6 +1105,13 @@ export default function BookingDetailPage() {
             {!editing ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div>
+                  <p className="text-xs text-slate-500">Course type</p>
+                  <p className="font-medium text-slate-950 mt-1">
+                    {booking.course_delivery_type === 'public' ? 'Public course' : 'Private course'}
+                  </p>
+                </div>
+
+                <div>
                   <p className="text-xs text-slate-500">Client</p>
 
                   {client ? (
@@ -1037,7 +1123,7 @@ export default function BookingDetailPage() {
                     </Link>
                   ) : (
                     <p className="font-medium text-slate-950 mt-1">
-                      {booking.client_name}
+                      {getBookingClientDisplay()}
                     </p>
                   )}
                 </div>
@@ -1359,7 +1445,9 @@ export default function BookingDetailPage() {
             </h2>
 
             <p className="text-xs text-slate-500 mt-0.5">
-              People attending this training session.
+              {isPublicBooking()
+                ? 'People attending this public course. Delegates can come from multiple clients.'
+                : 'People attending this private client training session.'}
             </p>
           </div>
 
@@ -1387,6 +1475,7 @@ export default function BookingDetailPage() {
                     <option key={delegate.id} value={delegate.id}>
                       {delegate.full_name}
                       {delegate.email ? ` - ${delegate.email}` : ''}
+                      {isPublicBooking() ? ` - ${getDelegateClientDisplay(delegate)}` : ''}
                     </option>
                   ))}
                 </select>
@@ -1400,7 +1489,9 @@ export default function BookingDetailPage() {
 
                 {availableDelegates.length === 0 && (
                   <p className="text-xs text-slate-500">
-                    No unattached delegates available for this client.
+                    {isPublicBooking()
+                      ? 'No unattached delegates available.'
+                      : 'No unattached delegates available for this client.'}
                   </p>
                 )}
               </div>
@@ -1412,6 +1503,22 @@ export default function BookingDetailPage() {
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {isPublicBooking() && (
+                  <select
+                    className={`${inputClass} md:col-span-2`}
+                    value={delegateClientId}
+                    onChange={(e) => setDelegateClientId(e.target.value)}
+                  >
+                    <option value="">No client / individual learner</option>
+
+                    {clients.map((clientItem) => (
+                      <option key={clientItem.id} value={clientItem.id}>
+                        {clientItem.company} - {clientItem.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
                 <input
                   className={inputClass}
                   placeholder="Delegate full name"
@@ -1580,6 +1687,12 @@ export default function BookingDetailPage() {
                               {delegate.full_name}
                             </Link>
 
+                            {isPublicBooking() && (
+                              <span className="border bg-purple-50 text-purple-700 border-purple-100 px-2 py-1 rounded-md text-xs font-medium">
+                                {getDelegateClientDisplay(delegate)}
+                              </span>
+                            )}
+
                             {certificate ? (
                               <span className="border bg-emerald-50 text-emerald-700 border-emerald-100 px-2 py-1 rounded-md text-xs font-medium">
                                 Certificate created
@@ -1603,6 +1716,11 @@ export default function BookingDetailPage() {
 
                           <div className="text-xs text-slate-600 mt-2 space-y-1">
                             <p>Email: {delegate.email || 'Not set'}</p>
+
+                            {isPublicBooking() && (
+                              <p>Client: {getDelegateClientDisplay(delegate)}</p>
+                            )}
+
                             <p>Phone: {delegate.phone || 'Not set'}</p>
 
                             {certificate && (

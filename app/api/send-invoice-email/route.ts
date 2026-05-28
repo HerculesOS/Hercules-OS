@@ -14,9 +14,18 @@ const createSafeFilename = (invoiceNumber: string) => {
   return `${safeInvoiceNumber || 'invoice'}.pdf`
 }
 
+const escapeHtml = (value: string) => {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+}
+
 const generateInvoicePdfBuffer = ({
   invoiceNumber,
-  clientName,
+  recipientName,
   courseName,
   amount,
   vatAmount,
@@ -29,7 +38,7 @@ const generateInvoicePdfBuffer = ({
   paymentDetails,
 }: {
   invoiceNumber: string
-  clientName: string
+  recipientName: string
   courseName?: string
   amount?: number | string
   vatAmount?: number | string
@@ -103,13 +112,15 @@ const generateInvoicePdfBuffer = ({
 
   doc.setFontSize(12)
   doc.setTextColor(17, 24, 39)
-  doc.text(clientName || 'Client', 118, 80)
+
+  const recipientLines = doc.splitTextToSize(recipientName || 'Recipient', 65)
+  doc.text(recipientLines, 118, 80)
 
   if (courseName) {
     doc.setFontSize(8)
     doc.setTextColor(107, 114, 128)
     const courseLines = doc.splitTextToSize(courseName, 65)
-    doc.text(courseLines, 118, 89)
+    doc.text(courseLines, 118, 91)
   }
 
   doc.setFillColor(17, 24, 39)
@@ -199,6 +210,7 @@ export async function POST(request: Request) {
       to,
       invoiceNumber,
       clientName,
+      recipientName,
       courseName,
       amount,
       vatAmount,
@@ -211,7 +223,9 @@ export async function POST(request: Request) {
       paymentDetails,
     } = body
 
-    if (!to || !invoiceNumber || !clientName || !totalAmount) {
+    const finalRecipientName = recipientName || clientName
+
+    if (!to || !invoiceNumber || !finalRecipientName || !totalAmount) {
       return Response.json(
         { error: 'Missing required invoice email fields' },
         { status: 400 }
@@ -222,7 +236,7 @@ export async function POST(request: Request) {
 
     const pdfBuffer = generateInvoicePdfBuffer({
       invoiceNumber,
-      clientName,
+      recipientName: finalRecipientName,
       courseName,
       amount,
       vatAmount,
@@ -237,6 +251,16 @@ export async function POST(request: Request) {
 
     const filename = createSafeFilename(invoiceNumber)
 
+    const safeRecipientName = escapeHtml(finalRecipientName)
+    const safeInvoiceNumber = escapeHtml(invoiceNumber)
+    const safeCourseName = escapeHtml(courseName || '')
+    const safeDueDate = escapeHtml(dueDate || 'Not set')
+    const safeStatus = escapeHtml(status || 'draft')
+    const safeFromName = escapeHtml(fromName)
+    const safeBusinessEmail = escapeHtml(businessEmail || '')
+    const safeBusinessPhone = escapeHtml(businessPhone || '')
+    const safePaymentDetails = escapeHtml(paymentDetails || '')
+
     const { data, error } = await resend.emails.send({
       from: `${fromName} <onboarding@resend.dev>`,
       to: [to],
@@ -244,11 +268,11 @@ export async function POST(request: Request) {
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; color: #111827;">
           <h1 style="font-size: 24px; margin-bottom: 8px;">
-            Invoice ${invoiceNumber}
+            Invoice ${safeInvoiceNumber}
           </h1>
 
           <p style="font-size: 16px; color: #4b5563;">
-            Hi ${clientName},
+            Hi ${safeRecipientName},
           </p>
 
           <p style="font-size: 16px; color: #4b5563;">
@@ -256,31 +280,31 @@ export async function POST(request: Request) {
           </p>
 
           <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin: 24px 0;">
-            <p><strong>Invoice No:</strong> ${invoiceNumber}</p>
-            ${courseName ? `<p><strong>Course:</strong> ${courseName}</p>` : ''}
-            <p><strong>Client:</strong> ${clientName}</p>
+            <p><strong>Invoice No:</strong> ${safeInvoiceNumber}</p>
+            ${safeCourseName ? `<p><strong>Course:</strong> ${safeCourseName}</p>` : ''}
+            <p><strong>Recipient:</strong> ${safeRecipientName}</p>
             <p><strong>Net Amount:</strong> £${Number(amount || 0).toFixed(2)}</p>
             <p><strong>VAT:</strong> £${Number(vatAmount || 0).toFixed(2)}</p>
             <p><strong>Total:</strong> £${Number(totalAmount || 0).toFixed(2)}</p>
-            <p><strong>Due Date:</strong> ${dueDate || 'Not set'}</p>
-            <p><strong>Status:</strong> ${status || 'draft'}</p>
+            <p><strong>Due Date:</strong> ${safeDueDate}</p>
+            <p><strong>Status:</strong> ${safeStatus}</p>
           </div>
 
           ${
-            paymentDetails
+            safePaymentDetails
               ? `
                 <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 16px; margin: 24px 0;">
                   <h2 style="font-size: 18px; margin-top: 0;">Payment Details</h2>
-                  <p style="white-space: pre-line;">${paymentDetails}</p>
+                  <p style="white-space: pre-line;">${safePaymentDetails}</p>
                 </div>
               `
               : ''
           }
 
           <p style="font-size: 14px; color: #6b7280;">
-            Sent by ${fromName}
-            ${businessEmail ? `<br>Email: ${businessEmail}` : ''}
-            ${businessPhone ? `<br>Phone: ${businessPhone}` : ''}
+            Sent by ${safeFromName}
+            ${safeBusinessEmail ? `<br>Email: ${safeBusinessEmail}` : ''}
+            ${safeBusinessPhone ? `<br>Phone: ${safeBusinessPhone}` : ''}
           </p>
         </div>
       `,

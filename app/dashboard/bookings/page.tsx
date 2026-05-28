@@ -14,6 +14,7 @@ export default function BookingsPage() {
   const [organisation, setOrganisation] = useState<any>(null)
   const [organisationId, setOrganisationId] = useState('')
 
+  const [courseDeliveryType, setCourseDeliveryType] = useState('private')
   const [clientId, setClientId] = useState('')
   const [trainerId, setTrainerId] = useState('')
   const [courseTemplateId, setCourseTemplateId] = useState('')
@@ -33,6 +34,7 @@ export default function BookingsPage() {
   const [editingId, setEditingId] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
 
+  const [editCourseDeliveryType, setEditCourseDeliveryType] = useState('private')
   const [editClientId, setEditClientId] = useState('')
   const [editTrainerId, setEditTrainerId] = useState('')
   const [editCourseTemplateId, setEditCourseTemplateId] = useState('')
@@ -46,6 +48,7 @@ export default function BookingsPage() {
   const [editNotes, setEditNotes] = useState('')
 
   const [search, setSearch] = useState('')
+  const [deliveryTypeFilter, setDeliveryTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [dateSort, setDateSort] = useState('ascending')
@@ -143,6 +146,22 @@ export default function BookingsPage() {
     )
   }
 
+  const getClientForBooking = (booking: any) => {
+    if (!booking?.client_id) return null
+
+    return clients.find((client) => client.id === booking.client_id)
+  }
+
+  const getBookingClientDisplay = (booking: any) => {
+    const client = getClientForBooking(booking)
+
+    if (client?.company) return client.company
+
+    if (booking.course_delivery_type === 'public') return 'Public course'
+
+    return booking.client_name || 'No client'
+  }
+
   const applyCourseTemplate = (templateId: string) => {
     setCourseTemplateId(templateId)
 
@@ -198,8 +217,13 @@ export default function BookingsPage() {
   }
 
   const addBooking = async () => {
-    if (!clientId || !courseName || !date) {
-      alert('Client, course and date are required')
+    if (courseDeliveryType === 'private' && !clientId) {
+      alert('Private bookings require a client')
+      return
+    }
+
+    if (!courseName || !date) {
+      alert('Course and date are required')
       return
     }
 
@@ -210,10 +234,14 @@ export default function BookingsPage() {
     const { error } = await supabase.from('bookings').insert({
       user_id: userData.user?.id,
       organisation_id: organisationId,
-      client_id: clientId,
+      course_delivery_type: courseDeliveryType,
+      client_id: clientId || null,
       trainer_id: trainerId || null,
       certificate_template_id: certificateTemplateId || null,
-      client_name: selectedClient?.name,
+      client_name:
+        courseDeliveryType === 'public' && !selectedClient
+          ? 'Public course'
+          : selectedClient?.name || null,
       course_name: courseName,
       date,
       start_time: startTime || null,
@@ -229,6 +257,7 @@ export default function BookingsPage() {
       return
     }
 
+    setCourseDeliveryType('private')
     setClientId('')
     setTrainerId('')
     setCourseTemplateId('')
@@ -246,6 +275,7 @@ export default function BookingsPage() {
 
   const startEditing = (booking: any) => {
     setEditingId(booking.id)
+    setEditCourseDeliveryType(booking.course_delivery_type || 'private')
     setEditClientId(booking.client_id || '')
     setEditTrainerId(booking.trainer_id || '')
     setEditCourseTemplateId('')
@@ -261,6 +291,7 @@ export default function BookingsPage() {
 
   const cancelEditing = () => {
     setEditingId('')
+    setEditCourseDeliveryType('private')
     setEditClientId('')
     setEditTrainerId('')
     setEditCourseTemplateId('')
@@ -275,8 +306,13 @@ export default function BookingsPage() {
   }
 
   const saveBookingEdit = async (bookingId: string) => {
-    if (!editClientId || !editCourseName || !editDate) {
-      alert('Client, course and date are required')
+    if (editCourseDeliveryType === 'private' && !editClientId) {
+      alert('Private bookings require a client')
+      return
+    }
+
+    if (!editCourseName || !editDate) {
+      alert('Course and date are required')
       return
     }
 
@@ -287,10 +323,14 @@ export default function BookingsPage() {
     const { error } = await supabase
       .from('bookings')
       .update({
-        client_id: editClientId,
+        course_delivery_type: editCourseDeliveryType,
+        client_id: editClientId || null,
         trainer_id: editTrainerId || null,
         certificate_template_id: editCertificateTemplateId || null,
-        client_name: selectedClient?.name,
+        client_name:
+          editCourseDeliveryType === 'public' && !selectedClient
+            ? 'Public course'
+            : selectedClient?.name || null,
         course_name: editCourseName,
         date: editDate,
         start_time: editStartTime || null,
@@ -351,10 +391,6 @@ export default function BookingsPage() {
     load()
   }
 
-  const getClientForBooking = (booking: any) => {
-    return clients.find((client) => client.id === booking.client_id)
-  }
-
   const getTrainerForBooking = (booking: any) => {
     return trainers.find((trainer) => trainer.id === booking.trainer_id)
   }
@@ -382,7 +418,7 @@ export default function BookingsPage() {
       },
       body: JSON.stringify({
         to: recipientEmail,
-        clientName: booking.client_name,
+        clientName: booking.client_name || getBookingClientDisplay(booking),
         courseName: booking.course_name,
         date: booking.date,
         startTime: booking.start_time,
@@ -431,7 +467,7 @@ export default function BookingsPage() {
       },
       body: JSON.stringify({
         to: recipientEmail,
-        clientName: booking.client_name,
+        clientName: booking.client_name || getBookingClientDisplay(booking),
         courseName: booking.course_name,
         date: booking.date,
         startTime: booking.start_time,
@@ -464,6 +500,7 @@ export default function BookingsPage() {
 
   const clearFilters = () => {
     setSearch('')
+    setDeliveryTypeFilter('all')
     setStatusFilter('all')
     setTrainerFilter('all')
     setDateSort('ascending')
@@ -481,6 +518,14 @@ export default function BookingsPage() {
     (booking) => booking.status === 'cancelled'
   )
 
+  const publicBookings = bookings.filter(
+    (booking) => booking.course_delivery_type === 'public'
+  )
+
+  const privateBookings = bookings.filter(
+    (booking) => (booking.course_delivery_type || 'private') === 'private'
+  )
+
   const estimatedValue = bookings.reduce(
     (sum, booking) => sum + Number(booking.price || 0),
     0
@@ -491,12 +536,14 @@ export default function BookingsPage() {
       const trainer = getTrainerForBooking(booking)
       const client = getClientForBooking(booking)
       const certificateTemplate = getCertificateTemplateForBooking(booking)
+      const bookingDeliveryType = booking.course_delivery_type || 'private'
 
       const searchableText = `
         ${booking.client_name || ''}
         ${client?.company || ''}
         ${client?.name || ''}
         ${client?.email || ''}
+        ${bookingDeliveryType}
         ${booking.course_name || ''}
         ${booking.location || ''}
         ${booking.notes || ''}
@@ -508,13 +555,16 @@ export default function BookingsPage() {
 
       const matchesSearch = searchableText.includes(search.toLowerCase())
 
+      const matchesDeliveryType =
+        deliveryTypeFilter === 'all' || bookingDeliveryType === deliveryTypeFilter
+
       const matchesStatus =
         statusFilter === 'all' || booking.status === statusFilter
 
       const matchesTrainer =
         trainerFilter === 'all' || booking.trainer_id === trainerFilter
 
-      return matchesSearch && matchesStatus && matchesTrainer
+      return matchesSearch && matchesDeliveryType && matchesStatus && matchesTrainer
     })
     .sort((a, b) => {
       const dateA = new Date(a.date).getTime()
@@ -537,6 +587,14 @@ export default function BookingsPage() {
     }
 
     return 'bg-blue-50 text-blue-700 border-blue-100'
+  }
+
+  const getDeliveryTypeStyle = (type: string) => {
+    if (type === 'public') {
+      return 'bg-purple-50 text-purple-700 border-purple-100'
+    }
+
+    return 'bg-slate-50 text-slate-700 border-slate-200'
   }
 
   const StatCard = ({
@@ -578,12 +636,12 @@ export default function BookingsPage() {
           </h1>
 
           <p className="text-sm text-slate-500 mt-1">
-            Schedule sessions, manage client bookings and send confirmations or reminders.
+            Schedule private client sessions or public open courses.
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
         <StatCard
           label="Total bookings"
           value={bookings.length}
@@ -591,15 +649,21 @@ export default function BookingsPage() {
         />
 
         <StatCard
-          label="Scheduled"
-          value={scheduledBookings.length}
-          detail="Upcoming or planned"
+          label="Private"
+          value={privateBookings.length}
+          detail="Client-specific courses"
         />
 
         <StatCard
-          label="Completed"
-          value={completedBookings.length}
-          detail="Finished sessions"
+          label="Public"
+          value={publicBookings.length}
+          detail="Open courses"
+        />
+
+        <StatCard
+          label="Scheduled"
+          value={scheduledBookings.length}
+          detail="Upcoming or planned"
         />
 
         <StatCard
@@ -616,18 +680,28 @@ export default function BookingsPage() {
           </h2>
 
           <p className="text-xs text-slate-500 mt-0.5">
-            Search and sort bookings by client, course, trainer, certificate template or status.
+            Search and sort bookings by client, course, delivery type, trainer, certificate template or status.
           </p>
         </div>
 
         <div className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
             <input
               className={`${inputClass} md:col-span-2`}
               placeholder="Search bookings..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+
+            <select
+              className={inputClass}
+              value={deliveryTypeFilter}
+              onChange={(e) => setDeliveryTypeFilter(e.target.value)}
+            >
+              <option value="all">All courses</option>
+              <option value="private">Private only</option>
+              <option value="public">Public only</option>
+            </select>
 
             <select
               className={inputClass}
@@ -664,9 +738,9 @@ export default function BookingsPage() {
             </select>
           </div>
 
-          <div className="flex items-center justify-between mt-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-4">
             <p className="text-xs text-slate-500">
-              Showing {filteredBookings.length} of {bookings.length} bookings
+              Showing {filteredBookings.length} of {bookings.length} bookings · {privateBookings.length} private · {publicBookings.length} public
             </p>
 
             <button
@@ -687,17 +761,38 @@ export default function BookingsPage() {
             </h2>
 
             <p className="text-xs text-slate-500 mt-0.5">
-              Add a new training session and choose a certificate template.
+              Choose whether this is a private client course or a public open course.
             </p>
           </div>
 
           <div className="p-4 flex flex-col gap-3">
             <select
               className={inputClass}
+              value={courseDeliveryType}
+              onChange={(e) => {
+                const selectedType = e.target.value
+
+                setCourseDeliveryType(selectedType)
+
+                if (selectedType === 'public') {
+                  setClientId('')
+                }
+              }}
+            >
+              <option value="private">Private course</option>
+              <option value="public">Public course</option>
+            </select>
+
+            <select
+              className={inputClass}
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
             >
-              <option value="">Select client</option>
+              <option value="">
+                {courseDeliveryType === 'public'
+                  ? 'Optional main client'
+                  : 'Select client'}
+              </option>
 
               {clients.map((client) => (
                 <option key={client.id} value={client.id}>
@@ -800,6 +895,12 @@ export default function BookingsPage() {
               onChange={(e) => setNotes(e.target.value)}
             />
 
+            {courseDeliveryType === 'public' && (
+              <div className="bg-purple-50 border border-purple-100 rounded-md p-3 text-xs text-purple-700">
+                Public courses can have delegates from multiple clients. The main client can be left blank.
+              </div>
+            )}
+
             {courseTemplateId && (
               <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600">
                 Course template applied. If a matching certificate template exists, it has been selected automatically.
@@ -841,6 +942,7 @@ export default function BookingsPage() {
               const savedClientEmail = client?.email || ''
               const isEditing = editingId === booking.id
               const certificateTemplate = getCertificateTemplateForBooking(booking)
+              const bookingDeliveryType = booking.course_delivery_type || 'private'
 
               return (
                 <div
@@ -863,10 +965,20 @@ export default function BookingsPage() {
                             >
                               {booking.status}
                             </span>
+
+                            <span
+                              className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getDeliveryTypeStyle(
+                                bookingDeliveryType
+                              )}`}
+                            >
+                              {bookingDeliveryType === 'public'
+                                ? 'Public'
+                                : 'Private'}
+                            </span>
                           </div>
 
                           <p className="text-sm text-slate-600 mt-1">
-                            {client?.company || booking.client_name}
+                            {getBookingClientDisplay(booking)}
                           </p>
 
                           {client?.name && (
@@ -940,7 +1052,12 @@ export default function BookingsPage() {
                       <div className="mt-4 border-t border-slate-100 pt-4">
                         <input
                           className={`${inputClass} w-full`}
-                          placeholder={savedClientEmail || 'Recipient email'}
+                          placeholder={
+                            savedClientEmail ||
+                            (bookingDeliveryType === 'public'
+                              ? 'Recipient email for public course'
+                              : 'Recipient email')
+                          }
                           value={recipientEmails[booking.id] || ''}
                           onChange={(e) =>
                             setRecipientEmails((previous) => ({
@@ -1043,7 +1160,46 @@ export default function BookingsPage() {
                         </h3>
 
                         <p className="text-xs text-slate-500 mt-1">
-                          Update session details and certificate template.
+                          Update session type, client, details and certificate template.
+                        </p>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4">
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-2">
+                          Course type
+                        </p>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            className={
+                              editCourseDeliveryType === 'private'
+                                ? buttonPrimary
+                                : buttonSecondary
+                            }
+                            onClick={() => setEditCourseDeliveryType('private')}
+                          >
+                            Private
+                          </button>
+
+                          <button
+                            type="button"
+                            className={
+                              editCourseDeliveryType === 'public'
+                                ? buttonPrimary
+                                : buttonSecondary
+                            }
+                            onClick={() => {
+                              setEditCourseDeliveryType('public')
+                              setEditClientId('')
+                            }}
+                          >
+                            Public
+                          </button>
+                        </div>
+
+                        <p className="text-xs text-slate-500 mt-2">
+                          Private courses require one client. Public courses can have delegates from multiple clients.
                         </p>
                       </div>
 
@@ -1053,7 +1209,11 @@ export default function BookingsPage() {
                           value={editClientId}
                           onChange={(e) => setEditClientId(e.target.value)}
                         >
-                          <option value="">Select client</option>
+                          <option value="">
+                            {editCourseDeliveryType === 'public'
+                              ? 'Optional main client'
+                              : 'Select client'}
+                          </option>
 
                           {clients.map((client) => (
                             <option key={client.id} value={client.id}>
@@ -1154,6 +1314,12 @@ export default function BookingsPage() {
                           onChange={(e) => setEditNotes(e.target.value)}
                         />
                       </div>
+
+                      {editCourseDeliveryType === 'public' && (
+                        <div className="bg-purple-50 border border-purple-100 rounded-md p-3 text-xs text-purple-700 mt-4">
+                          Public courses can have delegates from multiple clients. The main client can be left blank.
+                        </div>
+                      )}
 
                       {editCourseTemplateId && (
                         <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600 mt-4">

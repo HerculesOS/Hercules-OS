@@ -9,10 +9,17 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<any[]>([])
   const [bookings, setBookings] = useState<any[]>([])
   const [clients, setClients] = useState<any[]>([])
+  const [delegates, setDelegates] = useState<any[]>([])
+  const [bookingDelegateLinks, setBookingDelegateLinks] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
   const [organisationId, setOrganisationId] = useState('')
 
   const [bookingId, setBookingId] = useState('')
+  const [invoiceTargetType, setInvoiceTargetType] = useState('booking_client')
+  const [invoiceClientId, setInvoiceClientId] = useState('')
+  const [invoiceDelegateId, setInvoiceDelegateId] = useState('')
+  const [customRecipientName, setCustomRecipientName] = useState('')
+  const [customRecipientEmail, setCustomRecipientEmail] = useState('')
   const [amount, setAmount] = useState('')
   const [vatRate, setVatRate] = useState('0')
   const [dueDate, setDueDate] = useState('')
@@ -22,7 +29,6 @@ export default function InvoicesPage() {
 
   const [editingId, setEditingId] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
-
   const [editBookingId, setEditBookingId] = useState('')
   const [editAmount, setEditAmount] = useState('')
   const [editVatRate, setEditVatRate] = useState('0')
@@ -64,6 +70,18 @@ export default function InvoicesPage() {
       .from('clients')
       .select('*')
       .eq('organisation_id', profile.organisation_id)
+      .order('company', { ascending: true })
+
+    const { data: delegatesData } = await supabase
+      .from('delegates')
+      .select('*')
+      .eq('organisation_id', profile.organisation_id)
+      .order('full_name', { ascending: true })
+
+    const { data: bookingDelegateLinksData } = await supabase
+      .from('booking_delegates')
+      .select('*')
+      .eq('organisation_id', profile.organisation_id)
 
     const { data: bookingsData } = await supabase
       .from('bookings')
@@ -79,6 +97,8 @@ export default function InvoicesPage() {
 
     setOrganisation(organisationData || null)
     setClients(clientsData || [])
+    setDelegates(delegatesData || [])
+    setBookingDelegateLinks(bookingDelegateLinksData || [])
     setBookings(bookingsData || [])
     setInvoices(invoicesData || [])
   }
@@ -87,16 +107,72 @@ export default function InvoicesPage() {
     load()
   }, [])
 
+  const getBookingDeliveryType = (booking: any) => {
+    return booking?.course_delivery_type || 'private'
+  }
+
+  const getClientById = (clientId: string | null | undefined) => {
+    if (!clientId) return null
+    return clients.find((client) => client.id === clientId)
+  }
+
+  const getDelegateById = (delegateId: string | null | undefined) => {
+    if (!delegateId) return null
+    return delegates.find((delegate) => delegate.id === delegateId)
+  }
+
+  const getBookingById = (id: string | null | undefined) => {
+    if (!id) return null
+    return bookings.find((booking) => booking.id === id)
+  }
+
   const getClientForBooking = (booking: any) => {
     if (!booking?.client_id) return null
-
     return clients.find((client) => client.id === booking.client_id)
   }
 
   const getBookingClientName = (booking: any) => {
     const client = getClientForBooking(booking)
 
-    return client?.company || booking?.client_name || 'No client'
+    if (client?.company) return client.company
+
+    if (getBookingDeliveryType(booking) === 'public') return 'Public course'
+
+    return booking?.client_name || 'No client'
+  }
+
+  const getBookingDelegates = (selectedBookingId: string) => {
+    const delegateIds = bookingDelegateLinks
+      .filter((link) => link.booking_id === selectedBookingId)
+      .map((link) => link.delegate_id)
+
+    return delegates.filter((delegate) => delegateIds.includes(delegate.id))
+  }
+
+  const getPublicBookingClientOptions = (selectedBooking: any) => {
+    if (!selectedBooking) return []
+
+    const bookingDelegates = getBookingDelegates(selectedBooking.id)
+    const clientIds = new Set<string>()
+
+    if (selectedBooking.client_id) {
+      clientIds.add(selectedBooking.client_id)
+    }
+
+    bookingDelegates.forEach((delegate) => {
+      if (delegate.client_id) {
+        clientIds.add(delegate.client_id)
+      }
+    })
+
+    return Array.from(clientIds)
+      .map((id) => getClientById(id))
+      .filter(Boolean)
+  }
+
+  const getDelegatesForSelectedBooking = () => {
+    if (!bookingId) return []
+    return getBookingDelegates(bookingId)
   }
 
   const getBookingOptionLabel = (booking: any) => {
@@ -106,8 +182,90 @@ export default function InvoicesPage() {
     const priceText = booking.price
       ? ` · £${Number(booking.price).toFixed(2)}`
       : ''
+    const deliveryText = getBookingDeliveryType(booking) === 'public'
+      ? 'Public'
+      : 'Private'
 
-    return `${dateText} · ${clientText} · ${courseText}${priceText}`
+    return `${dateText} · ${deliveryText} · ${clientText} · ${courseText}${priceText}`
+  }
+
+  const selectedBooking = getBookingById(bookingId)
+  const selectedBookingDeliveryType = getBookingDeliveryType(selectedBooking)
+
+  const resetCreateForm = () => {
+    setBookingId('')
+    setInvoiceTargetType('booking_client')
+    setInvoiceClientId('')
+    setInvoiceDelegateId('')
+    setCustomRecipientName('')
+    setCustomRecipientEmail('')
+    setAmount('')
+    setVatRate('0')
+    setDueDate('')
+  }
+
+  const getInvoiceRecipientForCreate = () => {
+    const booking = selectedBooking
+
+    if (!booking) {
+      return null
+    }
+
+    if (invoiceTargetType === 'booking_client') {
+      const client = getClientForBooking(booking)
+
+      if (!client) return null
+
+      return {
+        type: 'booking_client',
+        clientId: client.id,
+        delegateId: null,
+        name: client.company || client.name || booking.client_name || 'Client',
+        email: client.email || '',
+      }
+    }
+
+    if (invoiceTargetType === 'client') {
+      const client = getClientById(invoiceClientId)
+
+      if (!client) return null
+
+      return {
+        type: 'client',
+        clientId: client.id,
+        delegateId: null,
+        name: client.company || client.name || 'Client',
+        email: client.email || '',
+      }
+    }
+
+    if (invoiceTargetType === 'delegate') {
+      const delegate = getDelegateById(invoiceDelegateId)
+
+      if (!delegate) return null
+
+      return {
+        type: 'delegate',
+        clientId: delegate.client_id || null,
+        delegateId: delegate.id,
+        name: delegate.full_name || 'Delegate',
+        email: delegate.email || '',
+      }
+    }
+
+    if (invoiceTargetType === 'custom') {
+      if (!customRecipientName) return null
+
+      return {
+        type: 'custom',
+        clientId: null,
+        delegateId: null,
+        name: customRecipientName,
+        email: customRecipientEmail || '',
+      }
+    }
+
+    return null
   }
 
   const createInvoice = async () => {
@@ -116,10 +274,14 @@ export default function InvoicesPage() {
       return
     }
 
-    const { data: userData } = await supabase.auth.getUser()
+    const recipient = getInvoiceRecipientForCreate()
 
-    const selectedBooking = bookings.find((b) => b.id === bookingId)
-    const selectedClient = selectedBooking ? getClientForBooking(selectedBooking) : null
+    if (!recipient) {
+      alert('Choose who this invoice is for')
+      return
+    }
+
+    const { data: userData } = await supabase.auth.getUser()
 
     const net = Number(amount)
     const vat = net * (Number(vatRate) / 100)
@@ -131,7 +293,12 @@ export default function InvoicesPage() {
       user_id: userData.user?.id,
       organisation_id: organisationId,
       booking_id: bookingId,
-      client_name: selectedClient?.company || selectedBooking?.client_name,
+      client_id: recipient.clientId,
+      delegate_id: recipient.delegateId,
+      invoice_target_type: recipient.type,
+      recipient_name: recipient.name,
+      recipient_email: recipient.email,
+      client_name: recipient.name,
       invoice_number: invoiceNumber,
       amount: net,
       vat_rate: Number(vatRate),
@@ -146,11 +313,7 @@ export default function InvoicesPage() {
       return
     }
 
-    setBookingId('')
-    setAmount('')
-    setVatRate('0')
-    setDueDate('')
-
+    resetCreateForm()
     load()
   }
 
@@ -191,9 +354,6 @@ export default function InvoicesPage() {
 
     setSavingEdit(true)
 
-    const selectedBooking = bookings.find((b) => b.id === editBookingId)
-    const selectedClient = selectedBooking ? getClientForBooking(selectedBooking) : null
-
     const net = Number(editAmount)
     const vat = net * (Number(editVatRate) / 100)
     const total = net + vat
@@ -202,7 +362,6 @@ export default function InvoicesPage() {
       .from('invoices')
       .update({
         booking_id: editBookingId,
-        client_name: selectedClient?.company || selectedBooking?.client_name,
         amount: net,
         vat_rate: Number(editVatRate),
         vat_amount: vat,
@@ -304,14 +463,42 @@ export default function InvoicesPage() {
     load()
   }
 
-  const getClientEmailForInvoice = (invoice: any) => {
-    const booking = bookings.find((b) => b.id === invoice.booking_id)
+  const getInvoiceRecipientName = (invoice: any) => {
+    if (invoice.recipient_name) return invoice.recipient_name
 
-    if (!booking) return ''
+    const booking = getBookingById(invoice.booking_id)
+    const client = booking ? getClientForBooking(booking) : null
 
-    const client = getClientForBooking(booking)
+    return client?.company || invoice.client_name || 'No recipient'
+  }
+
+  const getInvoiceRecipientEmail = (invoice: any) => {
+    if (invoice.recipient_email) return invoice.recipient_email
+
+    const booking = getBookingById(invoice.booking_id)
+    const client = booking ? getClientForBooking(booking) : null
 
     return client?.email || ''
+  }
+
+  const getInvoiceTargetLabel = (invoice: any) => {
+    if (invoice.invoice_target_type === 'delegate') return 'Delegate'
+    if (invoice.invoice_target_type === 'client') return 'Client'
+    if (invoice.invoice_target_type === 'custom') return 'Custom'
+    return 'Booking client'
+  }
+
+  const getInvoiceCourseName = (invoice: any) => {
+    const booking = getBookingById(invoice.booking_id)
+    return booking?.course_name || 'Training course delivery'
+  }
+
+  const getInvoiceBookingLabel = (invoice: any) => {
+    const booking = getBookingById(invoice.booking_id)
+
+    if (!booking) return 'Booking not found'
+
+    return getBookingOptionLabel(booking)
   }
 
   const generateInvoicePDF = (invoice: any) => {
@@ -324,24 +511,14 @@ export default function InvoicesPage() {
     const businessName = organisation?.name || 'Training Provider'
     const businessEmail = organisation?.email || ''
     const businessPhone = organisation?.phone || ''
-    const businessAddress = organisation?.address || ''
-    const businessWebsite = organisation?.website || ''
     const paymentDetails = organisation?.invoice_payment_details || ''
 
-    const booking = bookings.find((b) => b.id === invoice.booking_id)
-    const courseName = booking?.course_name || 'Training course delivery'
+    const courseName = getInvoiceCourseName(invoice)
+    const billTo = getInvoiceRecipientName(invoice)
 
     const invoiceDate = invoice.created_at
       ? new Date(invoice.created_at).toLocaleDateString()
       : new Date().toLocaleDateString()
-
-    const securedDate = invoice.secured_at
-      ? new Date(invoice.secured_at).toLocaleDateString()
-      : ''
-
-    const paidDate = invoice.paid_at
-      ? new Date(invoice.paid_at).toLocaleDateString()
-      : ''
 
     doc.setFillColor(248, 250, 252)
     doc.rect(0, 0, 210, 297, 'F')
@@ -395,34 +572,11 @@ export default function InvoicesPage() {
 
     doc.setFontSize(12)
     doc.setTextColor(17, 24, 39)
-    doc.text(invoice.client_name || 'Client', 118, 80)
+    doc.text(billTo || 'Recipient', 118, 80)
 
-    if (businessAddress) {
-      doc.setFontSize(8)
-      doc.setTextColor(107, 114, 128)
-
-      const addressLines = doc.splitTextToSize(businessAddress, 65)
-      doc.text(addressLines, 118, 89)
-    }
-
-    let badgeX = 22
-
-    if (invoice.secured_at) {
-      doc.setFillColor(229, 231, 235)
-      doc.setTextColor(55, 65, 81)
-      doc.roundedRect(badgeX, 112, 36, 9, 2, 2, 'F')
-      doc.setFontSize(8)
-      doc.text('SECURED', badgeX + 18, 118, { align: 'center' })
-      badgeX += 42
-    }
-
-    if (invoice.status === 'paid') {
-      doc.setFillColor(220, 252, 231)
-      doc.setTextColor(21, 128, 61)
-      doc.roundedRect(badgeX, 112, 28, 9, 2, 2, 'F')
-      doc.setFontSize(8)
-      doc.text('PAID', badgeX + 14, 118, { align: 'center' })
-    }
+    doc.setFontSize(8)
+    doc.setTextColor(107, 114, 128)
+    doc.text(getInvoiceTargetLabel(invoice), 118, 89)
 
     doc.setFillColor(17, 24, 39)
     doc.roundedRect(22, 132, 166, 12, 2, 2, 'F')
@@ -484,52 +638,25 @@ export default function InvoicesPage() {
       doc.text(paymentLines, 28, 198)
     }
 
-    doc.setFontSize(8)
-    doc.setTextColor(107, 114, 128)
-
-    let recordY = 238
-
-    if (securedDate) {
-      doc.text(`Secured on: ${securedDate}`, 22, recordY)
-      recordY += 6
-    }
-
-    if (paidDate) {
-      doc.text(`Paid on: ${paidDate}`, 22, recordY)
-      recordY += 6
-    }
-
-    if (businessWebsite) {
-      doc.text(`Website: ${businessWebsite}`, 22, recordY)
-    }
-
     doc.setDrawColor(229, 231, 235)
     doc.line(22, 265, 188, 265)
 
     doc.setFontSize(8)
     doc.setTextColor(107, 114, 128)
     doc.text('Generated by Hercules OS', 22, 274)
-
-    doc.text(
-      'Thank you for your business.',
-      188,
-      274,
-      { align: 'right' }
-    )
+    doc.text('Thank you for your business.', 188, 274, { align: 'right' })
 
     doc.save(`${invoice.invoice_number || 'invoice'}.pdf`)
   }
 
   const sendInvoiceEmail = async (invoice: any) => {
     const recipientEmail =
-      recipientEmails[invoice.id] || getClientEmailForInvoice(invoice)
+      recipientEmails[invoice.id] || getInvoiceRecipientEmail(invoice)
 
     if (!recipientEmail) {
       alert('Enter a recipient email first')
       return
     }
-
-    const booking = bookings.find((b) => b.id === invoice.booking_id)
 
     setSendingId(invoice.id)
 
@@ -541,8 +668,8 @@ export default function InvoicesPage() {
       body: JSON.stringify({
         to: recipientEmail,
         invoiceNumber: invoice.invoice_number || invoice.id,
-        clientName: invoice.client_name,
-        courseName: booking?.course_name || 'Training course',
+        clientName: getInvoiceRecipientName(invoice),
+        courseName: getInvoiceCourseName(invoice),
         amount: invoice.amount,
         vatAmount: invoice.vat_amount,
         totalAmount: invoice.total_amount || invoice.amount,
@@ -596,20 +723,53 @@ export default function InvoicesPage() {
     (invoice) => invoice.secured_at
   )
 
+  const publicInvoices = invoices.filter((invoice) => {
+    const booking = getBookingById(invoice.booking_id)
+    return getBookingDeliveryType(booking) === 'public'
+  })
+
 const filteredInvoices = invoices
   .filter((invoice) => {
-    const booking = bookings.find((b) => b.id === invoice.booking_id)
-    const client = booking ? getClientForBooking(booking) : null
+    const booking = getBookingById(invoice.booking_id)
+
+    const invoiceClient = invoice.client_id
+      ? getClientById(invoice.client_id)
+      : null
+
+    const bookingClient = booking?.client_id
+      ? getClientById(booking.client_id)
+      : null
+
+    const delegate = invoice.delegate_id
+      ? getDelegateById(invoice.delegate_id)
+      : null
+
+    const delegateClient = delegate?.client_id
+      ? getClientById(delegate.client_id)
+      : null
 
     const searchableText = `
       ${invoice.invoice_number || ''}
       ${invoice.client_name || ''}
-      ${client?.company || ''}
-      ${client?.name || ''}
-      ${client?.email || ''}
+      ${invoice.recipient_name || ''}
+      ${invoice.recipient_email || ''}
+      ${invoiceClient?.company || ''}
+      ${invoiceClient?.name || ''}
+      ${invoiceClient?.email || ''}
+      ${bookingClient?.company || ''}
+      ${bookingClient?.name || ''}
+      ${bookingClient?.email || ''}
+      ${delegateClient?.company || ''}
+      ${delegateClient?.name || ''}
+      ${delegateClient?.email || ''}
+      ${delegate?.full_name || ''}
+      ${delegate?.email || ''}
       ${booking?.course_name || ''}
       ${booking?.date || ''}
+      ${booking?.client_name || ''}
+      ${booking?.course_delivery_type || ''}
       ${invoice.status || ''}
+      ${invoice.invoice_target_type || ''}
     `.toLowerCase()
 
       const matchesSearch = searchableText.includes(search.toLowerCase())
@@ -658,6 +818,14 @@ const filteredInvoices = invoices
     return 'bg-amber-50 text-amber-700 border-amber-100'
   }
 
+  const getDeliveryTypeStyle = (type: string) => {
+    if (type === 'public') {
+      return 'bg-purple-50 text-purple-700 border-purple-100'
+    }
+
+    return 'bg-slate-50 text-slate-700 border-slate-200'
+  }
+
   const StatCard = ({
     label,
     value,
@@ -697,12 +865,12 @@ const filteredInvoices = invoices
           </h1>
 
           <p className="text-sm text-slate-500 mt-1">
-            Create, edit, secure, download, email and track client invoices.
+            Create invoices for private bookings, public-course clients, individual delegates or custom recipients.
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
         <StatCard
           label="Total value"
           value={`£${totalRevenue.toFixed(2)}`}
@@ -712,13 +880,19 @@ const filteredInvoices = invoices
         <StatCard
           label="Invoices"
           value={invoices.length}
-          detail="Total invoice records"
+          detail="Total records"
         />
 
         <StatCard
           label="Outstanding"
           value={unpaidInvoices.length}
           detail="Not marked paid"
+        />
+
+        <StatCard
+          label="Public invoices"
+          value={publicInvoices.length}
+          detail="From public courses"
         />
 
         <StatCard
@@ -735,7 +909,7 @@ const filteredInvoices = invoices
           </h2>
 
           <p className="text-xs text-slate-500 mt-0.5">
-            Search, sort and filter invoices by status or security.
+            Search by recipient, company, delegate, course, invoice number or status.
           </p>
         </div>
 
@@ -781,11 +955,7 @@ const filteredInvoices = invoices
             </select>
 
             <button
-              className={
-                unpaidOnly
-                  ? buttonPrimary
-                  : buttonSecondary
-              }
+              className={unpaidOnly ? buttonPrimary : buttonSecondary}
               onClick={() => setUnpaidOnly(!unpaidOnly)}
             >
               Unpaid only
@@ -815,7 +985,7 @@ const filteredInvoices = invoices
             </h2>
 
             <p className="text-xs text-slate-500 mt-0.5">
-              Generate an invoice from an existing booking.
+              Choose a booking, then choose who should receive the invoice.
             </p>
           </div>
 
@@ -825,14 +995,22 @@ const filteredInvoices = invoices
               value={bookingId}
               onChange={(e) => {
                 const selectedBookingId = e.target.value
+                const booking = getBookingById(selectedBookingId)
+
                 setBookingId(selectedBookingId)
+                setInvoiceClientId('')
+                setInvoiceDelegateId('')
+                setCustomRecipientName('')
+                setCustomRecipientEmail('')
 
-                const selectedBooking = bookings.find(
-                  (booking) => booking.id === selectedBookingId
-                )
+                if (booking?.course_delivery_type === 'public' && !booking.client_id) {
+                  setInvoiceTargetType('client')
+                } else {
+                  setInvoiceTargetType('booking_client')
+                }
 
-                if (selectedBooking?.price && !amount) {
-                  setAmount(String(selectedBooking.price))
+                if (booking?.price && !amount) {
+                  setAmount(String(booking.price))
                 }
               }}
             >
@@ -844,6 +1022,116 @@ const filteredInvoices = invoices
                 </option>
               ))}
             </select>
+
+            {selectedBooking && (
+              <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600">
+                <p className="font-medium text-slate-950">
+                  {selectedBooking.course_name}
+                </p>
+
+                <p className="mt-1">
+                  {selectedBooking.date} · {selectedBookingDeliveryType === 'public' ? 'Public course' : 'Private course'}
+                </p>
+
+                {selectedBookingDeliveryType === 'public' && (
+                  <p className="mt-2 text-purple-700">
+                    Public course selected. You can invoice a company/client, an individual delegate, or a custom recipient.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {selectedBooking && (
+              <>
+                <select
+                  className={inputClass}
+                  value={invoiceTargetType}
+                  onChange={(e) => {
+                    setInvoiceTargetType(e.target.value)
+                    setInvoiceClientId('')
+                    setInvoiceDelegateId('')
+                    setCustomRecipientName('')
+                    setCustomRecipientEmail('')
+                  }}
+                >
+                  {selectedBooking.client_id && (
+                    <option value="booking_client">Booking client</option>
+                  )}
+
+                  {selectedBookingDeliveryType === 'public' && (
+                    <>
+                      <option value="client">Client/company on course</option>
+                      <option value="delegate">Individual delegate</option>
+                      <option value="custom">Custom recipient</option>
+                    </>
+                  )}
+
+                  {selectedBookingDeliveryType !== 'public' && (
+                    <option value="custom">Custom recipient</option>
+                  )}
+                </select>
+
+                {invoiceTargetType === 'client' && (
+                  <select
+                    className={inputClass}
+                    value={invoiceClientId}
+                    onChange={(e) => setInvoiceClientId(e.target.value)}
+                  >
+                    <option value="">Select client/company</option>
+
+                    {getPublicBookingClientOptions(selectedBooking).map((client: any) => (
+                      <option key={client.id} value={client.id}>
+                        {client.company} - {client.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {invoiceTargetType === 'delegate' && (
+                  <select
+                    className={inputClass}
+                    value={invoiceDelegateId}
+                    onChange={(e) => {
+                      const delegateId = e.target.value
+                      const delegate = getDelegateById(delegateId)
+
+                      setInvoiceDelegateId(delegateId)
+
+                      if (delegate?.email) {
+                        setCustomRecipientEmail(delegate.email)
+                      }
+                    }}
+                  >
+                    <option value="">Select delegate</option>
+
+                    {getDelegatesForSelectedBooking().map((delegate) => (
+                      <option key={delegate.id} value={delegate.id}>
+                        {delegate.full_name}
+                        {delegate.email ? ` - ${delegate.email}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {invoiceTargetType === 'custom' && (
+                  <>
+                    <input
+                      className={inputClass}
+                      placeholder="Recipient name"
+                      value={customRecipientName}
+                      onChange={(e) => setCustomRecipientName(e.target.value)}
+                    />
+
+                    <input
+                      className={inputClass}
+                      placeholder="Recipient email optional"
+                      value={customRecipientEmail}
+                      onChange={(e) => setCustomRecipientEmail(e.target.value)}
+                    />
+                  </>
+                )}
+              </>
+            )}
 
             <input
               className={inputClass}
@@ -906,9 +1194,11 @@ const filteredInvoices = invoices
               const netAmount = Number(invoice.amount || 0)
               const vatAmount = Number(invoice.vat_amount || 0)
               const totalAmount = Number(invoice.total_amount || invoice.amount || 0)
-              const savedClientEmail = getClientEmailForInvoice(invoice)
+              const savedRecipientEmail = getInvoiceRecipientEmail(invoice)
               const isEditing = editingId === invoice.id
               const isLocked = Boolean(invoice.secured_at) || invoice.status === 'paid'
+              const booking = getBookingById(invoice.booking_id)
+              const deliveryType = getBookingDeliveryType(booking)
 
               return (
                 <div
@@ -924,12 +1214,16 @@ const filteredInvoices = invoices
                               {invoice.invoice_number || 'Invoice'}
                             </h3>
 
-                            <span
-                              className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(
-                                invoice.status
-                              )}`}
-                            >
+                            <span className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(invoice.status)}`}>
                               {invoice.status}
+                            </span>
+
+                            <span className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getDeliveryTypeStyle(deliveryType)}`}>
+                              {deliveryType === 'public' ? 'Public' : 'Private'}
+                            </span>
+
+                            <span className="border border-slate-200 bg-slate-50 text-slate-700 px-2.5 py-1 rounded-md text-xs font-medium">
+                              {getInvoiceTargetLabel(invoice)}
                             </span>
 
                             {invoice.secured_at && (
@@ -940,26 +1234,12 @@ const filteredInvoices = invoices
                           </div>
 
                           <p className="text-sm text-slate-600 mt-1">
-  {(() => {
-    const booking = bookings.find((b) => b.id === invoice.booking_id)
-    const client = booking ? getClientForBooking(booking) : null
+                            {getInvoiceRecipientName(invoice)}
+                          </p>
 
-    return client?.company || invoice.client_name || 'No client'
-  })()}
-</p>
-
-{(() => {
-  const booking = bookings.find((b) => b.id === invoice.booking_id)
-  const client = booking ? getClientForBooking(booking) : null
-
-  if (!client?.name) return null
-
-  return (
-    <p className="text-xs text-slate-500 mt-1">
-      Contact: {client.name}
-    </p>
-  )
-})()}
+                          <p className="text-xs text-slate-500 mt-1">
+                            {getInvoiceCourseName(invoice)}
+                          </p>
                         </div>
 
                         <p className="text-xl font-semibold text-slate-950">
@@ -990,17 +1270,21 @@ const filteredInvoices = invoices
                         </div>
 
                         <div>
-                          <p className="text-slate-400">Client email</p>
+                          <p className="text-slate-400">Recipient email</p>
                           <p className="font-medium text-slate-800 mt-1 break-all">
-                            {savedClientEmail || 'Not set'}
+                            {savedRecipientEmail || 'Not set'}
                           </p>
                         </div>
                       </div>
 
+                      <p className="text-xs text-slate-500 mt-3">
+                        Booking: {getInvoiceBookingLabel(invoice)}
+                      </p>
+
                       <div className="mt-4">
                         <input
                           className={`${inputClass} w-full`}
-                          placeholder={savedClientEmail || 'Recipient email'}
+                          placeholder={savedRecipientEmail || 'Recipient email'}
                           value={recipientEmails[invoice.id] || ''}
                           onChange={(e) =>
                             setRecipientEmails((previous) => ({
@@ -1010,9 +1294,9 @@ const filteredInvoices = invoices
                           }
                         />
 
-                        {savedClientEmail && (
+                        {savedRecipientEmail && (
                           <p className="text-xs text-slate-500 mt-2">
-                            Leave blank to send to saved client email.
+                            Leave blank to send to saved recipient email.
                           </p>
                         )}
                       </div>
@@ -1093,7 +1377,7 @@ const filteredInvoices = invoices
                         </h3>
 
                         <p className="text-xs text-slate-500 mt-1">
-                          Update invoice details and totals.
+                          Update invoice totals and due date. Recipient is kept the same.
                         </p>
                       </div>
 
