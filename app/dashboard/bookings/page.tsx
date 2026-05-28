@@ -10,12 +10,14 @@ export default function BookingsPage() {
   const [clients, setClients] = useState<any[]>([])
   const [trainers, setTrainers] = useState<any[]>([])
   const [courseTemplates, setCourseTemplates] = useState<any[]>([])
+  const [certificateTemplates, setCertificateTemplates] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
   const [organisationId, setOrganisationId] = useState('')
 
   const [clientId, setClientId] = useState('')
   const [trainerId, setTrainerId] = useState('')
   const [courseTemplateId, setCourseTemplateId] = useState('')
+  const [certificateTemplateId, setCertificateTemplateId] = useState('')
   const [courseName, setCourseName] = useState('')
   const [date, setDate] = useState('')
   const [startTime, setStartTime] = useState('')
@@ -34,6 +36,7 @@ export default function BookingsPage() {
   const [editClientId, setEditClientId] = useState('')
   const [editTrainerId, setEditTrainerId] = useState('')
   const [editCourseTemplateId, setEditCourseTemplateId] = useState('')
+  const [editCertificateTemplateId, setEditCertificateTemplateId] = useState('')
   const [editCourseName, setEditCourseName] = useState('')
   const [editDate, setEditDate] = useState('')
   const [editStartTime, setEditStartTime] = useState('')
@@ -46,6 +49,15 @@ export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [dateSort, setDateSort] = useState('ascending')
+
+  const inputClass =
+    'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+
+  const buttonSecondary =
+    'border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400'
+
+  const buttonPrimary =
+    'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
 
   const load = async () => {
     const profile = await getOrCreateAccount()
@@ -76,6 +88,13 @@ export default function BookingsPage() {
       .eq('organisation_id', profile.organisation_id)
       .order('name', { ascending: true })
 
+    const { data: certificateTemplatesData } = await supabase
+      .from('certificate_templates')
+      .select('*')
+      .eq('organisation_id', profile.organisation_id)
+      .order('is_default', { ascending: false })
+      .order('name', { ascending: true })
+
     const { data: bookingsData } = await supabase
       .from('bookings')
       .select('*')
@@ -86,12 +105,43 @@ export default function BookingsPage() {
     setClients(clientsData || [])
     setTrainers(trainersData || [])
     setCourseTemplates(courseTemplatesData || [])
+    setCertificateTemplates(certificateTemplatesData || [])
     setBookings(bookingsData || [])
   }
 
   useEffect(() => {
     load()
   }, [])
+
+  const getCertificateTemplateLabel = (template: any) => {
+    const linkedCourse = courseTemplates.find(
+      (course) => course.id === template.course_template_id
+    )
+
+    const parts = [
+      template.name,
+      template.is_default ? 'Default' : '',
+      linkedCourse ? linkedCourse.name : 'Any course',
+    ].filter(Boolean)
+
+    return parts.join(' · ')
+  }
+
+  const findMatchingCertificateTemplateForCourse = (courseTemplateIdValue: string) => {
+    if (!courseTemplateIdValue) return null
+
+    return certificateTemplates.find(
+      (template) => template.course_template_id === courseTemplateIdValue
+    )
+  }
+
+  const getCertificateTemplateForBooking = (booking: any) => {
+    if (!booking?.certificate_template_id) return null
+
+    return certificateTemplates.find(
+      (template) => template.id === booking.certificate_template_id
+    )
+  }
 
   const applyCourseTemplate = (templateId: string) => {
     setCourseTemplateId(templateId)
@@ -110,6 +160,13 @@ export default function BookingsPage() {
 
     if (selectedCourse.notes && !notes) {
       setNotes(selectedCourse.notes)
+    }
+
+    const matchingCertificateTemplate =
+      findMatchingCertificateTemplateForCourse(templateId)
+
+    if (matchingCertificateTemplate && !certificateTemplateId) {
+      setCertificateTemplateId(matchingCertificateTemplate.id)
     }
   }
 
@@ -131,6 +188,13 @@ export default function BookingsPage() {
     if (selectedCourse.notes && !editNotes) {
       setEditNotes(selectedCourse.notes)
     }
+
+    const matchingCertificateTemplate =
+      findMatchingCertificateTemplateForCourse(templateId)
+
+    if (matchingCertificateTemplate && !editCertificateTemplateId) {
+      setEditCertificateTemplateId(matchingCertificateTemplate.id)
+    }
   }
 
   const addBooking = async () => {
@@ -148,6 +212,7 @@ export default function BookingsPage() {
       organisation_id: organisationId,
       client_id: clientId,
       trainer_id: trainerId || null,
+      certificate_template_id: certificateTemplateId || null,
       client_name: selectedClient?.name,
       course_name: courseName,
       date,
@@ -167,6 +232,7 @@ export default function BookingsPage() {
     setClientId('')
     setTrainerId('')
     setCourseTemplateId('')
+    setCertificateTemplateId('')
     setCourseName('')
     setDate('')
     setStartTime('')
@@ -183,6 +249,7 @@ export default function BookingsPage() {
     setEditClientId(booking.client_id || '')
     setEditTrainerId(booking.trainer_id || '')
     setEditCourseTemplateId('')
+    setEditCertificateTemplateId(booking.certificate_template_id || '')
     setEditCourseName(booking.course_name || '')
     setEditDate(booking.date || '')
     setEditStartTime(booking.start_time || '')
@@ -197,6 +264,7 @@ export default function BookingsPage() {
     setEditClientId('')
     setEditTrainerId('')
     setEditCourseTemplateId('')
+    setEditCertificateTemplateId('')
     setEditCourseName('')
     setEditDate('')
     setEditStartTime('')
@@ -221,6 +289,7 @@ export default function BookingsPage() {
       .update({
         client_id: editClientId,
         trainer_id: editTrainerId || null,
+        certificate_template_id: editCertificateTemplateId || null,
         client_name: selectedClient?.name,
         course_name: editCourseName,
         date: editDate,
@@ -421,6 +490,7 @@ export default function BookingsPage() {
     .filter((booking) => {
       const trainer = getTrainerForBooking(booking)
       const client = getClientForBooking(booking)
+      const certificateTemplate = getCertificateTemplateForBooking(booking)
 
       const searchableText = `
         ${booking.client_name || ''}
@@ -432,6 +502,7 @@ export default function BookingsPage() {
         ${booking.notes || ''}
         ${booking.date || ''}
         ${trainer?.name || ''}
+        ${certificateTemplate?.name || ''}
         ${booking.status || ''}
       `.toLowerCase()
 
@@ -494,15 +565,6 @@ export default function BookingsPage() {
     </div>
   )
 
-  const inputClass =
-    'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
-
-  const buttonSecondary =
-    'border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400'
-
-  const buttonPrimary =
-    'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
-
   return (
     <div>
       <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
@@ -554,7 +616,7 @@ export default function BookingsPage() {
           </h2>
 
           <p className="text-xs text-slate-500 mt-0.5">
-            Search and sort bookings by client, course, trainer or status.
+            Search and sort bookings by client, course, trainer, certificate template or status.
           </p>
         </div>
 
@@ -625,7 +687,7 @@ export default function BookingsPage() {
             </h2>
 
             <p className="text-xs text-slate-500 mt-0.5">
-              Add a new training session.
+              Add a new training session and choose a certificate template.
             </p>
           </div>
 
@@ -669,6 +731,20 @@ export default function BookingsPage() {
                 <option key={course.id} value={course.id}>
                   {course.code ? `${course.code} - ` : ''}
                   {course.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className={inputClass}
+              value={certificateTemplateId}
+              onChange={(e) => setCertificateTemplateId(e.target.value)}
+            >
+              <option value="">Use automatic certificate template</option>
+
+              {certificateTemplates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {getCertificateTemplateLabel(template)}
                 </option>
               ))}
             </select>
@@ -726,7 +802,7 @@ export default function BookingsPage() {
 
             {courseTemplateId && (
               <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600">
-                Course template applied. You can still edit the course name, price or notes before saving.
+                Course template applied. If a matching certificate template exists, it has been selected automatically.
               </div>
             )}
 
@@ -764,6 +840,7 @@ export default function BookingsPage() {
               const client = getClientForBooking(booking)
               const savedClientEmail = client?.email || ''
               const isEditing = editingId === booking.id
+              const certificateTemplate = getCertificateTemplateForBooking(booking)
 
               return (
                 <div
@@ -797,6 +874,13 @@ export default function BookingsPage() {
                               Primary contact: {client.name}
                             </p>
                           )}
+
+                          <p className="text-xs text-slate-500 mt-1">
+                            Certificate template:{' '}
+                            <span className="font-medium text-slate-700">
+                              {certificateTemplate?.name || 'Automatic'}
+                            </span>
+                          </p>
                         </div>
 
                         <Link
@@ -959,7 +1043,7 @@ export default function BookingsPage() {
                         </h3>
 
                         <p className="text-xs text-slate-500 mt-1">
-                          Update session details.
+                          Update session details and certificate template.
                         </p>
                       </div>
 
@@ -1003,6 +1087,20 @@ export default function BookingsPage() {
                             <option key={course.id} value={course.id}>
                               {course.code ? `${course.code} - ` : ''}
                               {course.name}
+                            </option>
+                          ))}
+                        </select>
+
+                        <select
+                          className={`${inputClass} md:col-span-2`}
+                          value={editCertificateTemplateId}
+                          onChange={(e) => setEditCertificateTemplateId(e.target.value)}
+                        >
+                          <option value="">Use automatic certificate template</option>
+
+                          {certificateTemplates.map((template) => (
+                            <option key={template.id} value={template.id}>
+                              {getCertificateTemplateLabel(template)}
                             </option>
                           ))}
                         </select>
@@ -1059,7 +1157,7 @@ export default function BookingsPage() {
 
                       {editCourseTemplateId && (
                         <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600 mt-4">
-                          Course template applied. You can still edit the course name, price or notes before saving.
+                          Course template applied. If a matching certificate template exists, it has been selected automatically.
                         </div>
                       )}
 

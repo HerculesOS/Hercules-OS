@@ -25,11 +25,13 @@ export default function BookingDetailPage() {
 
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [savingCertificateTemplate, setSavingCertificateTemplate] = useState(false)
   const [sendingConfirmation, setSendingConfirmation] = useState(false)
   const [sendingReminder, setSendingReminder] = useState(false)
 
   const [editTrainerId, setEditTrainerId] = useState('')
   const [editCourseTemplateId, setEditCourseTemplateId] = useState('')
+  const [editCertificateTemplateId, setEditCertificateTemplateId] = useState('')
   const [editCourseName, setEditCourseName] = useState('')
   const [editDate, setEditDate] = useState('')
   const [editStartTime, setEditStartTime] = useState('')
@@ -106,6 +108,14 @@ export default function BookingDetailPage() {
     localCertificateTemplates: any[]
   ) => {
     if (!bookingData) return null
+
+    if (bookingData.certificate_template_id) {
+      const selectedBookingTemplate = localCertificateTemplates.find(
+        (template) => template.id === bookingData.certificate_template_id
+      )
+
+      if (selectedBookingTemplate) return selectedBookingTemplate
+    }
 
     const matchedCourseTemplate = localCourseTemplates.find(
       (course) =>
@@ -241,6 +251,12 @@ export default function BookingDetailPage() {
       bookingDelegatesData = data || []
     }
 
+    const selectedTemplate = getCertificateTemplateFromLists(
+      bookingData,
+      courseTemplatesData || [],
+      certificateTemplatesData || []
+    )
+
     setOrganisation(organisationData || null)
     setBooking(bookingData)
     setClient(clientData)
@@ -254,6 +270,7 @@ export default function BookingDetailPage() {
 
     setEditTrainerId(bookingData.trainer_id || '')
     setEditCourseTemplateId('')
+    setEditCertificateTemplateId(bookingData.certificate_template_id || '')
     setEditCourseName(bookingData.course_name || '')
     setEditDate(bookingData.date || '')
     setEditStartTime(bookingData.start_time || '')
@@ -265,12 +282,6 @@ export default function BookingDetailPage() {
 
     if (!certificateIssueDate) {
       const issueDate = bookingData.date || getDateString(new Date())
-      const selectedTemplate = getCertificateTemplateFromLists(
-        bookingData,
-        courseTemplatesData || [],
-        certificateTemplatesData || []
-      )
-
       const validityYears = Number(selectedTemplate?.validity_years ?? 3)
 
       setCertificateIssueDate(issueDate)
@@ -319,11 +330,20 @@ export default function BookingDetailPage() {
     if (selectedCourse.notes && !editNotes) {
       setEditNotes(selectedCourse.notes)
     }
+
+    const matchingCertificateTemplate = certificateTemplates.find(
+      (template) => template.course_template_id === selectedCourse.id
+    )
+
+    if (matchingCertificateTemplate && !editCertificateTemplateId) {
+      setEditCertificateTemplateId(matchingCertificateTemplate.id)
+    }
   }
 
   const startEditing = () => {
     setEditTrainerId(booking.trainer_id || '')
     setEditCourseTemplateId('')
+    setEditCertificateTemplateId(booking.certificate_template_id || '')
     setEditCourseName(booking.course_name || '')
     setEditDate(booking.date || '')
     setEditStartTime(booking.start_time || '')
@@ -338,6 +358,7 @@ export default function BookingDetailPage() {
     setEditing(false)
     setEditTrainerId(booking.trainer_id || '')
     setEditCourseTemplateId('')
+    setEditCertificateTemplateId(booking.certificate_template_id || '')
     setEditCourseName(booking.course_name || '')
     setEditDate(booking.date || '')
     setEditStartTime(booking.start_time || '')
@@ -359,6 +380,7 @@ export default function BookingDetailPage() {
       .from('bookings')
       .update({
         trainer_id: editTrainerId || null,
+        certificate_template_id: editCertificateTemplateId || null,
         course_name: editCourseName,
         date: editDate,
         start_time: editStartTime || null,
@@ -377,6 +399,47 @@ export default function BookingDetailPage() {
     }
 
     setEditing(false)
+
+    const selectedTemplate = certificateTemplates.find(
+      (template) => template.id === editCertificateTemplateId
+    )
+
+    if (selectedTemplate && certificateIssueDate) {
+      const validityYears = Number(selectedTemplate.validity_years ?? 3)
+      setCertificateExpiryDate(addYearsToDate(certificateIssueDate, validityYears))
+    }
+
+    load()
+  }
+
+  const saveCertificateTemplateOnly = async () => {
+    setSavingCertificateTemplate(true)
+
+    const { error } = await supabase
+      .from('bookings')
+      .update({
+        certificate_template_id: editCertificateTemplateId || null,
+      })
+      .eq('id', booking.id)
+
+    setSavingCertificateTemplate(false)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    alert('Certificate template saved for this booking')
+
+    const selectedTemplate = certificateTemplates.find(
+      (template) => template.id === editCertificateTemplateId
+    )
+
+    if (selectedTemplate && certificateIssueDate) {
+      const validityYears = Number(selectedTemplate.validity_years ?? 3)
+      setCertificateExpiryDate(addYearsToDate(certificateIssueDate, validityYears))
+    }
+
     load()
   }
 
@@ -1029,6 +1092,19 @@ export default function BookingDetailPage() {
                 </div>
 
                 <div className="md:col-span-2">
+                  <p className="text-xs text-slate-500">Certificate template</p>
+                  <p className="font-medium text-slate-950 mt-1">
+                    {selectedTemplate?.name || 'No template selected'}
+                  </p>
+
+                  <p className="text-xs text-slate-500 mt-1">
+                    {booking.certificate_template_id
+                      ? 'Selected specifically for this booking.'
+                      : 'Using course-specific/default fallback.'}
+                  </p>
+                </div>
+
+                <div className="md:col-span-2">
                   <p className="text-xs text-slate-500">Notes</p>
                   <p className="font-medium text-slate-950 mt-1 whitespace-pre-line">
                     {booking.notes || 'No notes'}
@@ -1049,6 +1125,24 @@ export default function BookingDetailPage() {
                       <option key={course.id} value={course.id}>
                         {course.code ? `${course.code} - ` : ''}
                         {course.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    className={`${inputClass} md:col-span-2`}
+                    value={editCertificateTemplateId}
+                    onChange={(e) => setEditCertificateTemplateId(e.target.value)}
+                  >
+                    <option value="">Use automatic certificate template</option>
+
+                    {certificateTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                        {template.is_default ? ' · Default' : ''}
+                        {template.course_template_id
+                          ? ` · ${courseTemplates.find((course) => course.id === template.course_template_id)?.name || 'Course-specific'}`
+                          : ' · Any course'}
                       </option>
                     ))}
                   </select>
@@ -1119,7 +1213,7 @@ export default function BookingDetailPage() {
 
                 {editCourseTemplateId && (
                   <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600 mt-4">
-                    Course template applied. You can still edit the course name, price or notes before saving.
+                    Course template applied. You can still edit the course name, price, certificate template or notes before saving.
                   </div>
                 )}
               </div>
@@ -1197,6 +1291,62 @@ export default function BookingDetailPage() {
                 Delete booking
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className={`${panelClass} mt-4`}>
+        <div className={panelHeaderClass}>
+          <h2 className="text-sm font-semibold text-slate-950">
+            Certificate template for this booking
+          </h2>
+
+          <p className="text-xs text-slate-500 mt-0.5">
+            Choose a certificate template just for this booking. If left automatic, Hercules OS will use the matching course template or default template.
+          </p>
+        </div>
+
+        <div className="p-4 grid grid-cols-1 lg:grid-cols-4 gap-3">
+          <select
+            className={`${inputClass} lg:col-span-3`}
+            value={editCertificateTemplateId}
+            onChange={(e) => setEditCertificateTemplateId(e.target.value)}
+          >
+            <option value="">Use automatic certificate template</option>
+
+            {certificateTemplates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name}
+                {template.is_default ? ' · Default' : ''}
+                {template.course_template_id
+                  ? ` · ${courseTemplates.find((course) => course.id === template.course_template_id)?.name || 'Course-specific'}`
+                  : ' · Any course'}
+              </option>
+            ))}
+          </select>
+
+          <button
+            className={buttonPrimary}
+            onClick={saveCertificateTemplateOnly}
+            disabled={savingCertificateTemplate}
+          >
+            {savingCertificateTemplate ? 'Saving...' : 'Save template'}
+          </button>
+
+          <div className="lg:col-span-4 bg-slate-50 border border-slate-200 rounded-lg p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Currently used for certificate creation
+            </p>
+
+            <p className="text-sm font-semibold text-slate-950 mt-2">
+              {selectedTemplate?.name || 'No template found'}
+            </p>
+
+            <p className="text-xs text-slate-500 mt-1">
+              {booking.certificate_template_id
+                ? 'This template has been manually selected for this booking.'
+                : 'This is being chosen automatically from course-specific/default templates.'}
+            </p>
           </div>
         </div>
       </div>

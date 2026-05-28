@@ -1,34 +1,194 @@
 import { Resend } from 'resend'
-import { createClient } from '@supabase/supabase-js'
+import jsPDF from 'jspdf'
+
+export const runtime = 'nodejs'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+const createSafeFilename = (invoiceNumber: string) => {
+  const safeInvoiceNumber = invoiceNumber
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
 
-const replacePlaceholders = (
-  text: string,
-  values: Record<string, string>
-) => {
-  let output = text
-
-  Object.entries(values).forEach(([key, value]) => {
-    output = output.replaceAll(`{{${key}}}`, value || '')
-  })
-
-  return output
+  return `${safeInvoiceNumber || 'invoice'}.pdf`
 }
 
-const textToHtml = (text: string) => {
-  return text
-    .split('\n')
-    .map((line) => {
-      if (!line.trim()) return '<br />'
-      return `<p style="font-size: 16px; color: #4b5563; margin: 0 0 12px;">${line}</p>`
-    })
-    .join('')
+const generateInvoicePdfBuffer = ({
+  invoiceNumber,
+  clientName,
+  courseName,
+  amount,
+  vatAmount,
+  totalAmount,
+  dueDate,
+  status,
+  businessName,
+  businessEmail,
+  businessPhone,
+  paymentDetails,
+}: {
+  invoiceNumber: string
+  clientName: string
+  courseName?: string
+  amount?: number | string
+  vatAmount?: number | string
+  totalAmount?: number | string
+  dueDate?: string
+  status?: string
+  businessName?: string
+  businessEmail?: string
+  businessPhone?: string
+  paymentDetails?: string
+}) => {
+  const doc = new jsPDF()
+
+  const netAmount = Number(amount || 0)
+  const vat = Number(vatAmount || 0)
+  const total = Number(totalAmount || amount || 0)
+
+  const providerName = businessName || 'Training Provider'
+  const invoiceStatus = status || 'draft'
+  const invoiceDate = new Date().toLocaleDateString()
+
+  doc.setFillColor(248, 250, 252)
+  doc.rect(0, 0, 210, 297, 'F')
+
+  doc.setFillColor(255, 255, 255)
+  doc.roundedRect(12, 12, 186, 273, 3, 3, 'F')
+
+  doc.setFillColor(17, 24, 39)
+  doc.roundedRect(12, 12, 186, 35, 3, 3, 'F')
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(24)
+  doc.text('INVOICE', 22, 34)
+
+  doc.setFontSize(11)
+  doc.text(providerName, 188, 26, { align: 'right' })
+
+  if (businessEmail) {
+    doc.setFontSize(8)
+    doc.text(businessEmail, 188, 33, { align: 'right' })
+  }
+
+  if (businessPhone) {
+    doc.text(businessPhone, 188, 39, { align: 'right' })
+  }
+
+  doc.setTextColor(17, 24, 39)
+
+  doc.setFillColor(249, 250, 251)
+  doc.setDrawColor(229, 231, 235)
+  doc.roundedRect(22, 60, 76, 42, 3, 3, 'FD')
+
+  doc.setFontSize(9)
+  doc.setTextColor(107, 114, 128)
+  doc.text('INVOICE DETAILS', 28, 69)
+
+  doc.setFontSize(10)
+  doc.setTextColor(17, 24, 39)
+  doc.text(`Invoice No: ${invoiceNumber}`, 28, 78)
+  doc.text(`Date: ${invoiceDate}`, 28, 85)
+  doc.text(`Due Date: ${dueDate || 'Not set'}`, 28, 92)
+  doc.text(`Status: ${invoiceStatus}`, 28, 99)
+
+  doc.setFillColor(249, 250, 251)
+  doc.setDrawColor(229, 231, 235)
+  doc.roundedRect(112, 60, 76, 42, 3, 3, 'FD')
+
+  doc.setFontSize(9)
+  doc.setTextColor(107, 114, 128)
+  doc.text('BILL TO', 118, 69)
+
+  doc.setFontSize(12)
+  doc.setTextColor(17, 24, 39)
+  doc.text(clientName || 'Client', 118, 80)
+
+  if (courseName) {
+    doc.setFontSize(8)
+    doc.setTextColor(107, 114, 128)
+    const courseLines = doc.splitTextToSize(courseName, 65)
+    doc.text(courseLines, 118, 89)
+  }
+
+  doc.setFillColor(17, 24, 39)
+  doc.roundedRect(22, 126, 166, 12, 2, 2, 'F')
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(9)
+  doc.text('Description', 28, 134)
+  doc.text('Net', 128, 134)
+  doc.text('VAT', 150, 134)
+  doc.text('Total', 172, 134)
+
+  doc.setFillColor(255, 255, 255)
+  doc.setDrawColor(229, 231, 235)
+  doc.rect(22, 138, 166, 22, 'D')
+
+  doc.setTextColor(17, 24, 39)
+  doc.setFontSize(10)
+
+  const description = courseName || 'Training course delivery'
+  const descriptionLines = doc.splitTextToSize(description, 88)
+  doc.text(descriptionLines, 28, 150)
+
+  doc.text(`£${netAmount.toFixed(2)}`, 128, 150)
+  doc.text(`£${vat.toFixed(2)}`, 150, 150)
+  doc.text(`£${total.toFixed(2)}`, 172, 150)
+
+  doc.setFillColor(249, 250, 251)
+  doc.setDrawColor(229, 231, 235)
+  doc.roundedRect(112, 176, 76, 42, 3, 3, 'FD')
+
+  doc.setFontSize(10)
+  doc.setTextColor(75, 85, 99)
+  doc.text('Net Amount', 120, 188)
+  doc.text(`£${netAmount.toFixed(2)}`, 180, 188, { align: 'right' })
+
+  doc.text('VAT', 120, 200)
+  doc.text(`£${vat.toFixed(2)}`, 180, 200, { align: 'right' })
+
+  doc.setDrawColor(209, 213, 219)
+  doc.line(120, 206, 180, 206)
+
+  doc.setFontSize(14)
+  doc.setTextColor(17, 24, 39)
+  doc.text('Total', 120, 214)
+  doc.text(`£${total.toFixed(2)}`, 180, 214, { align: 'right' })
+
+  if (paymentDetails) {
+    doc.setFillColor(255, 247, 237)
+    doc.setDrawColor(254, 215, 170)
+    doc.roundedRect(22, 176, 80, 50, 3, 3, 'FD')
+
+    doc.setFontSize(9)
+    doc.setTextColor(154, 52, 18)
+    doc.text('PAYMENT DETAILS', 28, 186)
+
+    doc.setFontSize(8)
+    doc.setTextColor(67, 20, 7)
+
+    const paymentLines = doc.splitTextToSize(paymentDetails, 68)
+    doc.text(paymentLines, 28, 196)
+  }
+
+  doc.setDrawColor(229, 231, 235)
+  doc.line(22, 265, 188, 265)
+
+  doc.setFontSize(8)
+  doc.setTextColor(107, 114, 128)
+  doc.text('Generated by Hercules OS', 22, 274)
+
+  doc.text(
+    'Thank you for your business.',
+    188,
+    274,
+    { align: 'right' }
+  )
+
+  const arrayBuffer = doc.output('arraybuffer')
+  return Buffer.from(arrayBuffer)
 }
 
 export async function POST(request: Request) {
@@ -49,7 +209,6 @@ export async function POST(request: Request) {
       businessEmail,
       businessPhone,
       paymentDetails,
-      organisationId,
     } = body
 
     if (!to || !invoiceNumber || !clientName || !totalAmount) {
@@ -61,85 +220,48 @@ export async function POST(request: Request) {
 
     const fromName = businessName || 'Hercules OS'
 
-    let templateSubject = 'Invoice for {{course_name}}'
-    let templateBody = `Hello {{client_name}},
+    const pdfBuffer = generateInvoicePdfBuffer({
+      invoiceNumber,
+      clientName,
+      courseName,
+      amount,
+      vatAmount,
+      totalAmount,
+      dueDate,
+      status,
+      businessName: fromName,
+      businessEmail,
+      businessPhone,
+      paymentDetails,
+    })
 
-Please find your invoice details below.
-
-Invoice number: {{invoice_number}}
-Amount: {{invoice_amount}}
-Due date: {{due_date}}
-
-Kind regards,
-{{business_name}}`
-
-    if (organisationId) {
-      const { data: template } = await supabaseAdmin
-        .from('email_templates')
-        .select('*')
-        .eq('organisation_id', organisationId)
-        .eq('template_key', 'invoice_email')
-        .maybeSingle()
-
-      if (template) {
-        templateSubject = template.subject || templateSubject
-        templateBody = template.body || templateBody
-      }
-    }
-
-    const formattedAmount = `£${Number(amount || 0).toFixed(2)}`
-    const formattedVatAmount = `£${Number(vatAmount || 0).toFixed(2)}`
-    const formattedTotalAmount = `£${Number(totalAmount || 0).toFixed(2)}`
-
-    const placeholderValues = {
-      client_name: clientName || '',
-      delegate_name: '',
-      learner_name: '',
-      course_name: courseName || 'Training course',
-      booking_date: '',
-      start_time: '',
-      end_time: '',
-      location: '',
-      trainer_name: '',
-      certificate_number: '',
-      issue_date: '',
-      expiry_date: '',
-      verification_url: '',
-      invoice_number: invoiceNumber || '',
-      invoice_amount: formattedTotalAmount,
-      invoice_net_amount: formattedAmount,
-      invoice_vat_amount: formattedVatAmount,
-      due_date: dueDate || 'Not set',
-      business_name: fromName,
-      business_email: businessEmail || '',
-      business_phone: businessPhone || '',
-      payment_details: paymentDetails || '',
-      invoice_status: status || 'draft',
-    }
-
-    const subject = replacePlaceholders(templateSubject, placeholderValues)
-    const emailBody = replacePlaceholders(templateBody, placeholderValues)
+    const filename = createSafeFilename(invoiceNumber)
 
     const { data, error } = await resend.emails.send({
       from: `${fromName} <onboarding@resend.dev>`,
       to: [to],
-      subject,
+      subject: `Invoice ${invoiceNumber} from ${fromName}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; color: #111827;">
-          <h1 style="font-size: 24px; margin-bottom: 16px;">
-            ${subject}
+          <h1 style="font-size: 24px; margin-bottom: 8px;">
+            Invoice ${invoiceNumber}
           </h1>
 
-          <div>
-            ${textToHtml(emailBody)}
-          </div>
+          <p style="font-size: 16px; color: #4b5563;">
+            Hi ${clientName},
+          </p>
+
+          <p style="font-size: 16px; color: #4b5563;">
+            Please find your invoice attached as a PDF.
+          </p>
 
           <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin: 24px 0;">
             <p><strong>Invoice No:</strong> ${invoiceNumber}</p>
+            ${courseName ? `<p><strong>Course:</strong> ${courseName}</p>` : ''}
             <p><strong>Client:</strong> ${clientName}</p>
-            <p><strong>Net Amount:</strong> ${formattedAmount}</p>
-            <p><strong>VAT:</strong> ${formattedVatAmount}</p>
-            <p><strong>Total:</strong> ${formattedTotalAmount}</p>
+            <p><strong>Net Amount:</strong> £${Number(amount || 0).toFixed(2)}</p>
+            <p><strong>VAT:</strong> £${Number(vatAmount || 0).toFixed(2)}</p>
+            <p><strong>Total:</strong> £${Number(totalAmount || 0).toFixed(2)}</p>
             <p><strong>Due Date:</strong> ${dueDate || 'Not set'}</p>
             <p><strong>Status:</strong> ${status || 'draft'}</p>
           </div>
@@ -162,6 +284,12 @@ Kind regards,
           </p>
         </div>
       `,
+      attachments: [
+        {
+          filename,
+          content: pdfBuffer,
+        },
+      ],
     })
 
     if (error) {

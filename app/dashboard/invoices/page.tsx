@@ -69,6 +69,7 @@ export default function InvoicesPage() {
       .from('bookings')
       .select('*')
       .eq('organisation_id', profile.organisation_id)
+      .order('date', { ascending: false })
 
     const { data: invoicesData } = await supabase
       .from('invoices')
@@ -86,6 +87,29 @@ export default function InvoicesPage() {
     load()
   }, [])
 
+  const getClientForBooking = (booking: any) => {
+    if (!booking?.client_id) return null
+
+    return clients.find((client) => client.id === booking.client_id)
+  }
+
+  const getBookingClientName = (booking: any) => {
+    const client = getClientForBooking(booking)
+
+    return client?.company || booking?.client_name || 'No client'
+  }
+
+  const getBookingOptionLabel = (booking: any) => {
+    const dateText = booking.date || 'No date'
+    const clientText = getBookingClientName(booking)
+    const courseText = booking.course_name || 'No course'
+    const priceText = booking.price
+      ? ` · £${Number(booking.price).toFixed(2)}`
+      : ''
+
+    return `${dateText} · ${clientText} · ${courseText}${priceText}`
+  }
+
   const createInvoice = async () => {
     if (!bookingId || !amount) {
       alert('Booking and amount are required')
@@ -95,6 +119,7 @@ export default function InvoicesPage() {
     const { data: userData } = await supabase.auth.getUser()
 
     const selectedBooking = bookings.find((b) => b.id === bookingId)
+    const selectedClient = selectedBooking ? getClientForBooking(selectedBooking) : null
 
     const net = Number(amount)
     const vat = net * (Number(vatRate) / 100)
@@ -106,7 +131,7 @@ export default function InvoicesPage() {
       user_id: userData.user?.id,
       organisation_id: organisationId,
       booking_id: bookingId,
-      client_name: selectedBooking?.client_name,
+      client_name: selectedClient?.company || selectedBooking?.client_name,
       invoice_number: invoiceNumber,
       amount: net,
       vat_rate: Number(vatRate),
@@ -167,6 +192,7 @@ export default function InvoicesPage() {
     setSavingEdit(true)
 
     const selectedBooking = bookings.find((b) => b.id === editBookingId)
+    const selectedClient = selectedBooking ? getClientForBooking(selectedBooking) : null
 
     const net = Number(editAmount)
     const vat = net * (Number(editVatRate) / 100)
@@ -176,7 +202,7 @@ export default function InvoicesPage() {
       .from('invoices')
       .update({
         booking_id: editBookingId,
-        client_name: selectedBooking?.client_name,
+        client_name: selectedClient?.company || selectedBooking?.client_name,
         amount: net,
         vat_rate: Number(editVatRate),
         vat_amount: vat,
@@ -283,7 +309,7 @@ export default function InvoicesPage() {
 
     if (!booking) return ''
 
-    const client = clients.find((c) => c.id === booking.client_id)
+    const client = getClientForBooking(booking)
 
     return client?.email || ''
   }
@@ -301,6 +327,9 @@ export default function InvoicesPage() {
     const businessAddress = organisation?.address || ''
     const businessWebsite = organisation?.website || ''
     const paymentDetails = organisation?.invoice_payment_details || ''
+
+    const booking = bookings.find((b) => b.id === invoice.booking_id)
+    const courseName = booking?.course_name || 'Training course delivery'
 
     const invoiceDate = invoice.created_at
       ? new Date(invoice.created_at).toLocaleDateString()
@@ -411,7 +440,9 @@ export default function InvoicesPage() {
 
     doc.setTextColor(17, 24, 39)
     doc.setFontSize(10)
-    doc.text('Training course delivery', 28, 156)
+
+    const descriptionLines = doc.splitTextToSize(courseName, 88)
+    doc.text(descriptionLines, 28, 156)
 
     doc.text(`£${netAmount.toFixed(2)}`, 128, 156)
     doc.text(`£${vatAmount.toFixed(2)}`, 150, 156)
@@ -565,13 +596,21 @@ export default function InvoicesPage() {
     (invoice) => invoice.secured_at
   )
 
-  const filteredInvoices = invoices
-    .filter((invoice) => {
-      const searchableText = `
-        ${invoice.invoice_number || ''}
-        ${invoice.client_name || ''}
-        ${invoice.status || ''}
-      `.toLowerCase()
+const filteredInvoices = invoices
+  .filter((invoice) => {
+    const booking = bookings.find((b) => b.id === invoice.booking_id)
+    const client = booking ? getClientForBooking(booking) : null
+
+    const searchableText = `
+      ${invoice.invoice_number || ''}
+      ${invoice.client_name || ''}
+      ${client?.company || ''}
+      ${client?.name || ''}
+      ${client?.email || ''}
+      ${booking?.course_name || ''}
+      ${booking?.date || ''}
+      ${invoice.status || ''}
+    `.toLowerCase()
 
       const matchesSearch = searchableText.includes(search.toLowerCase())
 
@@ -784,13 +823,24 @@ export default function InvoicesPage() {
             <select
               className={inputClass}
               value={bookingId}
-              onChange={(e) => setBookingId(e.target.value)}
+              onChange={(e) => {
+                const selectedBookingId = e.target.value
+                setBookingId(selectedBookingId)
+
+                const selectedBooking = bookings.find(
+                  (booking) => booking.id === selectedBookingId
+                )
+
+                if (selectedBooking?.price && !amount) {
+                  setAmount(String(selectedBooking.price))
+                }
+              }}
             >
               <option value="">Select booking</option>
 
               {bookings.map((booking) => (
                 <option key={booking.id} value={booking.id}>
-                  {booking.client_name} - {booking.course_name}
+                  {getBookingOptionLabel(booking)}
                 </option>
               ))}
             </select>
@@ -890,8 +940,26 @@ export default function InvoicesPage() {
                           </div>
 
                           <p className="text-sm text-slate-600 mt-1">
-                            {invoice.client_name}
-                          </p>
+  {(() => {
+    const booking = bookings.find((b) => b.id === invoice.booking_id)
+    const client = booking ? getClientForBooking(booking) : null
+
+    return client?.company || invoice.client_name || 'No client'
+  })()}
+</p>
+
+{(() => {
+  const booking = bookings.find((b) => b.id === invoice.booking_id)
+  const client = booking ? getClientForBooking(booking) : null
+
+  if (!client?.name) return null
+
+  return (
+    <p className="text-xs text-slate-500 mt-1">
+      Contact: {client.name}
+    </p>
+  )
+})()}
                         </div>
 
                         <p className="text-xl font-semibold text-slate-950">
@@ -927,24 +995,6 @@ export default function InvoicesPage() {
                             {savedClientEmail || 'Not set'}
                           </p>
                         </div>
-
-                        {invoice.secured_at && (
-                          <div>
-                            <p className="text-slate-400">Secured</p>
-                            <p className="font-medium text-slate-800 mt-1">
-                              {new Date(invoice.secured_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                        )}
-
-                        {invoice.paid_at && (
-                          <div>
-                            <p className="text-slate-400">Paid</p>
-                            <p className="font-medium text-slate-800 mt-1">
-                              {new Date(invoice.paid_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                        )}
                       </div>
 
                       <div className="mt-4">
@@ -1057,7 +1107,7 @@ export default function InvoicesPage() {
 
                           {bookings.map((booking) => (
                             <option key={booking.id} value={booking.id}>
-                              {booking.client_name} - {booking.course_name}
+                              {getBookingOptionLabel(booking)}
                             </option>
                           ))}
                         </select>
