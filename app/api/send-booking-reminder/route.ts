@@ -8,6 +8,7 @@ import {
   getEmailTemplate,
   replacePlaceholders,
 } from '@/lib/emailTemplates'
+import { emailTemplateDefaults } from '@/lib/emailTemplateDefaults'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -42,21 +43,7 @@ export async function POST(request: Request) {
     const template = await getEmailTemplate(
       'booking_reminder',
       organisationId,
-      {
-        subject: 'Reminder - {{courseName}}',
-        body: `Hello {{clientName}},
-
-This is a reminder for your upcoming training course.
-
-Course: {{courseName}}
-Date: {{date}}
-Time: {{startTime}} - {{endTime}}
-Location: {{location}}
-Trainer: {{trainerName}}
-
-Kind regards,
-{{businessName}}`,
-      }
+      emailTemplateDefaults.bookingReminder
     )
 
     const placeholderValues = {

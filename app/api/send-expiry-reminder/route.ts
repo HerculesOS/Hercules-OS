@@ -8,6 +8,7 @@ import {
   getEmailTemplate,
   replacePlaceholders,
 } from '@/lib/emailTemplates'
+import { emailTemplateDefaults } from '@/lib/emailTemplateDefaults'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -40,17 +41,7 @@ export async function POST(request: Request) {
     const template = await getEmailTemplate(
       'certificate_expiry_reminder',
       organisationId,
-      {
-        subject: 'Certificate expiring soon - {{courseName}}',
-        body: `Hello {{learnerName}},
-
-Your {{courseName}} certificate is due to expire on {{expiryDate}}.
-
-Please contact us if you would like to arrange refresher training.
-
-Kind regards,
-{{businessName}}`,
-      }
+      emailTemplateDefaults.certificateExpiryReminder
     )
 
     const placeholderValues = {

@@ -10,6 +10,7 @@ import {
   getEmailTemplate,
   replacePlaceholders,
 } from '@/lib/emailTemplates'
+import { emailTemplateDefaults } from '@/lib/emailTemplateDefaults'
 
 export const runtime = 'nodejs'
 
@@ -183,17 +184,7 @@ export async function POST(request: Request) {
     const template = await getEmailTemplate(
       'certificate_email',
       organisationId,
-      {
-        subject: 'Your {{courseName}} certificate',
-        body: `Hello {{learnerName}},
-
-Your certificate for {{courseName}} has been issued.
-
-A PDF copy of your certificate is attached to this email.
-
-Kind regards,
-{{businessName}}`,
-      }
+      emailTemplateDefaults.certificateEmail
     )
 
     const pdfBuffer = await generateCertificatePdfBuffer({

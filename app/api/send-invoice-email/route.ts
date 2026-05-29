@@ -10,6 +10,7 @@ import {
   replacePlaceholders,
   textToHtml,
 } from '@/lib/emailTemplates'
+import { emailTemplateDefaults } from '@/lib/emailTemplateDefaults'
 
 export const runtime = 'nodejs'
 
@@ -238,19 +239,7 @@ export async function POST(request: Request) {
     const template = await getEmailTemplate(
       'invoice_email',
       organisationId,
-      {
-        subject: 'Invoice {{invoiceNumber}} from {{businessName}}',
-        body: `Hello {{clientName}},
-
-Please find your invoice attached as a PDF.
-
-Invoice number: {{invoiceNumber}}
-Amount due: {{invoiceAmount}}
-Due date: {{dueDate}}
-
-Kind regards,
-{{businessName}}`,
-      }
+      emailTemplateDefaults.invoiceEmail
     )
 
     const pdfBuffer = generateInvoicePdfBuffer({
