@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
+import { createCertificateVerificationId } from '@/lib/certificateVerification'
 
 export default function BookingDetailPage() {
   const params = useParams()
@@ -865,6 +866,7 @@ export default function BookingDetailPage() {
         issue_date: certificateIssueDate,
         expiry_date: certificateExpiryDate,
         certificate_number: certificateNumber,
+        verification_id: createCertificateVerificationId(),
         certificate_title: replaceCertificatePlaceholders(
           selectedTemplate.certificate_title,
           placeholderValues
@@ -896,6 +898,36 @@ export default function BookingDetailPage() {
     load()
   }
 
+  const ensureCertificateVerificationId = async (certificate: any) => {
+    if (certificate.verification_id) return certificate.verification_id
+
+    const verificationId = createCertificateVerificationId()
+
+    const { data, error } = await supabase
+      .from('certificates')
+      .update({ verification_id: verificationId })
+      .eq('id', certificate.id)
+      .eq('organisation_id', profile.organisation_id)
+      .select('verification_id')
+      .single()
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    const savedVerificationId = data?.verification_id || verificationId
+
+    setCertificates((previous) =>
+      previous.map((item) =>
+        item.id === certificate.id
+          ? { ...item, verification_id: savedVerificationId }
+          : item
+      )
+    )
+
+    return savedVerificationId
+  }
+
   const sendCertificatesToSelectedDelegates = async () => {
     if (selectedDelegateIds.length === 0) {
       alert('Select at least one delegate first')
@@ -924,8 +956,17 @@ export default function BookingDetailPage() {
     for (const delegate of sendableDelegates) {
       const certificate = getCertificateForDelegate(delegate)
 
+      let verificationId = ''
+
+      try {
+        verificationId = await ensureCertificateVerificationId(certificate)
+      } catch {
+        failedCount += 1
+        continue
+      }
+
       const verificationUrl =
-        `${window.location.origin}/verify/${certificate.verification_id}`
+        `${window.location.origin}/verify/${verificationId}`
 
       const response = await fetch('/api/send-certificate-email', {
         method: 'POST',

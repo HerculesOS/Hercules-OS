@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate } from '@/lib/formatters'
+import { getNextInvoiceNumber, isDuplicateInvoiceNumberError } from '@/lib/invoiceNumbers'
 import jsPDF from 'jspdf'
 
 export default function InvoicesPage() {
@@ -277,6 +278,19 @@ export default function InvoicesPage() {
     return null
   }
 
+  const loadExistingInvoiceNumbers = async () => {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('invoice_number')
+      .eq('organisation_id', organisationId)
+
+    if (error) {
+      return invoices.map((invoice) => invoice.invoice_number)
+    }
+
+    return (data || []).map((invoice) => invoice.invoice_number)
+  }
+
   const createInvoice = async () => {
     if (!bookingId || !amount) {
       alert('Booking and amount are required')
@@ -296,26 +310,37 @@ export default function InvoicesPage() {
     const vat = net * (Number(vatRate) / 100)
     const total = net + vat
 
-    const invoiceNumber = `INV-${String(invoices.length + 1).padStart(4, '0')}`
+    let error: any = null
 
-    const { error } = await supabase.from('invoices').insert({
-      user_id: userData.user?.id,
-      organisation_id: organisationId,
-      booking_id: bookingId,
-      client_id: recipient.clientId,
-      delegate_id: recipient.delegateId,
-      invoice_target_type: recipient.type,
-      recipient_name: recipient.name,
-      recipient_email: recipient.email,
-      client_name: recipient.name,
-      invoice_number: invoiceNumber,
-      amount: net,
-      vat_rate: Number(vatRate),
-      vat_amount: vat,
-      total_amount: total,
-      due_date: dueDate || null,
-      status: 'draft',
-    })
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const existingInvoiceNumbers = await loadExistingInvoiceNumbers()
+      const invoiceNumber = getNextInvoiceNumber(existingInvoiceNumbers)
+
+      const { error: insertError } = await supabase.from('invoices').insert({
+        user_id: userData.user?.id,
+        organisation_id: organisationId,
+        booking_id: bookingId,
+        client_id: recipient.clientId,
+        delegate_id: recipient.delegateId,
+        invoice_target_type: recipient.type,
+        recipient_name: recipient.name,
+        recipient_email: recipient.email,
+        client_name: recipient.name,
+        invoice_number: invoiceNumber,
+        amount: net,
+        vat_rate: Number(vatRate),
+        vat_amount: vat,
+        total_amount: total,
+        due_date: dueDate || null,
+        status: 'draft',
+      })
+
+      error = insertError
+
+      if (!error || !isDuplicateInvoiceNumberError(error)) {
+        break
+      }
+    }
 
     if (error) {
       alert(error.message)

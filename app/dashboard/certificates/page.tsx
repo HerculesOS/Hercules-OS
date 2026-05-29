@@ -7,6 +7,7 @@ import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate } from '@/lib/formatters'
+import { createCertificateVerificationId } from '@/lib/certificateVerification'
 
 export default function CertificatesPage() {
   const [profile, setProfile] = useState<any>(null)
@@ -165,6 +166,36 @@ export default function CertificatesPage() {
     load()
   }
 
+  const ensureCertificateVerificationId = async (certificate: any) => {
+    if (certificate.verification_id) return certificate.verification_id
+
+    const verificationId = createCertificateVerificationId()
+
+    const { data, error } = await supabase
+      .from('certificates')
+      .update({ verification_id: verificationId })
+      .eq('id', certificate.id)
+      .eq('organisation_id', profile.organisation_id)
+      .select('verification_id')
+      .single()
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    const savedVerificationId = data?.verification_id || verificationId
+
+    setCertificates((previous) =>
+      previous.map((item) =>
+        item.id === certificate.id
+          ? { ...item, verification_id: savedVerificationId }
+          : item
+      )
+    )
+
+    return savedVerificationId
+  }
+
   const sendCertificate = async (certificate: any) => {
     const delegate = getDelegateForCertificate(certificate)
 
@@ -173,9 +204,16 @@ export default function CertificatesPage() {
       return
     }
 
-    const verificationUrl = certificate.verification_id
-      ? `${window.location.origin}/verify/${certificate.verification_id}`
-      : `${window.location.origin}/verify`
+    let verificationId = ''
+
+    try {
+      verificationId = await ensureCertificateVerificationId(certificate)
+    } catch (error: any) {
+      alert(error.message || 'Could not prepare certificate verification link')
+      return
+    }
+
+    const verificationUrl = `${window.location.origin}/verify/${verificationId}`
 
     const response = await fetch('/api/send-certificate-email', {
       method: 'POST',
@@ -213,9 +251,14 @@ export default function CertificatesPage() {
       return
     }
 
-    const verificationUrl = certificate.verification_id
-      ? `${window.location.origin}/verify/${certificate.verification_id}`
-      : ''
+    let verificationUrl = ''
+
+    try {
+      const verificationId = await ensureCertificateVerificationId(certificate)
+      verificationUrl = `${window.location.origin}/verify/${verificationId}`
+    } catch {
+      verificationUrl = ''
+    }
 
     const response = await fetch('/api/send-expiry-reminder', {
       method: 'POST',
@@ -293,9 +336,16 @@ export default function CertificatesPage() {
     const expiryDate = getFormattedDate(certificate.expiry_date)
     const certificateNumber = certificate.certificate_number || 'Not set'
 
-    const verificationUrl = certificate.verification_id
-      ? `${window.location.origin}/verify/${certificate.verification_id}`
-      : `${window.location.origin}/verify`
+    let verificationId = ''
+
+    try {
+      verificationId = await ensureCertificateVerificationId(certificate)
+    } catch (error: any) {
+      alert(error.message || 'Could not prepare certificate verification link')
+      return
+    }
+
+    const verificationUrl = `${window.location.origin}/verify/${verificationId}`
 
     let qrDataUrl = ''
 
