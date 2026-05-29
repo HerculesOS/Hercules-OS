@@ -676,6 +676,12 @@ export default function BookingDetailPage() {
       })
 
     if (linkError) {
+      await supabase
+        .from('delegates')
+        .delete()
+        .eq('id', delegateData.id)
+        .eq('organisation_id', profile.organisation_id)
+
       alert(linkError.message)
       return
     }

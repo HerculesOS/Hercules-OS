@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate } from '@/lib/formatters'
 import { getNextInvoiceNumber, isDuplicateInvoiceNumberError } from '@/lib/invoiceNumbers'
+import { parseOptionalNonNegativeNumber, parseRequiredPositiveNumber } from '@/lib/numberValidation'
 import jsPDF from 'jspdf'
 
 export default function InvoicesPage() {
@@ -292,8 +293,8 @@ export default function InvoicesPage() {
   }
 
   const createInvoice = async () => {
-    if (!bookingId || !amount) {
-      alert('Booking and amount are required')
+    if (!bookingId) {
+      alert('Booking is required')
       return
     }
 
@@ -304,10 +305,19 @@ export default function InvoicesPage() {
       return
     }
 
+    const parsedAmount = parseRequiredPositiveNumber(amount, 'Amount')
+    const parsedVatRate = parseOptionalNonNegativeNumber(vatRate, 'VAT rate')
+
+    if (parsedAmount.error || parsedVatRate.error) {
+      alert(parsedAmount.error || parsedVatRate.error)
+      return
+    }
+
     const { data: userData } = await supabase.auth.getUser()
 
-    const net = Number(amount)
-    const vat = net * (Number(vatRate) / 100)
+    const net = parsedAmount.value || 0
+    const numericVatRate = parsedVatRate.value || 0
+    const vat = net * (numericVatRate / 100)
     const total = net + vat
 
     let error: any = null
@@ -328,7 +338,7 @@ export default function InvoicesPage() {
         client_name: recipient.name,
         invoice_number: invoiceNumber,
         amount: net,
-        vat_rate: Number(vatRate),
+        vat_rate: numericVatRate,
         vat_amount: vat,
         total_amount: total,
         due_date: dueDate || null,
@@ -381,23 +391,26 @@ export default function InvoicesPage() {
       return
     }
 
-    if (!editBookingId || !editAmount) {
-      alert('Booking and amount are required')
+    const parsedAmount = parseRequiredPositiveNumber(editAmount, 'Amount')
+    const parsedVatRate = parseOptionalNonNegativeNumber(editVatRate, 'VAT rate')
+
+    if (parsedAmount.error || parsedVatRate.error) {
+      alert(parsedAmount.error || parsedVatRate.error)
       return
     }
 
     setSavingEdit(true)
 
-    const net = Number(editAmount)
-    const vat = net * (Number(editVatRate) / 100)
+    const net = parsedAmount.value || 0
+    const numericVatRate = parsedVatRate.value || 0
+    const vat = net * (numericVatRate / 100)
     const total = net + vat
 
     const { error } = await supabase
       .from('invoices')
       .update({
-        booking_id: editBookingId,
         amount: net,
-        vat_rate: Number(editVatRate),
+        vat_rate: numericVatRate,
         vat_amount: vat,
         total_amount: total,
         due_date: editDueDate || null,
@@ -1415,7 +1428,7 @@ export default function InvoicesPage() {
                         </h3>
 
                         <p className="text-xs text-slate-500 mt-1">
-                          Update invoice totals and due date. Recipient is kept the same.
+                          Update invoice totals and due date. Booking and recipient are kept the same.
                         </p>
                       </div>
 
@@ -1423,7 +1436,8 @@ export default function InvoicesPage() {
                         <select
                           className={`${inputClass} md:col-span-2`}
                           value={editBookingId}
-                          onChange={(e) => setEditBookingId(e.target.value)}
+                          disabled
+                          onChange={() => {}}
                         >
                           <option value="">Select booking</option>
 

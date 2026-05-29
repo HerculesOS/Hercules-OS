@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
+import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
 
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<any[]>([])
@@ -239,6 +240,13 @@ export default function BookingsPage() {
       return
     }
 
+    const parsedPrice = parseOptionalNonNegativeNumber(price, 'Price')
+
+    if (parsedPrice.error) {
+      alert(parsedPrice.error)
+      return
+    }
+
     const { data: userData } = await supabase.auth.getUser()
 
     const selectedClient = clients.find((c) => c.id === clientId)
@@ -259,7 +267,7 @@ export default function BookingsPage() {
       start_time: startTime || null,
       end_time: endTime || null,
       location,
-      price: price ? Number(price) : null,
+      price: parsedPrice.value,
       notes,
       status: 'scheduled',
     })
@@ -328,6 +336,13 @@ export default function BookingsPage() {
       return
     }
 
+    const parsedPrice = parseOptionalNonNegativeNumber(editPrice, 'Price')
+
+    if (parsedPrice.error) {
+      alert(parsedPrice.error)
+      return
+    }
+
     setSavingEdit(true)
 
     const selectedClient = clients.find((c) => c.id === editClientId)
@@ -348,7 +363,7 @@ export default function BookingsPage() {
         start_time: editStartTime || null,
         end_time: editEndTime || null,
         location: editLocation,
-        price: editPrice ? Number(editPrice) : null,
+        price: parsedPrice.value,
         notes: editNotes,
       })
       .eq('id', bookingId)

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTime, formatAppTimeRange } from '@/lib/formatters'
+import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
 
 export default function CalendarPage() {
   const [bookings, setBookings] = useState<any[]>([])
@@ -203,6 +204,13 @@ export default function CalendarPage() {
       return
     }
 
+    const parsedPrice = parseOptionalNonNegativeNumber(price, 'Price')
+
+    if (parsedPrice.error) {
+      alert(parsedPrice.error)
+      return
+    }
+
     const { data: userData } = await supabase.auth.getUser()
 
     const selectedClient = clients.find((client) => client.id === clientId)
@@ -222,7 +230,7 @@ export default function CalendarPage() {
       start_time: startTime || null,
       end_time: endTime || null,
       location,
-      price: price ? Number(price) : null,
+      price: parsedPrice.value,
       notes,
       status: 'scheduled',
     })

@@ -9,8 +9,6 @@ import { formatAppDate } from '@/lib/formatters'
 export default function RequestsPage() {
   const [requests, setRequests] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
-  const [organisationId, setOrganisationId] = useState('')
-  const [userId, setUserId] = useState('')
   const [loading, setLoading] = useState(true)
   const [convertingId, setConvertingId] = useState('')
 
@@ -38,10 +36,6 @@ export default function RequestsPage() {
 
   const load = async () => {
     const profile = await getOrCreateAccount()
-    const { data: userData } = await supabase.auth.getUser()
-
-    setOrganisationId(profile.organisation_id)
-    setUserId(userData.user?.id || '')
 
     const { data: organisationData } = await supabase
       .from('organisations')
@@ -148,103 +142,12 @@ export default function RequestsPage() {
     load()
   }
 
-  const findExistingClient = async (request: any) => {
-    const companyName = request.company_name?.trim()
-
-    if (!companyName) return null
-
-    const { data } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('organisation_id', organisationId)
-      .ilike('company', companyName)
-      .maybeSingle()
-
-    return data
-  }
-
-  const createClientFromRequest = async (request: any) => {
-    const cleanNotes = getCleanNotes(request)
-
-    const clientNotes = [
-      cleanNotes ? `Request notes: ${cleanNotes}` : '',
-      `Original request type: ${getRequestTypeLabel(request)}`,
-    ]
-      .filter(Boolean)
-      .join('\n')
-
-    const { data, error } = await supabase
-      .from('clients')
-      .insert({
-        user_id: userId,
-        organisation_id: organisationId,
-        company: request.company_name || 'Unnamed company',
-        name: request.contact_name || 'Primary contact',
-        email: request.email || '',
-        phone: request.phone || '',
-        address: request.location || '',
-        notes: clientNotes,
-      })
-      .select('*')
-      .single()
-
-    if (error) {
-      throw new Error(error.message)
-    }
-
-    return data
-  }
-
-  const createBookingFromRequest = async (request: any, client: any) => {
-    if (!request.preferred_date) {
-      throw new Error(
-        'This request has no preferred date. Add a date to the booking manually or update the request first.'
-      )
-    }
-
-    const requestType = getRequestType(request)
-    const cleanNotes = getCleanNotes(request)
-
-    const bookingNotes = [
-      `Created from public request.`,
-      `Request type: ${getRequestTypeLabel(request)}`,
-      request.learner_count ? `Learners requested: ${request.learner_count}` : '',
-      cleanNotes ? `Request notes: ${cleanNotes}` : '',
-    ]
-      .filter(Boolean)
-      .join('\n')
-
-    const { data, error } = await supabase
-      .from('bookings')
-      .insert({
-        user_id: userId,
-        organisation_id: organisationId,
-        course_delivery_type: requestType,
-        client_id: client.id,
-        trainer_id: null,
-        client_name: client.name,
-        course_name: request.course_name || 'Training course',
-        date: request.preferred_date,
-        start_time: null,
-        end_time: null,
-        location: request.location || '',
-        price: null,
-        notes: bookingNotes,
-        status: 'scheduled',
-      })
-      .select('*')
-      .single()
-
-    if (error) {
-      throw new Error(error.message)
-    }
-
-    return data
-  }
-
   const convertRequest = async (request: any) => {
+    const requestType = getRequestType(request)
     const confirmConvert = confirm(
-      `Create a client and ${getRequestType(request) === 'public' ? 'public' : 'private'} booking from this request?`
+      requestType === 'public'
+        ? 'Create a public booking from this request? No main client will be attached.'
+        : 'Create a client and private booking from this request?'
     )
 
     if (!confirmConvert) return
@@ -252,26 +155,22 @@ export default function RequestsPage() {
     setConvertingId(request.id)
 
     try {
-      let client = await findExistingClient(request)
+      const { data: bookingId, error } = await supabase.rpc(
+        'convert_training_request_to_booking',
+        { p_request_id: request.id }
+      )
 
-      if (!client) {
-        client = await createClientFromRequest(request)
+      if (error) {
+        throw new Error(error.message)
       }
 
-      const booking = await createBookingFromRequest(request, client)
+      alert(
+        requestType === 'public'
+          ? 'Public booking created successfully.'
+          : 'Client and booking created successfully.'
+      )
 
-      const { error: updateError } = await supabase
-        .from('training_requests')
-        .update({ status: 'converted' })
-        .eq('id', request.id)
-
-      if (updateError) {
-        throw new Error(updateError.message)
-      }
-
-      alert('Client and booking created successfully.')
-
-      window.location.href = `/dashboard/bookings/${booking.id}`
+      window.location.href = `/dashboard/bookings/${bookingId}`
     } catch (error: any) {
       alert(error.message || 'Could not convert request')
       setConvertingId('')

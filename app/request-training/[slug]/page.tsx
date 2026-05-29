@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import { parseOptionalPositiveInteger } from '@/lib/numberValidation'
 
 export default function PublicTrainingRequestPage() {
   const params = useParams()
@@ -84,8 +85,13 @@ export default function PublicTrainingRequestPage() {
       return
     }
 
-    if (learnerCount && Number(learnerCount) < 1) {
-      alert('Number of learners must be at least 1')
+    const parsedLearnerCount = parseOptionalPositiveInteger(
+      learnerCount,
+      'Number of learners'
+    )
+
+    if (parsedLearnerCount.error) {
+      alert(parsedLearnerCount.error)
       return
     }
 
@@ -111,7 +117,7 @@ export default function PublicTrainingRequestPage() {
       phone,
       course_name: courseName,
       preferred_date: preferredDate || null,
-      learner_count: learnerCount ? Number(learnerCount) : null,
+      learner_count: parsedLearnerCount.value,
       location,
       notes: finalNotes,
       status: 'new',
