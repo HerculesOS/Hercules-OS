@@ -41,7 +41,8 @@ export default function ClientsPage() {
       .from('clients')
       .select('*')
       .eq('organisation_id', profile.organisation_id)
-      .order('created_at', { ascending: false })
+      .order('company', { ascending: true })
+      .order('name', { ascending: true })
 
     setClients(data || [])
   }

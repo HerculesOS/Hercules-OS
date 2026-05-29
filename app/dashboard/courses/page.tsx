@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
+import { parseOptionalPositiveInteger, parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
 
 export default function CoursesPage() {
   const [courses, setCourses] = useState<any[]>([])
@@ -13,6 +14,9 @@ export default function CoursesPage() {
   const [name, setName] = useState('')
   const [defaultPrice, setDefaultPrice] = useState('')
   const [defaultDuration, setDefaultDuration] = useState('')
+  const [durationDays, setDurationDays] = useState('1')
+  const [defaultStartTime, setDefaultStartTime] = useState('')
+  const [defaultEndTime, setDefaultEndTime] = useState('')
   const [certificateValidityYears, setCertificateValidityYears] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -25,6 +29,9 @@ export default function CoursesPage() {
   const [editName, setEditName] = useState('')
   const [editDefaultPrice, setEditDefaultPrice] = useState('')
   const [editDefaultDuration, setEditDefaultDuration] = useState('')
+  const [editDurationDays, setEditDurationDays] = useState('1')
+  const [editDefaultStartTime, setEditDefaultStartTime] = useState('')
+  const [editDefaultEndTime, setEditDefaultEndTime] = useState('')
   const [editCertificateValidityYears, setEditCertificateValidityYears] = useState('')
   const [editNotes, setEditNotes] = useState('')
 
@@ -77,15 +84,28 @@ export default function CoursesPage() {
       return
     }
 
+    const parsedPrice = parseOptionalNonNegativeNumber(defaultPrice, 'Default price')
+    const parsedDurationDays = parseOptionalPositiveInteger(durationDays, 'Duration days')
+    const parsedValidityYears = parseOptionalPositiveInteger(
+      certificateValidityYears,
+      'Certificate validity years'
+    )
+
+    if (parsedPrice.error || parsedDurationDays.error || parsedValidityYears.error) {
+      alert(parsedPrice.error || parsedDurationDays.error || parsedValidityYears.error)
+      return
+    }
+
     const { error } = await supabase.from('course_templates').insert({
       organisation_id: organisationId,
       code: code.trim() || null,
       name: name.trim(),
-      default_price: defaultPrice ? Number(defaultPrice) : null,
+      default_price: parsedPrice.value,
       default_duration: defaultDuration.trim() || null,
-      certificate_validity_years: certificateValidityYears
-        ? Number(certificateValidityYears)
-        : null,
+      duration_days: parsedDurationDays.value || 1,
+      default_start_time: defaultStartTime || null,
+      default_end_time: defaultEndTime || null,
+      certificate_validity_years: parsedValidityYears.value,
       notes: notes.trim() || null,
     })
 
@@ -98,6 +118,9 @@ export default function CoursesPage() {
     setName('')
     setDefaultPrice('')
     setDefaultDuration('')
+    setDurationDays('1')
+    setDefaultStartTime('')
+    setDefaultEndTime('')
     setCertificateValidityYears('')
     setNotes('')
 
@@ -110,6 +133,9 @@ export default function CoursesPage() {
     setEditName(course.name || '')
     setEditDefaultPrice(course.default_price ? String(course.default_price) : '')
     setEditDefaultDuration(course.default_duration || '')
+    setEditDurationDays(String(course.duration_days || 1))
+    setEditDefaultStartTime(course.default_start_time || '')
+    setEditDefaultEndTime(course.default_end_time || '')
     setEditCertificateValidityYears(
       course.certificate_validity_years
         ? String(course.certificate_validity_years)
@@ -124,6 +150,9 @@ export default function CoursesPage() {
     setEditName('')
     setEditDefaultPrice('')
     setEditDefaultDuration('')
+    setEditDurationDays('1')
+    setEditDefaultStartTime('')
+    setEditDefaultEndTime('')
     setEditCertificateValidityYears('')
     setEditNotes('')
   }
@@ -134,6 +163,18 @@ export default function CoursesPage() {
       return
     }
 
+    const parsedPrice = parseOptionalNonNegativeNumber(editDefaultPrice, 'Default price')
+    const parsedDurationDays = parseOptionalPositiveInteger(editDurationDays, 'Duration days')
+    const parsedValidityYears = parseOptionalPositiveInteger(
+      editCertificateValidityYears,
+      'Certificate validity years'
+    )
+
+    if (parsedPrice.error || parsedDurationDays.error || parsedValidityYears.error) {
+      alert(parsedPrice.error || parsedDurationDays.error || parsedValidityYears.error)
+      return
+    }
+
     setSavingEdit(true)
 
     const { error } = await supabase
@@ -141,11 +182,12 @@ export default function CoursesPage() {
       .update({
         code: editCode.trim() || null,
         name: editName.trim(),
-        default_price: editDefaultPrice ? Number(editDefaultPrice) : null,
+        default_price: parsedPrice.value,
         default_duration: editDefaultDuration.trim() || null,
-        certificate_validity_years: editCertificateValidityYears
-          ? Number(editCertificateValidityYears)
-          : null,
+        duration_days: parsedDurationDays.value || 1,
+        default_start_time: editDefaultStartTime || null,
+        default_end_time: editDefaultEndTime || null,
+        certificate_validity_years: parsedValidityYears.value,
         notes: editNotes.trim() || null,
       })
       .eq('id', courseId)
@@ -190,6 +232,9 @@ export default function CoursesPage() {
       ${course.code || ''}
       ${course.name || ''}
       ${course.default_duration || ''}
+      ${course.duration_days || ''}
+      ${course.default_start_time || ''}
+      ${course.default_end_time || ''}
       ${course.notes || ''}
     `.toLowerCase()
 
@@ -197,7 +242,9 @@ export default function CoursesPage() {
   })
 
   const coursesWithPrice = courses.filter((course) => course.default_price)
-  const coursesWithDuration = courses.filter((course) => course.default_duration)
+  const coursesWithDuration = courses.filter(
+    (course) => course.default_duration || Number(course.duration_days || 1) > 1
+  )
   const coursesWithValidity = courses.filter(
     (course) => course.certificate_validity_years
   )
@@ -325,6 +372,29 @@ export default function CoursesPage() {
 
             <input
               className={inputClass}
+              placeholder="Duration days e.g. 2"
+              value={durationDays}
+              onChange={(e) => setDurationDays(e.target.value)}
+            />
+
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                className={inputClass}
+                type="time"
+                value={defaultStartTime}
+                onChange={(e) => setDefaultStartTime(e.target.value)}
+              />
+
+              <input
+                className={inputClass}
+                type="time"
+                value={defaultEndTime}
+                onChange={(e) => setDefaultEndTime(e.target.value)}
+              />
+            </div>
+
+            <input
+              className={inputClass}
               placeholder="Certificate validity years e.g. 3"
               value={certificateValidityYears}
               onChange={(e) => setCertificateValidityYears(e.target.value)}
@@ -440,10 +510,30 @@ export default function CoursesPage() {
                           <div>
                             <p className="text-slate-400">Duration</p>
                             <p className="font-medium text-slate-800 mt-1">
-                              {course.default_duration || 'Not set'}
+                              {course.duration_days
+                                ? `${course.duration_days} day${
+                                    Number(course.duration_days) === 1 ? '' : 's'
+                                  }`
+                                : course.default_duration || 'Not set'}
                             </p>
+                            {course.default_duration && (
+                              <p className="text-slate-500 mt-1">
+                                {course.default_duration}
+                              </p>
+                            )}
                           </div>
 
+                          <div>
+                            <p className="text-slate-400">Default time</p>
+                            <p className="font-medium text-slate-800 mt-1">
+                              {course.default_start_time || course.default_end_time
+                                ? `${course.default_start_time || 'Not set'} - ${course.default_end_time || 'Not set'}`
+                                : 'Not set'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4 text-xs text-slate-600">
                           <div>
                             <p className="text-slate-400">Certificate validity</p>
                             <p className="font-medium text-slate-800 mt-1">
@@ -523,6 +613,27 @@ export default function CoursesPage() {
                             placeholder="Default duration"
                             value={editDefaultDuration}
                             onChange={(e) => setEditDefaultDuration(e.target.value)}
+                          />
+
+                          <input
+                            className={inputClass}
+                            placeholder="Duration days"
+                            value={editDurationDays}
+                            onChange={(e) => setEditDurationDays(e.target.value)}
+                          />
+
+                          <input
+                            className={inputClass}
+                            type="time"
+                            value={editDefaultStartTime}
+                            onChange={(e) => setEditDefaultStartTime(e.target.value)}
+                          />
+
+                          <input
+                            className={inputClass}
+                            type="time"
+                            value={editDefaultEndTime}
+                            onChange={(e) => setEditDefaultEndTime(e.target.value)}
                           />
 
                           <input

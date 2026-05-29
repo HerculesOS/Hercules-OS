@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTime, formatAppTimeRange } from '@/lib/formatters'
 import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
+import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
 
 export default function CalendarPage() {
   const [bookings, setBookings] = useState<any[]>([])
@@ -27,6 +28,7 @@ export default function CalendarPage() {
   const [certificateTemplateId, setCertificateTemplateId] = useState('')
   const [courseName, setCourseName] = useState('')
   const [date, setDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
   const [location, setLocation] = useState('')
@@ -135,7 +137,12 @@ export default function CalendarPage() {
   )
 
   const getBookingsForDate = (dateValue: string) => {
-    return bookings.filter((booking) => booking.date === dateValue)
+    return bookings.filter((booking) => {
+      const bookingStart = booking.date
+      const bookingEnd = booking.end_date || booking.date
+
+      return bookingStart <= dateValue && bookingEnd >= dateValue
+    })
   }
 
   const getClientForBooking = (booking: any) => {
@@ -160,9 +167,43 @@ export default function CalendarPage() {
     return booking.client_name || 'No client'
   }
 
+  const getLocationSuggestions = () => {
+    return Array.from(
+      new Set(
+        bookings
+          .map((booking) => String(booking.location || '').trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b))
+  }
+
+  const setClientAndMaybeLocation = (selectedClientId: string) => {
+    setClientId(selectedClientId)
+
+    const selectedClient = clients.find((client) => client.id === selectedClientId)
+
+    if (courseDeliveryType === 'private' && !location.trim() && selectedClient?.address) {
+      setLocation(selectedClient.address)
+    }
+  }
+
+  const updateDateWithTemplateDuration = (nextDate: string) => {
+    setDate(nextDate)
+
+    const selectedCourse = courseTemplates.find((course) => course.id === courseTemplateId)
+    const durationDays = getCourseDurationDays(selectedCourse)
+
+    if (durationDays > 1) {
+      setEndDate(getDefaultEndDateForDuration(nextDate, durationDays))
+    } else if (!endDate || endDate === date) {
+      setEndDate(nextDate)
+    }
+  }
+
   const openCreateForm = (dateValue: string) => {
     setSelectedDate(dateValue)
     setDate(dateValue)
+    setEndDate(dateValue)
     setShowCreateForm(true)
   }
 
@@ -176,6 +217,7 @@ export default function CalendarPage() {
     setCertificateTemplateId('')
     setCourseName('')
     setDate('')
+    setEndDate('')
     setStartTime('')
     setEndTime('')
     setLocation('')
@@ -196,6 +238,20 @@ export default function CalendarPage() {
 
     if (selectedCourse.default_price) {
       setPrice(String(selectedCourse.default_price))
+    }
+
+    if (selectedCourse.default_start_time) {
+      setStartTime(String(selectedCourse.default_start_time).slice(0, 5))
+    }
+
+    if (selectedCourse.default_end_time) {
+      setEndTime(String(selectedCourse.default_end_time).slice(0, 5))
+    }
+
+    const durationDays = getCourseDurationDays(selectedCourse)
+
+    if (date) {
+      setEndDate(getDefaultEndDateForDuration(date, durationDays))
     }
 
     if (selectedCourse.notes && !notes) {
@@ -219,6 +275,11 @@ export default function CalendarPage() {
 
     if (!courseName || !date) {
       alert('Course and date are required')
+      return
+    }
+
+    if (endDate && endDate < date) {
+      alert('End date must be on or after the start date')
       return
     }
 
@@ -246,6 +307,7 @@ export default function CalendarPage() {
           : selectedClient?.name || null,
       course_name: courseName,
       date,
+      end_date: endDate || date,
       start_time: startTime || null,
       end_time: endTime || null,
       location,
@@ -829,7 +891,7 @@ export default function CalendarPage() {
                 <select
                   className={inputClass}
                   value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
+                  onChange={(e) => setClientAndMaybeLocation(e.target.value)}
                 >
                   <option value="">
                     {courseDeliveryType === 'public'
@@ -898,7 +960,14 @@ export default function CalendarPage() {
                   className={inputClass}
                   type="date"
                   value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  onChange={(e) => updateDateWithTemplateDuration(e.target.value)}
+                />
+
+                <input
+                  className={inputClass}
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
                 />
 
                 <div className="grid grid-cols-2 gap-3">
@@ -920,9 +989,16 @@ export default function CalendarPage() {
                 <input
                   className={inputClass}
                   placeholder="Location"
+                  list="calendar-location-suggestions"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
                 />
+
+                <datalist id="calendar-location-suggestions">
+                  {getLocationSuggestions().map((suggestion) => (
+                    <option key={suggestion} value={suggestion} />
+                  ))}
+                </datalist>
 
                 <input
                   className={inputClass}

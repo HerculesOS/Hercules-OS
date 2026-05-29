@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
 import { createCertificateVerificationId } from '@/lib/certificateVerification'
+import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
+import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
 
 export default function BookingDetailPage() {
   const params = useParams()
@@ -24,6 +26,7 @@ export default function BookingDetailPage() {
   const [certificates, setCertificates] = useState<any[]>([])
   const [delegates, setDelegates] = useState<any[]>([])
   const [allClientDelegates, setAllClientDelegates] = useState<any[]>([])
+  const [bookingLocations, setBookingLocations] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
 
   const [editing, setEditing] = useState(false)
@@ -37,6 +40,7 @@ export default function BookingDetailPage() {
   const [editCertificateTemplateId, setEditCertificateTemplateId] = useState('')
   const [editCourseName, setEditCourseName] = useState('')
   const [editDate, setEditDate] = useState('')
+  const [editEndDate, setEditEndDate] = useState('')
   const [editStartTime, setEditStartTime] = useState('')
   const [editEndTime, setEditEndTime] = useState('')
   const [editLocation, setEditLocation] = useState('')
@@ -261,6 +265,12 @@ export default function BookingDetailPage() {
       .eq('organisation_id', currentProfile.organisation_id)
       .order('created_at', { ascending: false })
 
+    const { data: bookingLocationData } = await supabase
+      .from('bookings')
+      .select('location')
+      .eq('organisation_id', currentProfile.organisation_id)
+      .not('location', 'is', null)
+
     let allClientDelegatesData: any[] = []
 
     if (bookingData.course_delivery_type === 'public') {
@@ -318,6 +328,15 @@ export default function BookingDetailPage() {
     setCertificateTemplates(certificateTemplatesData || [])
     setInvoices(invoicesData || [])
     setCertificates(certificatesData || [])
+    setBookingLocations(
+      Array.from(
+        new Set(
+          (bookingLocationData || [])
+            .map((item) => String(item.location || '').trim())
+            .filter(Boolean)
+        )
+      ).sort((a, b) => a.localeCompare(b))
+    )
     setAllClientDelegates(allClientDelegatesData || [])
     setDelegates(bookingDelegatesData)
 
@@ -326,6 +345,7 @@ export default function BookingDetailPage() {
     setEditCertificateTemplateId(bookingData.certificate_template_id || '')
     setEditCourseName(bookingData.course_name || '')
     setEditDate(bookingData.date || '')
+    setEditEndDate(bookingData.end_date || bookingData.date || '')
     setEditStartTime(bookingData.start_time || '')
     setEditEndTime(bookingData.end_time || '')
     setEditLocation(bookingData.location || '')
@@ -364,6 +384,28 @@ export default function BookingDetailPage() {
     return formatAppTimeRange(startTimeValue, endTimeValue, organisation)
   }
 
+  const getFormattedDateRange = () => {
+    const start = getFormattedDate(booking?.date)
+    const endDateValue = booking?.end_date || booking?.date
+
+    if (!endDateValue || endDateValue === booking?.date) return start
+
+    return `${start} - ${getFormattedDate(endDateValue)}`
+  }
+
+  const updateEditDateWithTemplateDuration = (nextDate: string) => {
+    setEditDate(nextDate)
+
+    const selectedCourse = courseTemplates.find((course) => course.id === editCourseTemplateId)
+    const durationDays = getCourseDurationDays(selectedCourse)
+
+    if (durationDays > 1) {
+      setEditEndDate(getDefaultEndDateForDuration(nextDate, durationDays))
+    } else if (!editEndDate || editEndDate === editDate) {
+      setEditEndDate(nextDate)
+    }
+  }
+
   const getTrainer = () => {
     return trainers.find((trainer) => trainer.id === booking?.trainer_id)
   }
@@ -396,6 +438,20 @@ export default function BookingDetailPage() {
       setEditPrice(String(selectedCourse.default_price))
     }
 
+    if (selectedCourse.default_start_time) {
+      setEditStartTime(String(selectedCourse.default_start_time).slice(0, 5))
+    }
+
+    if (selectedCourse.default_end_time) {
+      setEditEndTime(String(selectedCourse.default_end_time).slice(0, 5))
+    }
+
+    const durationDays = getCourseDurationDays(selectedCourse)
+
+    if (editDate) {
+      setEditEndDate(getDefaultEndDateForDuration(editDate, durationDays))
+    }
+
     if (selectedCourse.notes && !editNotes) {
       setEditNotes(selectedCourse.notes)
     }
@@ -415,6 +471,7 @@ export default function BookingDetailPage() {
     setEditCertificateTemplateId(booking.certificate_template_id || '')
     setEditCourseName(booking.course_name || '')
     setEditDate(booking.date || '')
+    setEditEndDate(booking.end_date || booking.date || '')
     setEditStartTime(booking.start_time || '')
     setEditEndTime(booking.end_time || '')
     setEditLocation(booking.location || '')
@@ -430,6 +487,7 @@ export default function BookingDetailPage() {
     setEditCertificateTemplateId(booking.certificate_template_id || '')
     setEditCourseName(booking.course_name || '')
     setEditDate(booking.date || '')
+    setEditEndDate(booking.end_date || booking.date || '')
     setEditStartTime(booking.start_time || '')
     setEditEndTime(booking.end_time || '')
     setEditLocation(booking.location || '')
@@ -443,6 +501,18 @@ export default function BookingDetailPage() {
       return
     }
 
+    if (editEndDate && editEndDate < editDate) {
+      alert('End date must be on or after the start date')
+      return
+    }
+
+    const parsedPrice = parseOptionalNonNegativeNumber(editPrice, 'Price')
+
+    if (parsedPrice.error) {
+      alert(parsedPrice.error)
+      return
+    }
+
     setSaving(true)
 
     const { error } = await supabase
@@ -452,10 +522,11 @@ export default function BookingDetailPage() {
         certificate_template_id: editCertificateTemplateId || null,
         course_name: editCourseName,
         date: editDate,
+        end_date: editEndDate || editDate,
         start_time: editStartTime || null,
         end_time: editEndTime || null,
         location: editLocation,
-        price: editPrice ? Number(editPrice) : null,
+        price: parsedPrice.value,
         notes: editNotes,
       })
       .eq('id', booking.id)
@@ -1211,7 +1282,7 @@ export default function BookingDetailPage() {
                 <div>
                   <p className="text-xs text-slate-500">Date</p>
                   <p className="font-medium text-slate-950 mt-1">
-                    {getFormattedDate(booking.date)}
+                    {getFormattedDateRange()}
                   </p>
                 </div>
 
@@ -1317,7 +1388,14 @@ export default function BookingDetailPage() {
                     className={inputClass}
                     type="date"
                     value={editDate}
-                    onChange={(e) => setEditDate(e.target.value)}
+                    onChange={(e) => updateEditDateWithTemplateDuration(e.target.value)}
+                  />
+
+                  <input
+                    className={inputClass}
+                    type="date"
+                    value={editEndDate}
+                    onChange={(e) => setEditEndDate(e.target.value)}
                   />
 
                   <input
@@ -1337,9 +1415,16 @@ export default function BookingDetailPage() {
                   <input
                     className={inputClass}
                     placeholder="Location"
+                    list="booking-detail-location-suggestions"
                     value={editLocation}
                     onChange={(e) => setEditLocation(e.target.value)}
                   />
+
+                  <datalist id="booking-detail-location-suggestions">
+                    {bookingLocations.map((suggestion) => (
+                      <option key={suggestion} value={suggestion} />
+                    ))}
+                  </datalist>
 
                   <input
                     className={inputClass}

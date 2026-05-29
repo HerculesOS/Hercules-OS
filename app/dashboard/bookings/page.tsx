@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
 import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
+import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
 
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<any[]>([])
@@ -23,6 +24,7 @@ export default function BookingsPage() {
   const [certificateTemplateId, setCertificateTemplateId] = useState('')
   const [courseName, setCourseName] = useState('')
   const [date, setDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
   const [location, setLocation] = useState('')
@@ -43,6 +45,7 @@ export default function BookingsPage() {
   const [editCertificateTemplateId, setEditCertificateTemplateId] = useState('')
   const [editCourseName, setEditCourseName] = useState('')
   const [editDate, setEditDate] = useState('')
+  const [editEndDate, setEditEndDate] = useState('')
   const [editStartTime, setEditStartTime] = useState('')
   const [editEndTime, setEditEndTime] = useState('')
   const [editLocation, setEditLocation] = useState('')
@@ -129,6 +132,15 @@ export default function BookingsPage() {
     return formatAppTimeRange(startTimeValue, endTimeValue, organisation)
   }
 
+  const getFormattedDateRange = (booking: any) => {
+    const start = getFormattedDate(booking.date)
+    const endDateValue = booking.end_date || booking.date
+
+    if (!endDateValue || endDateValue === booking.date) return start
+
+    return `${start} - ${getFormattedDate(endDateValue)}`
+  }
+
   const getCertificateTemplateLabel = (template: any) => {
     const linkedCourse = courseTemplates.find(
       (course) => course.id === template.course_template_id
@@ -175,6 +187,62 @@ export default function BookingsPage() {
     return booking.client_name || 'No client'
   }
 
+  const getLocationSuggestions = () => {
+    return Array.from(
+      new Set(
+        bookings
+          .map((booking) => String(booking.location || '').trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b))
+  }
+
+  const setClientAndMaybeLocation = (selectedClientId: string) => {
+    setClientId(selectedClientId)
+
+    const selectedClient = clients.find((client) => client.id === selectedClientId)
+
+    if (courseDeliveryType === 'private' && !location.trim() && selectedClient?.address) {
+      setLocation(selectedClient.address)
+    }
+  }
+
+  const setEditClientAndMaybeLocation = (selectedClientId: string) => {
+    setEditClientId(selectedClientId)
+
+    const selectedClient = clients.find((client) => client.id === selectedClientId)
+
+    if (editCourseDeliveryType === 'private' && !editLocation.trim() && selectedClient?.address) {
+      setEditLocation(selectedClient.address)
+    }
+  }
+
+  const updateDateWithTemplateDuration = (nextDate: string) => {
+    setDate(nextDate)
+
+    const selectedCourse = courseTemplates.find((course) => course.id === courseTemplateId)
+    const durationDays = getCourseDurationDays(selectedCourse)
+
+    if (durationDays > 1) {
+      setEndDate(getDefaultEndDateForDuration(nextDate, durationDays))
+    } else if (!endDate || endDate === date) {
+      setEndDate(nextDate)
+    }
+  }
+
+  const updateEditDateWithTemplateDuration = (nextDate: string) => {
+    setEditDate(nextDate)
+
+    const selectedCourse = courseTemplates.find((course) => course.id === editCourseTemplateId)
+    const durationDays = getCourseDurationDays(selectedCourse)
+
+    if (durationDays > 1) {
+      setEditEndDate(getDefaultEndDateForDuration(nextDate, durationDays))
+    } else if (!editEndDate || editEndDate === editDate) {
+      setEditEndDate(nextDate)
+    }
+  }
+
   const applyCourseTemplate = (templateId: string) => {
     setCourseTemplateId(templateId)
 
@@ -188,6 +256,20 @@ export default function BookingsPage() {
 
     if (selectedCourse.default_price) {
       setPrice(String(selectedCourse.default_price))
+    }
+
+    if (selectedCourse.default_start_time) {
+      setStartTime(String(selectedCourse.default_start_time).slice(0, 5))
+    }
+
+    if (selectedCourse.default_end_time) {
+      setEndTime(String(selectedCourse.default_end_time).slice(0, 5))
+    }
+
+    const durationDays = getCourseDurationDays(selectedCourse)
+
+    if (date) {
+      setEndDate(getDefaultEndDateForDuration(date, durationDays))
     }
 
     if (selectedCourse.notes && !notes) {
@@ -217,6 +299,20 @@ export default function BookingsPage() {
       setEditPrice(String(selectedCourse.default_price))
     }
 
+    if (selectedCourse.default_start_time) {
+      setEditStartTime(String(selectedCourse.default_start_time).slice(0, 5))
+    }
+
+    if (selectedCourse.default_end_time) {
+      setEditEndTime(String(selectedCourse.default_end_time).slice(0, 5))
+    }
+
+    const durationDays = getCourseDurationDays(selectedCourse)
+
+    if (editDate) {
+      setEditEndDate(getDefaultEndDateForDuration(editDate, durationDays))
+    }
+
     if (selectedCourse.notes && !editNotes) {
       setEditNotes(selectedCourse.notes)
     }
@@ -237,6 +333,11 @@ export default function BookingsPage() {
 
     if (!courseName || !date) {
       alert('Course and date are required')
+      return
+    }
+
+    if (endDate && endDate < date) {
+      alert('End date must be on or after the start date')
       return
     }
 
@@ -264,6 +365,7 @@ export default function BookingsPage() {
           : selectedClient?.name || null,
       course_name: courseName,
       date,
+      end_date: endDate || date,
       start_time: startTime || null,
       end_time: endTime || null,
       location,
@@ -284,6 +386,7 @@ export default function BookingsPage() {
     setCertificateTemplateId('')
     setCourseName('')
     setDate('')
+    setEndDate('')
     setStartTime('')
     setEndTime('')
     setLocation('')
@@ -302,6 +405,7 @@ export default function BookingsPage() {
     setEditCertificateTemplateId(booking.certificate_template_id || '')
     setEditCourseName(booking.course_name || '')
     setEditDate(booking.date || '')
+    setEditEndDate(booking.end_date || booking.date || '')
     setEditStartTime(booking.start_time || '')
     setEditEndTime(booking.end_time || '')
     setEditLocation(booking.location || '')
@@ -318,6 +422,7 @@ export default function BookingsPage() {
     setEditCertificateTemplateId('')
     setEditCourseName('')
     setEditDate('')
+    setEditEndDate('')
     setEditStartTime('')
     setEditEndTime('')
     setEditLocation('')
@@ -333,6 +438,11 @@ export default function BookingsPage() {
 
     if (!editCourseName || !editDate) {
       alert('Course and date are required')
+      return
+    }
+
+    if (editEndDate && editEndDate < editDate) {
+      alert('End date must be on or after the start date')
       return
     }
 
@@ -360,6 +470,7 @@ export default function BookingsPage() {
             : selectedClient?.name || null,
         course_name: editCourseName,
         date: editDate,
+        end_date: editEndDate || editDate,
         start_time: editStartTime || null,
         end_time: editEndTime || null,
         location: editLocation,
@@ -575,7 +686,9 @@ export default function BookingsPage() {
         ${booking.location || ''}
         ${booking.notes || ''}
         ${booking.date || ''}
+        ${booking.end_date || ''}
         ${getFormattedDate(booking.date)}
+        ${booking.end_date ? getFormattedDate(booking.end_date) : ''}
         ${getFormattedTimeRange(booking.start_time, booking.end_time)}
         ${trainer?.name || ''}
         ${certificateTemplate?.name || ''}
@@ -815,7 +928,7 @@ export default function BookingsPage() {
             <select
               className={inputClass}
               value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
+              onChange={(e) => setClientAndMaybeLocation(e.target.value)}
             >
               <option value="">
                 {courseDeliveryType === 'public'
@@ -884,7 +997,14 @@ export default function BookingsPage() {
               className={inputClass}
               type="date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => updateDateWithTemplateDuration(e.target.value)}
+            />
+
+            <input
+              className={inputClass}
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
             />
 
             <div className="grid grid-cols-2 gap-3">
@@ -906,9 +1026,16 @@ export default function BookingsPage() {
             <input
               className={inputClass}
               placeholder="Location"
+              list="booking-location-suggestions"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
             />
+
+            <datalist id="booking-location-suggestions">
+              {getLocationSuggestions().map((suggestion) => (
+                <option key={suggestion} value={suggestion} />
+              ))}
+            </datalist>
 
             <input
               className={inputClass}
@@ -1036,7 +1163,7 @@ export default function BookingsPage() {
                         <div>
                           <p className="text-slate-400">Date</p>
                           <p className="font-medium text-slate-800 mt-1">
-                            {getFormattedDate(booking.date)}
+                            {getFormattedDateRange(booking)}
                           </p>
                         </div>
 
@@ -1236,7 +1363,7 @@ export default function BookingsPage() {
                         <select
                           className={inputClass}
                           value={editClientId}
-                          onChange={(e) => setEditClientId(e.target.value)}
+                          onChange={(e) => setEditClientAndMaybeLocation(e.target.value)}
                         >
                           <option value="">
                             {editCourseDeliveryType === 'public'
@@ -1305,7 +1432,14 @@ export default function BookingsPage() {
                           className={inputClass}
                           type="date"
                           value={editDate}
-                          onChange={(e) => setEditDate(e.target.value)}
+                          onChange={(e) => updateEditDateWithTemplateDuration(e.target.value)}
+                        />
+
+                        <input
+                          className={inputClass}
+                          type="date"
+                          value={editEndDate}
+                          onChange={(e) => setEditEndDate(e.target.value)}
                         />
 
                         <input
@@ -1325,6 +1459,7 @@ export default function BookingsPage() {
                         <input
                           className={inputClass}
                           placeholder="Location"
+                          list="booking-location-suggestions"
                           value={editLocation}
                           onChange={(e) => setEditLocation(e.target.value)}
                         />
