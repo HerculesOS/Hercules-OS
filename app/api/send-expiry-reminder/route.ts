@@ -1,35 +1,15 @@
 import { Resend } from 'resend'
-import { createClient } from '@supabase/supabase-js'
+import {
+  buildEmailHtml,
+  detailRow,
+  detailsBox,
+  escapeHtml,
+  getErrorMessage,
+  getEmailTemplate,
+  replacePlaceholders,
+} from '@/lib/emailTemplates'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-const replacePlaceholders = (
-  text: string,
-  values: Record<string, string>
-) => {
-  let output = text
-
-  Object.entries(values).forEach(([key, value]) => {
-    output = output.replaceAll(`{{${key}}}`, value || '')
-  })
-
-  return output
-}
-
-const textToHtml = (text: string) => {
-  return text
-    .split('\n')
-    .map((line) => {
-      if (!line.trim()) return '<br />'
-      return `<p style="font-size: 16px; color: #4b5563; margin: 0 0 12px;">${line}</p>`
-    })
-    .join('')
-}
 
 export async function POST(request: Request) {
   try {
@@ -57,93 +37,90 @@ export async function POST(request: Request) {
 
     const fromName = businessName || 'Hercules OS'
 
-    let templateSubject = 'Certificate expiring soon - {{course_name}}'
-    let templateBody = `Hello {{delegate_name}},
+    const template = await getEmailTemplate(
+      'certificate_expiry_reminder',
+      organisationId,
+      {
+        subject: 'Certificate expiring soon - {{courseName}}',
+        body: `Hello {{learnerName}},
 
-Your {{course_name}} certificate is due to expire on {{expiry_date}}.
+Your {{courseName}} certificate is due to expire on {{expiryDate}}.
 
 Please contact us if you would like to arrange refresher training.
 
 Kind regards,
-{{business_name}}`
-
-    if (organisationId) {
-      const { data: template } = await supabaseAdmin
-        .from('email_templates')
-        .select('*')
-        .eq('organisation_id', organisationId)
-        .eq('template_key', 'certificate_expiry_reminder')
-        .maybeSingle()
-
-      if (template) {
-        templateSubject = template.subject || templateSubject
-        templateBody = template.body || templateBody
+{{businessName}}`,
       }
-    }
+    )
 
     const placeholderValues = {
       client_name: '',
+      clientName: '',
       delegate_name: learnerName || '',
+      learnerName: learnerName || '',
       learner_name: learnerName || '',
+      courseName: courseName || '',
       course_name: courseName || '',
+      date: '',
       booking_date: '',
+      startTime: '',
       start_time: '',
+      endTime: '',
       end_time: '',
       location: '',
+      trainerName: '',
       trainer_name: '',
+      certificateNumber: certificateNumber || 'N/A',
       certificate_number: certificateNumber || 'N/A',
       issue_date: '',
+      expiryDate: expiryDate || '',
       expiry_date: expiryDate || '',
+      verificationUrl: verificationUrl || '',
       verification_url: verificationUrl || '',
+      invoiceNumber: '',
       invoice_number: '',
       invoice_amount: '',
       due_date: '',
+      businessName: fromName,
       business_name: fromName,
+      businessEmail: businessEmail || '',
       business_email: businessEmail || '',
+      businessPhone: businessPhone || '',
       business_phone: businessPhone || '',
+      paymentDetails: '',
     }
 
-    const subject = replacePlaceholders(templateSubject, placeholderValues)
-    const emailBody = replacePlaceholders(templateBody, placeholderValues)
+    const subject = replacePlaceholders(template.subject, placeholderValues)
+    const emailBody = replacePlaceholders(template.body, placeholderValues)
+    const footerParts = [
+      `Sent by ${escapeHtml(fromName)}`,
+      businessEmail ? `<br>Email: ${escapeHtml(businessEmail)}` : '',
+      businessPhone ? `<br>Phone: ${escapeHtml(businessPhone)}` : '',
+    ].join('')
+    const actionHtml = verificationUrl
+      ? `
+        <a href="${escapeHtml(verificationUrl)}" style="display: inline-block; background: #111827; color: white; padding: 12px 18px; border-radius: 10px; text-decoration: none; font-weight: bold;">
+          Verify Certificate
+        </a>
+      `
+      : ''
 
     const { data, error } = await resend.emails.send({
       from: `${fromName} <onboarding@resend.dev>`,
       to: [to],
       subject,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; color: #111827;">
-          <h1 style="font-size: 24px; margin-bottom: 16px;">
-            ${subject}
-          </h1>
-
-          <div>
-            ${textToHtml(emailBody)}
-          </div>
-
-          <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin: 24px 0;">
-            <p><strong>Learner:</strong> ${learnerName}</p>
-            <p><strong>Course:</strong> ${courseName}</p>
-            <p><strong>Certificate No:</strong> ${certificateNumber || 'N/A'}</p>
-            <p><strong>Expiry Date:</strong> ${expiryDate}</p>
-          </div>
-
-          ${
-            verificationUrl
-              ? `
-                <a href="${verificationUrl}" style="display: inline-block; background: #111827; color: white; padding: 12px 18px; border-radius: 10px; text-decoration: none; font-weight: bold;">
-                  Verify Certificate
-                </a>
-              `
-              : ''
-          }
-
-          <p style="font-size: 14px; color: #6b7280; margin-top: 24px;">
-            Sent by ${fromName}
-            ${businessEmail ? `<br>Email: ${businessEmail}` : ''}
-            ${businessPhone ? `<br>Phone: ${businessPhone}` : ''}
-          </p>
-        </div>
-      `,
+      html: buildEmailHtml({
+        subject,
+        body: emailBody,
+        detailsHtml: detailsBox([
+          detailRow('Learner', learnerName),
+          detailRow('Course', courseName),
+          detailRow('Certificate No', certificateNumber || 'N/A'),
+          detailRow('Expiry Date', expiryDate),
+        ].join('')),
+        actionHtml,
+        footerHtml: footerParts,
+      }),
     })
 
     if (error) {
@@ -151,9 +128,9 @@ Kind regards,
     }
 
     return Response.json({ success: true, data })
-  } catch (error: any) {
+  } catch (error: unknown) {
     return Response.json(
-      { error: error.message || 'Failed to send expiry reminder' },
+      { error: getErrorMessage(error, 'Failed to send expiry reminder') },
       { status: 500 }
     )
   }

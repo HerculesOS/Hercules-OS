@@ -1,5 +1,15 @@
 import { Resend } from 'resend'
 import jsPDF from 'jspdf'
+import {
+  buildEmailHtml,
+  detailRow,
+  detailsBox,
+  escapeHtml,
+  getErrorMessage,
+  getEmailTemplate,
+  replacePlaceholders,
+  textToHtml,
+} from '@/lib/emailTemplates'
 
 export const runtime = 'nodejs'
 
@@ -12,15 +22,6 @@ const createSafeFilename = (invoiceNumber: string) => {
     .replace(/(^-|-$)/g, '')
 
   return `${safeInvoiceNumber || 'invoice'}.pdf`
-}
-
-const escapeHtml = (value: string) => {
-  return String(value || '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;')
 }
 
 const generateInvoicePdfBuffer = ({
@@ -144,9 +145,9 @@ const generateInvoicePdfBuffer = ({
   const descriptionLines = doc.splitTextToSize(description, 88)
   doc.text(descriptionLines, 28, 150)
 
-  doc.text(`£${netAmount.toFixed(2)}`, 128, 150)
-  doc.text(`£${vat.toFixed(2)}`, 150, 150)
-  doc.text(`£${total.toFixed(2)}`, 172, 150)
+  doc.text(`\u00A3${netAmount.toFixed(2)}`, 128, 150)
+  doc.text(`\u00A3${vat.toFixed(2)}`, 150, 150)
+  doc.text(`\u00A3${total.toFixed(2)}`, 172, 150)
 
   doc.setFillColor(249, 250, 251)
   doc.setDrawColor(229, 231, 235)
@@ -155,10 +156,10 @@ const generateInvoicePdfBuffer = ({
   doc.setFontSize(10)
   doc.setTextColor(75, 85, 99)
   doc.text('Net Amount', 120, 188)
-  doc.text(`£${netAmount.toFixed(2)}`, 180, 188, { align: 'right' })
+  doc.text(`\u00A3${netAmount.toFixed(2)}`, 180, 188, { align: 'right' })
 
   doc.text('VAT', 120, 200)
-  doc.text(`£${vat.toFixed(2)}`, 180, 200, { align: 'right' })
+  doc.text(`\u00A3${vat.toFixed(2)}`, 180, 200, { align: 'right' })
 
   doc.setDrawColor(209, 213, 219)
   doc.line(120, 206, 180, 206)
@@ -166,7 +167,7 @@ const generateInvoicePdfBuffer = ({
   doc.setFontSize(14)
   doc.setTextColor(17, 24, 39)
   doc.text('Total', 120, 214)
-  doc.text(`£${total.toFixed(2)}`, 180, 214, { align: 'right' })
+  doc.text(`\u00A3${total.toFixed(2)}`, 180, 214, { align: 'right' })
 
   if (paymentDetails) {
     doc.setFillColor(255, 247, 237)
@@ -221,6 +222,7 @@ export async function POST(request: Request) {
       businessEmail,
       businessPhone,
       paymentDetails,
+      organisationId,
     } = body
 
     const finalRecipientName = recipientName || clientName
@@ -233,6 +235,23 @@ export async function POST(request: Request) {
     }
 
     const fromName = businessName || 'Hercules OS'
+    const template = await getEmailTemplate(
+      'invoice_email',
+      organisationId,
+      {
+        subject: 'Invoice {{invoiceNumber}} from {{businessName}}',
+        body: `Hello {{clientName}},
+
+Please find your invoice attached as a PDF.
+
+Invoice number: {{invoiceNumber}}
+Amount due: {{invoiceAmount}}
+Due date: {{dueDate}}
+
+Kind regards,
+{{businessName}}`,
+      }
+    )
 
     const pdfBuffer = generateInvoicePdfBuffer({
       invoiceNumber,
@@ -251,63 +270,88 @@ export async function POST(request: Request) {
 
     const filename = createSafeFilename(invoiceNumber)
 
-    const safeRecipientName = escapeHtml(finalRecipientName)
-    const safeInvoiceNumber = escapeHtml(invoiceNumber)
     const safeCourseName = escapeHtml(courseName || '')
-    const safeDueDate = escapeHtml(dueDate || 'Not set')
-    const safeStatus = escapeHtml(status || 'draft')
     const safeFromName = escapeHtml(fromName)
     const safeBusinessEmail = escapeHtml(businessEmail || '')
     const safeBusinessPhone = escapeHtml(businessPhone || '')
     const safePaymentDetails = escapeHtml(paymentDetails || '')
+    const invoiceAmount = `\u00A3${Number(totalAmount || 0).toFixed(2)}`
+    const placeholderValues = {
+      clientName: finalRecipientName || '',
+      client_name: finalRecipientName || '',
+      delegate_name: finalRecipientName || '',
+      learnerName: finalRecipientName || '',
+      learner_name: finalRecipientName || '',
+      courseName: courseName || '',
+      course_name: courseName || '',
+      date: '',
+      booking_date: '',
+      startTime: '',
+      start_time: '',
+      endTime: '',
+      end_time: '',
+      location: '',
+      trainerName: '',
+      trainer_name: '',
+      certificateNumber: '',
+      certificate_number: '',
+      issueDate: '',
+      issue_date: '',
+      expiryDate: '',
+      expiry_date: '',
+      verificationUrl: '',
+      verification_url: '',
+      invoiceNumber: invoiceNumber || '',
+      invoice_number: invoiceNumber || '',
+      invoiceAmount,
+      invoice_amount: invoiceAmount,
+      dueDate: dueDate || 'Not set',
+      due_date: dueDate || 'Not set',
+      businessName: fromName,
+      business_name: fromName,
+      businessEmail: businessEmail || '',
+      business_email: businessEmail || '',
+      businessPhone: businessPhone || '',
+      business_phone: businessPhone || '',
+      paymentDetails: paymentDetails || '',
+    }
+    const subject = replacePlaceholders(template.subject, placeholderValues)
+    const emailBody = replacePlaceholders(template.body, placeholderValues)
+    const paymentDetailsHtml = safePaymentDetails
+      ? `
+        <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 16px; margin: 24px 0;">
+          <h2 style="font-size: 18px; margin-top: 0;">Payment Details</h2>
+          ${textToHtml(paymentDetails || '')}
+        </div>
+      `
+      : ''
 
     const { data, error } = await resend.emails.send({
       from: `${fromName} <onboarding@resend.dev>`,
       to: [to],
-      subject: `Invoice ${invoiceNumber} from ${fromName}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; color: #111827;">
-          <h1 style="font-size: 24px; margin-bottom: 8px;">
-            Invoice ${safeInvoiceNumber}
-          </h1>
-
-          <p style="font-size: 16px; color: #4b5563;">
-            Hi ${safeRecipientName},
-          </p>
-
-          <p style="font-size: 16px; color: #4b5563;">
-            Please find your invoice attached as a PDF.
-          </p>
-
-          <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin: 24px 0;">
-            <p><strong>Invoice No:</strong> ${safeInvoiceNumber}</p>
-            ${safeCourseName ? `<p><strong>Course:</strong> ${safeCourseName}</p>` : ''}
-            <p><strong>Recipient:</strong> ${safeRecipientName}</p>
-            <p><strong>Net Amount:</strong> £${Number(amount || 0).toFixed(2)}</p>
-            <p><strong>VAT:</strong> £${Number(vatAmount || 0).toFixed(2)}</p>
-            <p><strong>Total:</strong> £${Number(totalAmount || 0).toFixed(2)}</p>
-            <p><strong>Due Date:</strong> ${safeDueDate}</p>
-            <p><strong>Status:</strong> ${safeStatus}</p>
-          </div>
-
-          ${
-            safePaymentDetails
-              ? `
-                <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 16px; margin: 24px 0;">
-                  <h2 style="font-size: 18px; margin-top: 0;">Payment Details</h2>
-                  <p style="white-space: pre-line;">${safePaymentDetails}</p>
-                </div>
-              `
-              : ''
-          }
-
-          <p style="font-size: 14px; color: #6b7280;">
-            Sent by ${safeFromName}
-            ${safeBusinessEmail ? `<br>Email: ${safeBusinessEmail}` : ''}
-            ${safeBusinessPhone ? `<br>Phone: ${safeBusinessPhone}` : ''}
-          </p>
-        </div>
-      `,
+      subject,
+      html: buildEmailHtml({
+        subject,
+        body: emailBody,
+        detailsHtml: [
+          detailsBox([
+            detailRow('Invoice No', invoiceNumber),
+            safeCourseName ? detailRow('Course', courseName) : '',
+            detailRow('Recipient', finalRecipientName),
+            detailRow('Net Amount', `\u00A3${Number(amount || 0).toFixed(2)}`),
+            detailRow('VAT', `\u00A3${Number(vatAmount || 0).toFixed(2)}`),
+            detailRow('Total', invoiceAmount),
+            detailRow('Due Date', dueDate || 'Not set'),
+            detailRow('Status', status || 'draft'),
+          ].join('')),
+          paymentDetailsHtml,
+        ].join(''),
+        footerHtml: [
+          `Sent by ${safeFromName}`,
+          safeBusinessEmail ? `<br>Email: ${safeBusinessEmail}` : '',
+          safeBusinessPhone ? `<br>Phone: ${safeBusinessPhone}` : '',
+        ].join(''),
+      }),
       attachments: [
         {
           filename,
@@ -321,9 +365,9 @@ export async function POST(request: Request) {
     }
 
     return Response.json({ success: true, data })
-  } catch (error: any) {
+  } catch (error: unknown) {
     return Response.json(
-      { error: error.message || 'Failed to send invoice email' },
+      { error: getErrorMessage(error, 'Failed to send invoice email') },
       { status: 500 }
     )
   }

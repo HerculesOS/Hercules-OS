@@ -1,35 +1,15 @@
 import { Resend } from 'resend'
-import { createClient } from '@supabase/supabase-js'
+import {
+  buildEmailHtml,
+  detailRow,
+  detailsBox,
+  escapeHtml,
+  getErrorMessage,
+  getEmailTemplate,
+  replacePlaceholders,
+} from '@/lib/emailTemplates'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-const replacePlaceholders = (
-  text: string,
-  values: Record<string, string>
-) => {
-  let output = text
-
-  Object.entries(values).forEach(([key, value]) => {
-    output = output.replaceAll(`{{${key}}}`, value || '')
-  })
-
-  return output
-}
-
-const textToHtml = (text: string) => {
-  return text
-    .split('\n')
-    .map((line) => {
-      if (!line.trim()) return '<br />'
-      return `<p style="font-size: 16px; color: #4b5563; margin: 0 0 12px;">${line}</p>`
-    })
-    .join('')
-}
 
 export async function POST(request: Request) {
   try {
@@ -59,87 +39,86 @@ export async function POST(request: Request) {
 
     const fromName = businessName || 'Hercules OS'
 
-    let templateSubject = 'Booking confirmation - {{course_name}}'
-    let templateBody = `Hello {{client_name}},
+    const template = await getEmailTemplate(
+      'booking_confirmation',
+      organisationId,
+      {
+        subject: 'Booking confirmation - {{courseName}}',
+        body: `Hello {{clientName}},
 
-This email confirms your booking for {{course_name}}.
+This email confirms your booking for {{courseName}}.
 
-Date: {{booking_date}}
-Time: {{start_time}} - {{end_time}}
+Date: {{date}}
+Time: {{startTime}} - {{endTime}}
 Location: {{location}}
-Trainer: {{trainer_name}}
+Trainer: {{trainerName}}
 
 Kind regards,
-{{business_name}}`
-
-    if (organisationId) {
-      const { data: template } = await supabaseAdmin
-        .from('email_templates')
-        .select('*')
-        .eq('organisation_id', organisationId)
-        .eq('template_key', 'booking_confirmation')
-        .maybeSingle()
-
-      if (template) {
-        templateSubject = template.subject || templateSubject
-        templateBody = template.body || templateBody
+{{businessName}}`,
       }
-    }
+    )
 
     const placeholderValues = {
+      clientName: clientName || '',
       client_name: clientName || '',
       delegate_name: '',
+      learnerName: '',
       learner_name: '',
+      courseName: courseName || '',
       course_name: courseName || '',
+      date: date || '',
       booking_date: date || '',
+      startTime: startTime || 'Not set',
       start_time: startTime || 'Not set',
+      endTime: endTime || 'Not set',
       end_time: endTime || 'Not set',
       location: location || 'Not set',
+      trainerName: trainerName || 'To be confirmed',
       trainer_name: trainerName || 'To be confirmed',
+      certificateNumber: '',
       certificate_number: '',
       issue_date: '',
+      expiryDate: '',
       expiry_date: '',
+      verificationUrl: '',
       verification_url: '',
+      invoiceNumber: '',
       invoice_number: '',
       invoice_amount: '',
       due_date: '',
+      businessName: fromName,
       business_name: fromName,
+      businessEmail: businessEmail || '',
       business_email: businessEmail || '',
+      businessPhone: businessPhone || '',
       business_phone: businessPhone || '',
+      paymentDetails: '',
     }
 
-    const subject = replacePlaceholders(templateSubject, placeholderValues)
-    const emailBody = replacePlaceholders(templateBody, placeholderValues)
+    const subject = replacePlaceholders(template.subject, placeholderValues)
+    const emailBody = replacePlaceholders(template.body, placeholderValues)
+    const footerParts = [
+      `Sent by ${escapeHtml(fromName)}`,
+      businessEmail ? `<br>Email: ${escapeHtml(businessEmail)}` : '',
+      businessPhone ? `<br>Phone: ${escapeHtml(businessPhone)}` : '',
+    ].join('')
 
     const { data, error } = await resend.emails.send({
       from: `${fromName} <onboarding@resend.dev>`,
       to: [to],
       subject,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; color: #111827;">
-          <h1 style="font-size: 24px; margin-bottom: 16px;">
-            ${subject}
-          </h1>
-
-          <div>
-            ${textToHtml(emailBody)}
-          </div>
-
-          <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin: 24px 0;">
-            <p><strong>Course:</strong> ${courseName}</p>
-            <p><strong>Date:</strong> ${date}</p>
-            <p><strong>Time:</strong> ${startTime || 'Not set'} - ${endTime || 'Not set'}</p>
-            <p><strong>Location:</strong> ${location || 'Not set'}</p>
-            <p><strong>Trainer:</strong> ${trainerName || 'To be confirmed'}</p>
-          </div>
-
-          <p style="font-size: 14px; color: #6b7280;">
-            Sent by ${fromName}
-            ${businessEmail ? `<br>Email: ${businessEmail}` : ''}
-            ${businessPhone ? `<br>Phone: ${businessPhone}` : ''}
-          </p>
-        </div>
-      `,
+      html: buildEmailHtml({
+        subject,
+        body: emailBody,
+        detailsHtml: detailsBox([
+          detailRow('Course', courseName),
+          detailRow('Date', date),
+          detailRow('Time', `${startTime || 'Not set'} - ${endTime || 'Not set'}`),
+          detailRow('Location', location),
+          detailRow('Trainer', trainerName || 'To be confirmed'),
+        ].join('')),
+        footerHtml: footerParts,
+      }),
     })
 
     if (error) {
@@ -147,9 +126,9 @@ Kind regards,
     }
 
     return Response.json({ success: true, data })
-  } catch (error: any) {
+  } catch (error: unknown) {
     return Response.json(
-      { error: error.message || 'Failed to send booking confirmation' },
+      { error: getErrorMessage(error, 'Failed to send booking confirmation') },
       { status: 500 }
     )
   }
