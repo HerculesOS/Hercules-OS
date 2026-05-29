@@ -12,6 +12,7 @@ export default function CalendarPage() {
   const [clients, setClients] = useState<any[]>([])
   const [trainers, setTrainers] = useState<any[]>([])
   const [courseTemplates, setCourseTemplates] = useState<any[]>([])
+  const [certificateTemplates, setCertificateTemplates] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
   const [organisationId, setOrganisationId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -23,6 +24,7 @@ export default function CalendarPage() {
   const [clientId, setClientId] = useState('')
   const [trainerId, setTrainerId] = useState('')
   const [courseTemplateId, setCourseTemplateId] = useState('')
+  const [certificateTemplateId, setCertificateTemplateId] = useState('')
   const [courseName, setCourseName] = useState('')
   const [date, setDate] = useState('')
   const [startTime, setStartTime] = useState('')
@@ -79,6 +81,12 @@ export default function CalendarPage() {
       .eq('organisation_id', profile.organisation_id)
       .order('name', { ascending: true })
 
+    const { data: certificateTemplatesData } = await supabase
+      .from('certificate_templates')
+      .select('*')
+      .eq('organisation_id', profile.organisation_id)
+      .order('name', { ascending: true })
+
     const { data: bookingsData } = await supabase
       .from('bookings')
       .select('*')
@@ -89,6 +97,7 @@ export default function CalendarPage() {
     setClients(clientsData || [])
     setTrainers(trainersData || [])
     setCourseTemplates(courseTemplatesData || [])
+    setCertificateTemplates(certificateTemplatesData || [])
     setBookings(bookingsData || [])
     setLoading(false)
   }
@@ -164,6 +173,7 @@ export default function CalendarPage() {
     setClientId('')
     setTrainerId('')
     setCourseTemplateId('')
+    setCertificateTemplateId('')
     setCourseName('')
     setDate('')
     setStartTime('')
@@ -190,6 +200,14 @@ export default function CalendarPage() {
 
     if (selectedCourse.notes && !notes) {
       setNotes(selectedCourse.notes)
+    }
+
+    const matchingCertificateTemplate = certificateTemplates.find(
+      (template) => template.course_template_id === templateId
+    )
+
+    if (matchingCertificateTemplate && !certificateTemplateId) {
+      setCertificateTemplateId(matchingCertificateTemplate.id)
     }
   }
 
@@ -221,6 +239,7 @@ export default function CalendarPage() {
       course_delivery_type: courseDeliveryType,
       client_id: clientId || null,
       trainer_id: trainerId || null,
+      certificate_template_id: certificateTemplateId || null,
       client_name:
         courseDeliveryType === 'public' && !selectedClient
           ? 'Public course'
@@ -854,6 +873,20 @@ export default function CalendarPage() {
                   ))}
                 </select>
 
+                <select
+                  className={inputClass}
+                  value={certificateTemplateId}
+                  onChange={(e) => setCertificateTemplateId(e.target.value)}
+                >
+                  <option value="">Use automatic certificate template</option>
+
+                  {certificateTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+
                 <input
                   className={inputClass}
                   placeholder="Course name"
@@ -913,7 +946,7 @@ export default function CalendarPage() {
 
                 {courseTemplateId && (
                   <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600">
-                    Course template applied. You can still edit the course name, price or notes before saving.
+                    Course template applied. If a matching certificate template exists, it has been selected automatically.
                   </div>
                 )}
 

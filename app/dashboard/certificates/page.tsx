@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate } from '@/lib/formatters'
 import { createCertificateVerificationId } from '@/lib/certificateVerification'
+import { isLocalDateWithinNextDays } from '@/lib/dateRanges'
 
 export default function CertificatesPage() {
   const [profile, setProfile] = useState<any>(null)
@@ -520,14 +521,7 @@ export default function CertificatesPage() {
   const expiringSoonCertificates = certificates.filter((certificate) => {
     if (!certificate.expiry_date || certificate.status !== 'valid') return false
 
-    const today = new Date()
-    const expiryDate = new Date(certificate.expiry_date)
-
-    const differenceInMilliseconds = expiryDate.getTime() - today.getTime()
-    const differenceInDays =
-      differenceInMilliseconds / (1000 * 60 * 60 * 24)
-
-    return differenceInDays >= 0 && differenceInDays <= 90
+    return isLocalDateWithinNextDays(certificate.expiry_date, 90)
   })
 
   const getStatusStyle = (status: string) => {

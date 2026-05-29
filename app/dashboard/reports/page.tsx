@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
+import { isLocalDateWithinNextDays } from '@/lib/dateRanges'
 
 type ReportType =
   | 'delegates'
@@ -18,6 +19,10 @@ type ReportField = {
   key: string
   label: string
 }
+
+type RevenueDateMode = 'invoice_date' | 'booking_date' | 'due_date'
+
+const reportRowLimit = 5000
 
 export default function ReportsPage() {
   const [organisation, setOrganisation] = useState<any>(null)
@@ -35,6 +40,8 @@ export default function ReportsPage() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [selectedFields, setSelectedFields] = useState<string[]>([])
+  const [revenueDateMode, setRevenueDateMode] = useState<RevenueDateMode>('invoice_date')
+  const [limitedTables, setLimitedTables] = useState<string[]>([])
 
   const inputClass =
     'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
@@ -53,6 +60,7 @@ export default function ReportsPage() {
 
   const load = async () => {
     const profile = await getOrCreateAccount()
+    const limitedTableNames: string[] = []
 
     const { data: organisationData } = await supabase
       .from('organisations')
@@ -60,41 +68,47 @@ export default function ReportsPage() {
       .eq('id', profile.organisation_id)
       .single()
 
-    const { data: clientsData } = await supabase
+    const { data: clientsData, count: clientsCount } = await supabase
       .from('clients')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('organisation_id', profile.organisation_id)
       .order('company', { ascending: true })
+      .range(0, reportRowLimit - 1)
 
-    const { data: delegatesData } = await supabase
+    const { data: delegatesData, count: delegatesCount } = await supabase
       .from('delegates')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('organisation_id', profile.organisation_id)
       .order('full_name', { ascending: true })
+      .range(0, reportRowLimit - 1)
 
-    const { data: bookingsData } = await supabase
+    const { data: bookingsData, count: bookingsCount } = await supabase
       .from('bookings')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('organisation_id', profile.organisation_id)
       .order('date', { ascending: true })
+      .range(0, reportRowLimit - 1)
 
-    const { data: invoicesData } = await supabase
+    const { data: invoicesData, count: invoicesCount } = await supabase
       .from('invoices')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('organisation_id', profile.organisation_id)
       .order('created_at', { ascending: false })
+      .range(0, reportRowLimit - 1)
 
-    const { data: certificatesData } = await supabase
+    const { data: certificatesData, count: certificatesCount } = await supabase
       .from('certificates')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('organisation_id', profile.organisation_id)
       .order('created_at', { ascending: false })
+      .range(0, reportRowLimit - 1)
 
-    const { data: requestsData } = await supabase
+    const { data: requestsData, count: requestsCount } = await supabase
       .from('training_requests')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('organisation_id', profile.organisation_id)
       .order('created_at', { ascending: false })
+      .range(0, reportRowLimit - 1)
 
     const { data: trainersData } = await supabase
       .from('trainers')
@@ -110,6 +124,15 @@ export default function ReportsPage() {
     setCertificates(certificatesData || [])
     setRequests(requestsData || [])
     setTrainers(trainersData || [])
+
+    if ((clientsCount || 0) > reportRowLimit) limitedTableNames.push('clients')
+    if ((delegatesCount || 0) > reportRowLimit) limitedTableNames.push('delegates')
+    if ((bookingsCount || 0) > reportRowLimit) limitedTableNames.push('bookings')
+    if ((invoicesCount || 0) > reportRowLimit) limitedTableNames.push('invoices')
+    if ((certificatesCount || 0) > reportRowLimit) limitedTableNames.push('certificates')
+    if ((requestsCount || 0) > reportRowLimit) limitedTableNames.push('requests')
+
+    setLimitedTables(limitedTableNames)
     setLoading(false)
   }
 
@@ -176,6 +199,7 @@ export default function ReportsPage() {
       { key: 'email', label: 'Email' },
       { key: 'phone', label: 'Phone' },
       { key: 'course_name', label: 'Course' },
+      { key: 'request_type', label: 'Request type' },
       { key: 'preferred_date', label: 'Preferred date' },
       { key: 'learner_count', label: 'Learners' },
       { key: 'location', label: 'Location' },
@@ -300,10 +324,22 @@ export default function ReportsPage() {
 
   const getReportDateField = (item: any) => {
     if (reportType === 'bookings') return item.date
-    if (reportType === 'revenue') return item.created_at
+    if (reportType === 'revenue') return getRevenueDateField(item)
     if (reportType === 'certificates') return item.issue_date
     if (reportType === 'requests') return item.created_at
     return item.created_at
+  }
+
+  const getRevenueDateField = (invoice: any) => {
+    if (revenueDateMode === 'booking_date') {
+      return getBookingById(invoice.booking_id)?.date
+    }
+
+    if (revenueDateMode === 'due_date') {
+      return invoice.due_date
+    }
+
+    return invoice.created_at
   }
 
   const sourceRows = useMemo(() => {
@@ -433,6 +469,11 @@ export default function ReportsPage() {
   })
 
   const exportToExcel = () => {
+    if (selectedFields.length === 0) {
+      alert('Select at least one field to export.')
+      return
+    }
+
     if (reportRows.length === 0) {
       alert('There is no data to export.')
       return
@@ -486,26 +527,23 @@ export default function ReportsPage() {
   const expiringCertificates = certificates.filter((certificate) => {
     if (!certificate.expiry_date || certificate.status !== 'valid') return false
 
-    const today = new Date()
-    const expiryDate = new Date(certificate.expiry_date)
-    const differenceInDays =
-      (expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-
-    return differenceInDays >= 0 && differenceInDays <= 90
+    return isLocalDateWithinNextDays(certificate.expiry_date, 90)
   })
 
   const monthlyRevenue = useMemo(() => {
     const months: Record<string, number> = {}
 
-    invoices.forEach((invoice) => {
-      const rawDate = invoice.created_at
-      if (!rawDate) return
+    invoices
+      .filter((invoice) => isWithinDateRange(getRevenueDateField(invoice)))
+      .forEach((invoice) => {
+        const rawDate = getRevenueDateField(invoice)
+        if (!rawDate) return
 
-      const monthKey = String(rawDate).slice(0, 7)
-      months[monthKey] =
-        (months[monthKey] || 0) +
-        Number(invoice.total_amount || invoice.amount || 0)
-    })
+        const monthKey = String(rawDate).slice(0, 7)
+        months[monthKey] =
+          (months[monthKey] || 0) +
+          Number(invoice.total_amount || invoice.amount || 0)
+      })
 
     return Object.entries(months)
       .sort(([a], [b]) => a.localeCompare(b))
@@ -514,7 +552,7 @@ export default function ReportsPage() {
         label: month,
         value,
       }))
-  }, [invoices])
+  }, [invoices, bookings, startDate, endDate, revenueDateMode])
 
   const monthlyBookings = useMemo(() => {
     const months: Record<string, number> = {}
@@ -638,6 +676,12 @@ export default function ReportsPage() {
           <p className="text-sm text-slate-500 mt-1">
             Track revenue, bookings, delegates, certificates and export custom Excel reports.
           </p>
+
+          {limitedTables.length > 0 && (
+            <p className="text-xs text-amber-700 mt-2">
+              Large report data is capped at {reportRowLimit} rows per table: {limitedTables.join(', ')}.
+            </p>
+          )}
         </div>
 
         <button
@@ -852,6 +896,26 @@ export default function ReportsPage() {
                 Training years run September to August for these quick presets.
               </p>
             </div>
+
+            {reportType === 'revenue' && (
+              <div>
+                <label className="text-xs text-slate-500">
+                  Revenue date
+                </label>
+
+                <select
+                  className={`${inputClass} w-full mt-1`}
+                  value={revenueDateMode}
+                  onChange={(e) =>
+                    setRevenueDateMode(e.target.value as RevenueDateMode)
+                  }
+                >
+                  <option value="invoice_date">Invoice date</option>
+                  <option value="booking_date">Booking date</option>
+                  <option value="due_date">Due date</option>
+                </select>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
