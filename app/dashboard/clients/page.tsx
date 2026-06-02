@@ -289,62 +289,69 @@ export default function ClientsPage() {
 
             <div className="divide-y divide-slate-100">
               {filteredClients.map((client) => (
-                <Link
-                  href={`/dashboard/clients/${client.id}`}
+                <div
                   key={client.id}
-                  className="block p-4 hover:bg-slate-50 transition"
+                  className="p-3"
                 >
-                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-sm font-semibold text-slate-950">
-                          {client.company || 'Unnamed company'}
-                        </h3>
+                  <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_1.2fr_auto] gap-3 lg:items-center">
+                    <h3 className="text-sm font-semibold text-slate-950">
+                      {client.company || 'Unnamed company'}
+                    </h3>
 
-                        <span className="border border-emerald-100 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-md text-xs font-medium">
-                          Active
-                        </span>
+                    <p className="text-sm text-slate-600">
+                      {client.name || 'No primary contact'}
+                    </p>
+
+                    <p className="text-sm text-slate-600 break-all">
+                      {client.email || 'No email'}
+                    </p>
+
+                    <Link
+                      href={`/dashboard/clients/${client.id}`}
+                      className={buttonPrimary}
+                    >
+                      View client
+                    </Link>
+                  </div>
+
+                  <details className="mt-3">
+                    <summary className="cursor-pointer text-xs font-medium text-slate-500 hover:text-slate-950">
+                      Details
+                    </summary>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3 bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600">
+                      <div>
+                        <p className="text-slate-400">Phone</p>
+                        <p className="font-medium text-slate-800 mt-1">
+                          {client.phone || 'Not set'}
+                        </p>
                       </div>
 
-                      <p className="text-sm text-slate-600 mt-1">
-                        Primary contact: {client.name || 'Not set'}
-                      </p>
-                    </div>
+                      <div>
+                        <p className="text-slate-400">Address</p>
+                        <p className="font-medium text-slate-800 mt-1 whitespace-pre-line">
+                          {client.address || 'Not set'}
+                        </p>
+                      </div>
 
-                    <p className="text-xs text-slate-500">
-                      View profile →
-                    </p>
-                  </div>
+                      <div className="md:col-span-2">
+                        <p className="text-slate-400">Notes</p>
+                        <p className="font-medium text-slate-800 mt-1 whitespace-pre-line">
+                          {client.notes || 'No notes'}
+                        </p>
+                      </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-4 text-xs text-slate-600">
-                    <div>
-                      <p className="text-slate-400">Email</p>
-                      <p className="font-medium text-slate-800 mt-1 break-all">
-                        {client.email || 'Not set'}
-                      </p>
+                      <div className="md:col-span-2 flex flex-wrap gap-2 pt-1">
+                        <Link
+                          href={`/dashboard/clients/${client.id}`}
+                          className={buttonSecondary}
+                        >
+                          Open profile
+                        </Link>
+                      </div>
                     </div>
-
-                    <div>
-                      <p className="text-slate-400">Phone</p>
-                      <p className="font-medium text-slate-800 mt-1">
-                        {client.phone || 'Not set'}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-slate-400">Address</p>
-                      <p className="font-medium text-slate-800 mt-1">
-                        {client.address || 'Not set'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {client.notes && (
-                    <div className="bg-slate-50 border border-slate-200 rounded-md p-3 mt-4 text-xs text-slate-600">
-                      {client.notes}
-                    </div>
-                  )}
-                </Link>
+                  </details>
+                </div>
               ))}
 
               {filteredClients.length === 0 && (
