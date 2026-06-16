@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
+import jsPDF from 'jspdf'
+import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
@@ -1005,6 +1007,157 @@ export default function BookingDetailPage() {
     return savedVerificationId
   }
 
+  const getCertificateRecordHref = (certificate: any) => {
+    const searchTerm =
+      certificate.certificate_number ||
+      certificate.learner_name ||
+      certificate.id
+
+    return `/dashboard/certificates?search=${encodeURIComponent(searchTerm)}`
+  }
+
+  const downloadCertificatePDF = async (certificate: any, delegate?: any) => {
+    const delegateClient = delegate ? getClientForDelegate(delegate) : null
+
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4',
+    })
+
+    const businessName = organisation?.name || 'Training Provider'
+    const businessEmail = organisation?.email || ''
+    const businessPhone = organisation?.phone || ''
+    const learnerName = certificate.learner_name || delegate?.full_name || 'Learner'
+    const courseName = certificate.course_name || booking.course_name || 'Training Course'
+    const title = certificate.certificate_title || 'Certificate of Completion'
+    const body =
+      certificate.certificate_body ||
+      `This is to certify that ${learnerName} has successfully completed ${courseName}.`
+    const footer =
+      certificate.certificate_footer ||
+      'This certificate can be verified online using the certificate number.'
+    const signatureName = certificate.signature_name || businessName
+    const signatureTitle = certificate.signature_title || 'Training Provider'
+    const issueDate = getFormattedDate(certificate.issue_date)
+    const expiryDate = getFormattedDate(certificate.expiry_date)
+    const certificateNumber = certificate.certificate_number || 'Not set'
+
+    let verificationId = ''
+
+    try {
+      verificationId = await ensureCertificateVerificationId(certificate)
+    } catch (error: any) {
+      alert(error.message || 'Could not prepare certificate verification link')
+      return
+    }
+
+    const verificationUrl = `${window.location.origin}/verify/${verificationId}`
+
+    let qrDataUrl = ''
+
+    try {
+      qrDataUrl = await QRCode.toDataURL(verificationUrl, {
+        margin: 1,
+        width: 240,
+      })
+    } catch {
+      qrDataUrl = ''
+    }
+
+    doc.setFillColor(248, 250, 252)
+    doc.rect(0, 0, 297, 210, 'F')
+
+    doc.setFillColor(255, 255, 255)
+    doc.roundedRect(15, 15, 267, 180, 4, 4, 'F')
+
+    doc.setDrawColor(17, 24, 39)
+    doc.setLineWidth(1.2)
+    doc.roundedRect(22, 22, 253, 166, 3, 3, 'D')
+
+    doc.setDrawColor(209, 213, 219)
+    doc.setLineWidth(0.4)
+    doc.roundedRect(28, 28, 241, 154, 2, 2, 'D')
+
+    doc.setTextColor(17, 24, 39)
+    doc.setFontSize(16)
+    doc.text(businessName, 148.5, 40, { align: 'center' })
+
+    doc.setFontSize(30)
+    doc.text(title, 148.5, 63, { align: 'center' })
+
+    doc.setDrawColor(17, 24, 39)
+    doc.setLineWidth(0.5)
+    doc.line(80, 72, 217, 72)
+
+    doc.setFontSize(13)
+    doc.setTextColor(75, 85, 99)
+    doc.text('Presented to', 148.5, 86, { align: 'center' })
+
+    doc.setFontSize(28)
+    doc.setTextColor(17, 24, 39)
+    doc.text(learnerName, 148.5, 103, { align: 'center' })
+
+    doc.setFontSize(12)
+    doc.setTextColor(75, 85, 99)
+    doc.text(doc.splitTextToSize(body, 190), 148.5, 119, { align: 'center' })
+
+    doc.setFontSize(10)
+    doc.setTextColor(55, 65, 81)
+
+    if (delegateClient?.company || client?.company) {
+      doc.text(`Client: ${delegateClient?.company || client?.company}`, 45, 142)
+    }
+
+    doc.text(`Course: ${courseName}`, 45, 150)
+    doc.text(`Issue Date: ${issueDate}`, 45, 158)
+    doc.text(`Expiry Date: ${expiryDate}`, 45, 166)
+    doc.text(`Certificate No: ${certificateNumber}`, 45, 174)
+
+    if (qrDataUrl) {
+      doc.addImage(qrDataUrl, 'PNG', 132, 141, 34, 34)
+      doc.setFontSize(7)
+      doc.setTextColor(107, 114, 128)
+      doc.text('Scan to verify', 149, 179, { align: 'center' })
+    }
+
+    doc.setDrawColor(17, 24, 39)
+    doc.line(198, 153, 255, 153)
+
+    doc.setFontSize(12)
+    doc.setTextColor(17, 24, 39)
+    doc.text(signatureName, 226.5, 162, { align: 'center' })
+
+    doc.setFontSize(9)
+    doc.setTextColor(75, 85, 99)
+    doc.text(signatureTitle, 226.5, 169, { align: 'center' })
+
+    doc.setFontSize(8)
+    doc.setTextColor(107, 114, 128)
+    doc.text(doc.splitTextToSize(footer, 210), 148.5, 186, { align: 'center' })
+
+    if (businessEmail || businessPhone) {
+      doc.setFontSize(8)
+      doc.text(
+        `${businessEmail}${businessEmail && businessPhone ? ' - ' : ''}${businessPhone}`,
+        148.5,
+        194,
+        { align: 'center' }
+      )
+    }
+
+    doc.setFontSize(6)
+    doc.setTextColor(156, 163, 175)
+    doc.text(verificationUrl, 148.5, 201, { align: 'center' })
+
+    const safeName = learnerName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
+
+    doc.save(`${safeName || 'certificate'}-${certificateNumber}.pdf`)
+  }
+
   const sendCertificatesToSelectedDelegates = async () => {
     if (selectedDelegateIds.length === 0) {
       alert('Select at least one delegate first')
@@ -1889,6 +2042,24 @@ export default function BookingDetailPage() {
                       </div>
 
                       <div className="flex flex-wrap gap-2">
+                        {certificate && (
+                          <>
+                            <button
+                              className={buttonSecondary}
+                              onClick={() => downloadCertificatePDF(certificate, delegate)}
+                            >
+                              Download certificate
+                            </button>
+
+                            <Link
+                              href={getCertificateRecordHref(certificate)}
+                              className={buttonSecondary}
+                            >
+                              View certificate record
+                            </Link>
+                          </>
+                        )}
+
                         <button
                           className={buttonSecondary}
                           onClick={() => startEditingDelegate(delegate)}
@@ -1968,7 +2139,7 @@ export default function BookingDetailPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
         <div className={panelClass}>
-          <div className={`${panelHeaderClass} flex items-center justify-between`}>
+          <div className={`${panelHeaderClass} flex items-center justify-between gap-3`}>
             <div>
               <h2 className="text-sm font-semibold text-slate-950">
                 Invoices
@@ -1979,12 +2150,21 @@ export default function BookingDetailPage() {
               </p>
             </div>
 
-            <Link
-              href="/dashboard/invoices"
-              className="text-xs font-medium text-slate-500 hover:text-slate-950"
-            >
-              Manage
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/dashboard/invoices?bookingId=${booking.id}`}
+                className={buttonPrimary}
+              >
+                Create invoice
+              </Link>
+
+              <Link
+                href="/dashboard/invoices"
+                className="text-xs font-medium text-slate-500 hover:text-slate-950"
+              >
+                Manage
+              </Link>
+            </div>
           </div>
 
           <div className="divide-y divide-slate-100">
@@ -2012,6 +2192,15 @@ export default function BookingDetailPage() {
                 <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getInvoiceStatusStyle(invoice.status)}`}>
                   {invoice.status}
                 </span>
+
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <Link
+                    href={`/dashboard/invoices?search=${encodeURIComponent(invoice.invoice_number || invoice.recipient_name || '')}`}
+                    className={buttonSecondary}
+                  >
+                    View invoice
+                  </Link>
+                </div>
               </div>
             ))}
 
@@ -2070,6 +2259,22 @@ export default function BookingDetailPage() {
                 <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getCertificateStatusStyle(certificate.status)}`}>
                   {certificate.status}
                 </span>
+
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <button
+                    className={buttonSecondary}
+                    onClick={() => downloadCertificatePDF(certificate)}
+                  >
+                    Download PDF
+                  </button>
+
+                  <Link
+                    href={getCertificateRecordHref(certificate)}
+                    className={buttonSecondary}
+                  >
+                    View record
+                  </Link>
+                </div>
               </div>
             ))}
 

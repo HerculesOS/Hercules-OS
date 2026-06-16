@@ -287,22 +287,6 @@ export default function CoursesPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Courses
-          </p>
-
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
-            Course templates
-          </h1>
-
-          <p className="text-sm text-slate-500 mt-1">
-            Create reusable course templates for faster bookings and certificate setup.
-          </p>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
         <StatCard
           label="Total courses"
@@ -677,8 +661,14 @@ export default function CoursesPage() {
               })}
 
               {filteredCourses.length === 0 && (
-                <div className="p-6 text-sm text-slate-500">
-                  No course templates found.
+                <div className="p-6">
+                  <p className="text-sm font-semibold text-slate-950">
+                    No course templates yet
+                  </p>
+
+                  <p className="text-sm text-slate-500 mt-1">
+                    Add your first course template to speed up booking creation.
+                  </p>
                 </div>
               )}
             </div>

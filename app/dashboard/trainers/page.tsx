@@ -197,22 +197,6 @@ export default function TrainersPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Trainers
-          </p>
-
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
-            Trainer records
-          </h1>
-
-          <p className="text-sm text-slate-500 mt-1">
-            Manage trainers, delivery staff and contact details.
-          </p>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
         <StatCard
           label="Total trainers"
@@ -472,8 +456,14 @@ export default function TrainersPage() {
               })}
 
               {filteredTrainers.length === 0 && (
-                <div className="p-6 text-sm text-slate-500">
-                  No trainers found. Add your first trainer.
+                <div className="p-6">
+                  <p className="text-sm font-semibold text-slate-950">
+                    No trainers yet
+                  </p>
+
+                  <p className="text-sm text-slate-500 mt-1">
+                    Add your first trainer to assign delivery staff to bookings.
+                  </p>
                 </div>
               )}
             </div>

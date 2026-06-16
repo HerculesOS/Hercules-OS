@@ -28,3 +28,46 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans);
 }
+
+:where(button, summary, a[class*="rounded-md"], a[class*="rounded-lg"], a[class*="block"][class*="p-4"]) {
+  transition-duration: 160ms;
+  transition-property: background-color, border-color, box-shadow, color, opacity, transform;
+  transition-timing-function: ease-out;
+}
+
+:where(button:not(:disabled), summary, a[class*="rounded-md"], a[class*="rounded-lg"], a[class*="block"][class*="p-4"]):hover {
+  transform: translateY(-1px);
+}
+
+:where(button:not(:disabled), summary, a[class*="rounded-md"], a[class*="rounded-lg"], a[class*="block"][class*="p-4"]):active {
+  transform: translateY(0) scale(0.99);
+}
+
+:where(button:not(:disabled), a[class*="rounded-md"], a[class*="rounded-lg"]):hover {
+  box-shadow: 0 8px 18px rgb(15 23 42 / 0.08);
+}
+
+:where(button:disabled) {
+  cursor: not-allowed;
+  transform: none;
+}
+
+:where(a[class*="block"][class*="p-4"]):hover {
+  box-shadow: 0 8px 18px rgb(15 23 42 / 0.06);
+}
+
+details[open] > :not(summary) {
+  animation: details-open 160ms ease-out;
+}
+
+@keyframes details-open {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

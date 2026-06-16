@@ -56,7 +56,7 @@ export default function BookingsPage() {
   const [deliveryTypeFilter, setDeliveryTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [trainerFilter, setTrainerFilter] = useState('all')
-  const [dateSort, setDateSort] = useState('ascending')
+  const [dateSort, setDateSort] = useState('descending')
 
   const inputClass =
     'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
@@ -107,7 +107,8 @@ export default function BookingsPage() {
       .from('bookings')
       .select('*')
       .eq('organisation_id', profile.organisation_id)
-      .order('date', { ascending: true })
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
 
     setOrganisation(organisationData || null)
     setClients(clientsData || [])
@@ -641,7 +642,7 @@ export default function BookingsPage() {
     setDeliveryTypeFilter('all')
     setStatusFilter('all')
     setTrainerFilter('all')
-    setDateSort('ascending')
+    setDateSort('descending')
   }
 
   const scheduledBookings = bookings.filter(
@@ -709,14 +710,16 @@ export default function BookingsPage() {
       return matchesSearch && matchesDeliveryType && matchesStatus && matchesTrainer
     })
     .sort((a, b) => {
-      const dateA = new Date(a.date).getTime()
-      const dateB = new Date(b.date).getTime()
+      const dateA = new Date(a.date || 0).getTime()
+      const dateB = new Date(b.date || 0).getTime()
+      const createdA = new Date(a.created_at || 0).getTime()
+      const createdB = new Date(b.created_at || 0).getTime()
 
       if (dateSort === 'descending') {
-        return dateB - dateA
+        return dateB - dateA || createdB - createdA
       }
 
-      return dateA - dateB
+      return dateA - dateB || createdA - createdB
     })
 
   const getStatusStyle = (status: string) => {
@@ -767,22 +770,6 @@ export default function BookingsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Bookings
-          </p>
-
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
-            Training bookings
-          </h1>
-
-          <p className="text-sm text-slate-500 mt-1">
-            Schedule private client sessions or public open courses.
-          </p>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
         <StatCard
           label="Total bookings"
@@ -875,8 +862,8 @@ export default function BookingsPage() {
               value={dateSort}
               onChange={(e) => setDateSort(e.target.value)}
             >
-              <option value="ascending">Oldest first</option>
               <option value="descending">Newest first</option>
+              <option value="ascending">Oldest first</option>
             </select>
           </div>
 
@@ -1515,8 +1502,14 @@ export default function BookingsPage() {
             })}
 
             {filteredBookings.length === 0 && (
-              <div className="p-6 text-sm text-slate-500">
-                No bookings match your filters.
+              <div className="p-6">
+                <p className="text-sm font-semibold text-slate-950">
+                  No bookings to show
+                </p>
+
+                <p className="text-sm text-slate-500 mt-1">
+                  Create a private booking or public course, or clear the filters to see more records.
+                </p>
               </div>
             )}
           </div>

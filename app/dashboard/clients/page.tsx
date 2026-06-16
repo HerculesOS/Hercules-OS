@@ -133,22 +133,6 @@ export default function ClientsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Clients
-          </p>
-
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
-            Client records
-          </h1>
-
-          <p className="text-sm text-slate-500 mt-1">
-            Manage companies, schools, nurseries and training customers.
-          </p>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
         <StatCard
           label="Total clients"
@@ -355,8 +339,14 @@ export default function ClientsPage() {
               ))}
 
               {filteredClients.length === 0 && (
-                <div className="p-6 text-sm text-slate-500">
-                  No clients found.
+                <div className="p-6">
+                  <p className="text-sm font-semibold text-slate-950">
+                    No clients yet
+                  </p>
+
+                  <p className="text-sm text-slate-500 mt-1">
+                    Add your first client to start managing bookings, delegates and invoices.
+                  </p>
                 </div>
               )}
             </div>

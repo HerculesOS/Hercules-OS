@@ -91,6 +91,12 @@ export default function CertificatesPage() {
   }
 
   useEffect(() => {
+    const requestedSearch = new URLSearchParams(window.location.search).get('search')
+
+    if (requestedSearch) {
+      setSearch(requestedSearch)
+    }
+
     load()
   }, [])
 
@@ -576,22 +582,6 @@ export default function CertificatesPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Certificates
-          </p>
-
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
-            Learner certificates
-          </h1>
-
-          <p className="text-sm text-slate-500 mt-1">
-            Manage certificates, download PDFs, send emails and track expiry status.
-          </p>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
         <StatCard
           label="Total"
@@ -949,8 +939,14 @@ export default function CertificatesPage() {
           })}
 
           {filteredCertificates.length === 0 && (
-            <div className="p-6 text-sm text-slate-500">
-              No certificates found.
+            <div className="p-6">
+              <p className="text-sm font-semibold text-slate-950">
+                No certificates yet
+              </p>
+
+              <p className="text-sm text-slate-500 mt-1">
+                Create certificates from booking delegates to track expiry and verification.
+              </p>
             </div>
           )}
         </div>

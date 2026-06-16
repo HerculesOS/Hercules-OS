@@ -150,21 +150,7 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Settings
-          </p>
-
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
-            Business settings
-          </h1>
-
-          <p className="text-sm text-slate-500 mt-1">
-            Manage business details, public enquiry links, date/time preferences, certificate automation and templates.
-          </p>
-        </div>
-
+      <div className="mb-4 flex justify-end">
         <button
           className={buttonPrimary}
           onClick={saveSettings}

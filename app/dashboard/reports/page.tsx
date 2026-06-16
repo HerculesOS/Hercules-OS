@@ -663,22 +663,10 @@ export default function ReportsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+      <div className="mb-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Reports
-          </p>
-
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
-            Business reports
-          </h1>
-
-          <p className="text-sm text-slate-500 mt-1">
-            Track revenue, bookings, delegates, certificates and export custom Excel reports.
-          </p>
-
           {limitedTables.length > 0 && (
-            <p className="text-xs text-amber-700 mt-2">
+            <p className="text-xs text-amber-700">
               Large report data is capped at {reportRowLimit} rows per table: {limitedTables.join(', ')}.
             </p>
           )}

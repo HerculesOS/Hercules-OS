@@ -284,22 +284,6 @@ export default function RequestsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Requests
-          </p>
-
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
-            Training requests
-          </h1>
-
-          <p className="text-sm text-slate-500 mt-1">
-            Review enquiries submitted through your public training request link.
-          </p>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
         <StatCard
           label="Total"
@@ -588,8 +572,14 @@ export default function RequestsPage() {
           })}
 
           {filteredRequests.length === 0 && (
-            <div className="p-6 text-sm text-slate-500">
-              No training requests found.
+            <div className="p-6">
+              <p className="text-sm font-semibold text-slate-950">
+                No training requests yet
+              </p>
+
+              <p className="text-sm text-slate-500 mt-1">
+                New enquiries from your public request form will appear here.
+              </p>
             </div>
           )}
         </div>

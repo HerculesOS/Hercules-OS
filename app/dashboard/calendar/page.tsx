@@ -494,21 +494,7 @@ export default function CalendarPage() {
   return (
     <div>
       <div className="mb-6 overflow-hidden rounded-lg border border-slate-900 bg-slate-950 text-white">
-        <div className="px-5 py-5 lg:px-6 lg:py-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Calendar
-            </p>
-
-            <h1 className="text-3xl font-semibold tracking-tight mt-1">
-              Training schedule
-            </h1>
-
-            <p className="text-sm text-slate-300 mt-2 max-w-2xl">
-              View private bookings and public open courses in one professional training calendar.
-            </p>
-          </div>
-
+        <div className="px-5 py-4 lg:px-6 flex justify-end">
           <div className="flex flex-wrap gap-2">
             <button
               className="bg-white text-slate-950 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-100"
