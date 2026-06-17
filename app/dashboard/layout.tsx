@@ -22,7 +22,6 @@ import {
   BookOpen,
   GraduationCap,
   BarChart3,
-  Sparkles,
 } from 'lucide-react'
 
 const navItems = [
@@ -219,7 +218,7 @@ export default function DashboardLayout({
   }
 
   const NavLinks = ({ mobile = false }: { mobile?: boolean }) => (
-    <nav className={mobile ? 'flex flex-col gap-1 p-3' : 'flex flex-col gap-1 px-3 py-4'}>
+    <nav className={mobile ? 'flex flex-col gap-1.5 p-3' : 'flex flex-col gap-1.5 px-3 py-5'}>
       {navItems.map((item) => {
         const Icon = item.icon
 
@@ -241,12 +240,12 @@ export default function DashboardLayout({
                 ? `group flex items-center justify-between gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition ${
                     isActive
                       ? 'bg-slate-950 text-white shadow-sm'
-                      : 'text-slate-700 hover:bg-slate-100'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
                   }`
                 : `group flex items-center justify-between gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition ${
                     isActive
-                      ? 'bg-white text-slate-950 shadow-sm'
-                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                      ? 'bg-white text-[#172033] shadow-sm'
+                      : 'text-slate-200 hover:bg-white/12 hover:text-white'
                   }`
             }
           >
@@ -261,8 +260,8 @@ export default function DashboardLayout({
                       }`
                     : `flex h-7 w-7 items-center justify-center rounded-md ${
                         isActive
-                          ? 'bg-slate-950 text-white'
-                          : 'bg-slate-900 text-slate-400 group-hover:bg-slate-700 group-hover:text-white'
+                          ? 'bg-[#24324a] text-white'
+                          : 'bg-white/10 text-slate-300 group-hover:bg-white/16 group-hover:text-white'
                       }`
                 }
               >
@@ -285,20 +284,14 @@ export default function DashboardLayout({
 
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-slate-100 text-slate-950">
-        <div className="pointer-events-none fixed inset-0 overflow-hidden">
-          <div className="absolute -top-24 left-64 h-80 w-80 rounded-full bg-slate-300/30 blur-3xl" />
-          <div className="absolute top-32 right-0 h-96 w-96 rounded-full bg-blue-200/30 blur-3xl" />
-          <div className="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-purple-200/20 blur-3xl" />
-        </div>
-
-        <header className="lg:hidden h-14 bg-slate-950 text-white border-b border-slate-800 flex items-center justify-between px-4 sticky top-0 z-40">
+      <div className="min-h-screen bg-[#f7f8fb] text-slate-950">
+        <header className="lg:hidden h-14 bg-[#1e2d46] text-white border-b border-white/15 flex items-center justify-between px-4 sticky top-0 z-40">
           <div>
             <h1 className="text-base font-semibold tracking-tight">
               Hercules OS
             </h1>
 
-            <p className="text-[10px] text-slate-400">
+            <p className="text-[10px] text-slate-300">
               {activeSection}
             </p>
           </div>
@@ -307,7 +300,7 @@ export default function DashboardLayout({
             {newRequestCount > 0 && (
               <Link
                 href="/dashboard/requests"
-                className="relative border border-slate-700 rounded-md p-2 hover:bg-slate-900"
+                className="relative border border-white/20 rounded-md p-2 text-white hover:bg-white/10"
               >
                 <Inbox size={19} />
 
@@ -319,7 +312,7 @@ export default function DashboardLayout({
 
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="border border-slate-700 rounded-md p-2 hover:bg-slate-900"
+              className="border border-white/20 rounded-md p-2 text-white hover:bg-white/10"
             >
               <Menu size={20} />
             </button>
@@ -329,7 +322,7 @@ export default function DashboardLayout({
         {mobileMenuOpen && (
           <div className="lg:hidden fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm">
             <div className="bg-white w-80 max-w-[85%] min-h-screen shadow-xl flex flex-col">
-              <div className="px-5 py-4 border-b flex items-start justify-between">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between">
                 <div>
                   <h1 className="text-lg font-semibold tracking-tight">
                     Hercules OS
@@ -364,8 +357,8 @@ export default function DashboardLayout({
         )}
 
         <div className="relative flex">
-          <aside className="hidden lg:flex w-68 bg-slate-950 text-white border-r border-slate-900 flex-col fixed left-0 top-0 h-screen overflow-y-auto">
-            <div className="px-5 py-5 border-b border-slate-800">
+          <aside className="hidden lg:flex w-64 bg-[#1e2d46] text-white border-r border-white/15 flex-col fixed left-0 top-0 h-screen overflow-y-auto">
+            <div className="px-5 py-6 border-b border-white/15">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-lg bg-white text-slate-950 flex items-center justify-center font-bold shadow-sm">
                   H
@@ -376,16 +369,16 @@ export default function DashboardLayout({
                     Hercules OS
                   </h1>
 
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Operations suite
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Training operations
                   </p>
                 </div>
               </div>
             </div>
 
             <div className="px-3 pt-4">
-              <div className="rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">
+              <div className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-3">
+                <p className="text-xs uppercase tracking-wide text-slate-300">
                   Workspace
                 </p>
 
@@ -397,24 +390,10 @@ export default function DashboardLayout({
 
             <NavLinks />
 
-            <div className="mt-auto p-3 border-t border-slate-800">
-              <div className="bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700 rounded-lg p-3 mb-3">
-                <div className="flex items-center gap-2">
-                  <Sparkles size={15} className="text-slate-300" />
-
-                  <p className="text-sm font-semibold text-white">
-                    Intelligence layer
-                  </p>
-                </div>
-
-                <p className="text-xs text-slate-400 mt-2 leading-5">
-                  Reports, certificates, invoices and bookings working together.
-                </p>
-              </div>
-
+            <div className="mt-auto p-3 border-t border-white/15">
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md border border-slate-800 text-sm font-medium text-slate-300 hover:bg-slate-900 hover:text-white transition text-left"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md border border-white/20 bg-white/[0.08] text-sm font-semibold text-white hover:bg-white/16 hover:border-white/30 transition text-left"
               >
                 <LogOut size={17} />
                 Log out
@@ -422,8 +401,8 @@ export default function DashboardLayout({
             </div>
           </aside>
 
-          <div className="flex-1 lg:ml-68">
-            <header className="hidden lg:flex h-20 bg-white/85 backdrop-blur-xl border-b border-slate-200 items-center justify-between px-6 sticky top-0 z-30">
+          <div className="flex-1 lg:ml-64">
+            <header className="hidden lg:flex h-[104px] bg-white/92 backdrop-blur-xl border-b border-slate-200/70 items-center justify-between px-10 sticky top-0 z-30">
               <div>
                 <div className="flex items-center gap-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -437,11 +416,11 @@ export default function DashboardLayout({
                   </p>
                 </div>
 
-                <h2 className="text-xl font-semibold tracking-tight text-slate-950 mt-1">
+                <h2 className="text-2xl font-semibold text-slate-950 mt-1">
                   {pageDetails.title}
                 </h2>
 
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-sm text-slate-500 mt-1">
                   {pageDetails.subtitle}
                 </p>
               </div>
@@ -449,7 +428,7 @@ export default function DashboardLayout({
               <div className="flex items-center gap-3">
                 <Link
                   href="/dashboard/reports"
-                  className="border border-slate-200 rounded-md px-3 py-2 flex items-center gap-2 hover:bg-slate-50 text-sm font-medium"
+                  className="border border-slate-200 bg-white rounded-md px-3 py-2 flex items-center gap-2 hover:bg-slate-50 text-sm font-medium"
                 >
                   <BarChart3 size={16} />
                   Reports
@@ -458,7 +437,7 @@ export default function DashboardLayout({
                 {newRequestCount > 0 && (
                   <Link
                     href="/dashboard/requests"
-                    className="relative border border-slate-200 rounded-md px-3 py-2 flex items-center gap-2 hover:bg-slate-50 text-sm font-medium"
+                    className="relative border border-slate-200 bg-white rounded-md px-3 py-2 flex items-center gap-2 hover:bg-slate-50 text-sm font-medium"
                   >
                     <Inbox size={16} />
 
@@ -478,11 +457,9 @@ export default function DashboardLayout({
               </div>
             </header>
 
-            <main className="relative p-4 sm:p-5 lg:p-6">
-              <div className="mx-auto max-w-[1500px]">
-                <div className="rounded-xl border border-white/70 bg-white/55 p-3 shadow-sm backdrop-blur-sm sm:p-4 lg:p-5">
-                  {children}
-                </div>
+            <main className="relative p-4 sm:p-7 lg:p-10">
+              <div className="mx-auto max-w-[1360px]">
+                {children}
               </div>
             </main>
           </div>

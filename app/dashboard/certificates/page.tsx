@@ -469,6 +469,12 @@ export default function CertificatesPage() {
     setLinkFilter('all')
   }
 
+  const isCertificateExpiringSoon = (certificate: any) => {
+    if (!certificate.expiry_date || certificate.status !== 'valid') return false
+
+    return isLocalDateWithinNextDays(certificate.expiry_date, 90)
+  }
+
   const filteredCertificates = certificates.filter((certificate) => {
     const delegate = getDelegateForCertificate(certificate)
     const booking = getBookingForCertificate(certificate)
@@ -498,7 +504,9 @@ export default function CertificatesPage() {
     const matchesSearch = searchableText.includes(search.toLowerCase())
 
     const matchesStatus =
-      statusFilter === 'all' || certificate.status === statusFilter
+      statusFilter === 'all' ||
+      certificate.status === statusFilter ||
+      (statusFilter === 'expiring_soon' && isCertificateExpiringSoon(certificate))
 
     const matchesLink =
       linkFilter === 'all' ||
@@ -525,9 +533,7 @@ export default function CertificatesPage() {
   )
 
   const expiringSoonCertificates = certificates.filter((certificate) => {
-    if (!certificate.expiry_date || certificate.status !== 'valid') return false
-
-    return isLocalDateWithinNextDays(certificate.expiry_date, 90)
+    return isCertificateExpiringSoon(certificate)
   })
 
   const getStatusStyle = (status: string) => {
@@ -648,6 +654,7 @@ export default function CertificatesPage() {
             >
               <option value="all">All statuses</option>
               <option value="valid">Valid</option>
+              <option value="expiring_soon">Expiring soon</option>
               <option value="expired">Expired</option>
               <option value="revoked">Revoked</option>
             </select>

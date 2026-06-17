@@ -493,18 +493,18 @@ export default function CalendarPage() {
 
   return (
     <div>
-      <div className="mb-6 overflow-hidden rounded-lg border border-slate-900 bg-slate-950 text-white">
+      <div className="mb-6 overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-950">
         <div className="px-5 py-4 lg:px-6 flex justify-end">
           <div className="flex flex-wrap gap-2">
             <button
-              className="bg-white text-slate-950 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-100"
+              className="border border-slate-200 bg-white text-slate-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50 hover:text-slate-950"
               onClick={goToToday}
             >
               Today
             </button>
 
             <button
-              className="border border-slate-700 px-3 py-2 rounded-md text-sm font-medium text-slate-200 hover:bg-slate-900"
+              className="bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800"
               onClick={() => openCreateForm(todayString)}
             >
               New booking
@@ -512,8 +512,8 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 border-t border-slate-800">
-          <div className="p-4 border-b md:border-b-0 md:border-r border-slate-800">
+        <div className="grid grid-cols-1 md:grid-cols-4 border-t border-slate-100">
+          <div className="p-4 border-b md:border-b-0 md:border-r border-slate-100">
             <p className="text-xs uppercase tracking-wide text-slate-400">
               This month
             </p>
@@ -522,12 +522,12 @@ export default function CalendarPage() {
               {monthName}
             </p>
 
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               {currentYear}
             </p>
           </div>
 
-          <div className="p-4 border-b md:border-b-0 md:border-r border-slate-800">
+          <div className="p-4 border-b md:border-b-0 md:border-r border-slate-100">
             <p className="text-xs uppercase tracking-wide text-slate-400">
               Month bookings
             </p>
@@ -536,12 +536,12 @@ export default function CalendarPage() {
               {currentMonthBookings.length}
             </p>
 
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               Scheduled in view
             </p>
           </div>
 
-          <div className="p-4 border-b md:border-b-0 md:border-r border-slate-800">
+          <div className="p-4 border-b md:border-b-0 md:border-r border-slate-100">
             <p className="text-xs uppercase tracking-wide text-slate-400">
               Upcoming
             </p>
@@ -550,7 +550,7 @@ export default function CalendarPage() {
               {upcomingBookings.length}
             </p>
 
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               Future active bookings
             </p>
           </div>
@@ -566,7 +566,7 @@ export default function CalendarPage() {
                 : 'None'}
             </p>
 
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               {busiestDay?.count || 0} booking{busiestDay?.count === 1 ? '' : 's'}
             </p>
           </div>
@@ -636,13 +636,13 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          <div className="bg-slate-950 grid grid-cols-7 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-300">
-            <div className="py-3 border-r border-slate-800">Sun</div>
-            <div className="py-3 border-r border-slate-800">Mon</div>
-            <div className="py-3 border-r border-slate-800">Tue</div>
-            <div className="py-3 border-r border-slate-800">Wed</div>
-            <div className="py-3 border-r border-slate-800">Thu</div>
-            <div className="py-3 border-r border-slate-800">Fri</div>
+          <div className="bg-slate-50 grid grid-cols-7 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-100">
+            <div className="py-3 border-r border-slate-100">Sun</div>
+            <div className="py-3 border-r border-slate-100">Mon</div>
+            <div className="py-3 border-r border-slate-100">Tue</div>
+            <div className="py-3 border-r border-slate-100">Wed</div>
+            <div className="py-3 border-r border-slate-100">Thu</div>
+            <div className="py-3 border-r border-slate-100">Fri</div>
             <div className="py-3">Sat</div>
           </div>
 
@@ -756,8 +756,8 @@ export default function CalendarPage() {
             {!showCreateForm ? (
               <div className="p-4">
                 {selectedDate && (
-                  <div className="bg-slate-950 text-white rounded-lg p-4 mb-4">
-                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                  <div className="bg-slate-50 text-slate-950 border border-slate-200 rounded-lg p-4 mb-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">
                       Selected date
                     </p>
 
@@ -767,14 +767,14 @@ export default function CalendarPage() {
 
                     <div className="flex flex-wrap gap-2 mt-4">
                       <button
-                        className="bg-white text-slate-950 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-100"
+                        className="bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800"
                         onClick={() => openCreateForm(selectedDate)}
                       >
                         Add booking
                       </button>
 
                       <button
-                        className="border border-slate-700 px-3 py-2 rounded-md text-sm font-medium text-slate-200 hover:bg-slate-900"
+                        className="border border-slate-200 bg-white px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-950"
                         onClick={() => setSelectedDate('')}
                       >
                         Clear
@@ -847,8 +847,8 @@ export default function CalendarPage() {
               </div>
             ) : (
               <div className="p-4 flex flex-col gap-3">
-                <div className="bg-slate-950 text-white rounded-lg p-4">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                <div className="bg-slate-50 text-slate-950 border border-slate-200 rounded-lg p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">
                     Creating booking for
                   </p>
 
@@ -1029,12 +1029,12 @@ export default function CalendarPage() {
             )}
           </div>
 
-          <div className="bg-slate-950 text-white border border-slate-900 rounded-lg p-4">
+          <div className="bg-white text-slate-950 border border-slate-200 rounded-lg p-4">
             <p className="text-sm font-semibold">
               Calendar key
             </p>
 
-            <div className="grid gap-3 mt-4 text-xs text-slate-300">
+            <div className="grid gap-3 mt-4 text-xs text-slate-600">
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-sm bg-blue-500" />
                 Private scheduled booking

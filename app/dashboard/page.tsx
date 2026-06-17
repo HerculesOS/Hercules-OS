@@ -134,17 +134,17 @@ export default function Dashboard() {
     detail?: string
   }) => {
     const content = (
-      <div className="bg-white border border-slate-200 rounded-lg p-4 hover:border-slate-300 transition">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+      <div className="bg-white border border-slate-200 rounded-lg p-6 hover:border-slate-300 transition min-h-36 flex flex-col justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
           {label}
         </p>
 
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-950 mt-2">
+        <h2 className="text-4xl font-semibold text-slate-950 mt-4">
           {value}
         </h2>
 
         {detail && (
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-sm text-slate-500 mt-3 leading-6">
             {detail}
           </p>
         )}
@@ -185,41 +185,43 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
-        <div>
+      <div className="mb-8 rounded-[28px] bg-white border border-slate-200 p-6 sm:p-8 lg:p-10 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+        <div className="max-w-2xl">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Overview
           </p>
 
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 mt-1">
+          <h1 className="text-3xl sm:text-4xl font-semibold text-slate-950 mt-3">
             Welcome back
           </h1>
 
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-base text-slate-500 mt-3 leading-7">
             {organisation?.name
               ? `Here’s what’s happening at ${organisation.name}.`
               : 'Manage your training business from one place.'}
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-3">
           <Link
             href="/dashboard/bookings"
-            className="bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800"
+            className="bg-slate-950 text-white px-4 py-2.5 rounded-md text-sm font-medium hover:bg-slate-800"
           >
             Create booking
           </Link>
 
           <Link
             href="/dashboard/clients"
-            className="bg-white border border-slate-200 px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-50"
+            className="bg-white border border-slate-200 px-4 py-2.5 rounded-md text-sm font-medium hover:bg-slate-50"
           >
             Add client
           </Link>
         </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-5">
         <StatCard
           label="Invoice value"
           value={`£${totalRevenue.toFixed(2)}`}
@@ -249,7 +251,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
         <StatCard
           label="Completed bookings"
           value={completedBookings.length}
@@ -269,7 +271,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         <div className="bg-white border border-slate-200 rounded-lg">
           <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
             <div>

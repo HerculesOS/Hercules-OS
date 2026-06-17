@@ -24,9 +24,11 @@
 }
 
 body {
-  background: var(--background);
+  background: #f7f8fb;
   color: var(--foreground);
   font-family: var(--font-geist-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 :where(button, summary, a[class*="rounded-md"], a[class*="rounded-lg"], a[class*="block"][class*="p-4"]) {
@@ -47,9 +49,69 @@ body {
   box-shadow: 0 8px 18px rgb(15 23 42 / 0.08);
 }
 
+:where(button[class*="bg-slate-950"], a[class*="bg-slate-950"]) {
+  background: linear-gradient(135deg, #24324a, #36577f);
+  box-shadow: 0 14px 28px rgb(36 50 74 / 0.18);
+}
+
+:where(button[class*="border"][class*="slate"], a[class*="border"][class*="slate"]) {
+  background-color: rgb(255 255 255 / 0.92);
+}
+
+:where(button[class*="border"][class*="slate"], a[class*="border"][class*="slate"]):hover {
+  border-color: rgb(148 163 184 / 0.55);
+  background-color: #ffffff;
+}
+
 :where(button:disabled) {
   cursor: not-allowed;
   transform: none;
+}
+
+:where(input, select, textarea) {
+  min-height: 42px;
+  border-radius: 14px;
+  transition-duration: 160ms;
+  transition-property: border-color, box-shadow, background-color;
+  transition-timing-function: ease-out;
+}
+
+:where(input, select, textarea):focus {
+  box-shadow: 0 0 0 4px rgb(148 163 184 / 0.14);
+}
+
+:where([class*="bg-white"][class*="border"][class*="rounded-lg"]) {
+  border-radius: 22px;
+  border-color: rgb(226 232 240 / 0.8);
+  box-shadow: 0 18px 45px rgb(15 23 42 / 0.06);
+}
+
+:where([class*="px-4"][class*="py-3"][class*="border-b"]) {
+  padding: 1.125rem 1.25rem;
+  border-color: rgb(226 232 240 / 0.65);
+}
+
+:where([class*="px-4"][class*="py-3"][class*="border-b"]) h2 {
+  font-size: 0.98rem;
+}
+
+:where([class*="bg-slate-50"][class*="border"][class*="rounded-lg"], [class*="bg-slate-50"][class*="border"][class*="rounded-md"]) {
+  border-color: rgb(226 232 240 / 0.75);
+  background: rgb(248 250 252 / 0.72);
+  border-radius: 18px;
+}
+
+:where([class*="divide-y"] > [class*="p-4"], [class*="divide-y"] > [class*="p-3"]) {
+  margin: 0.25rem;
+  border-radius: 18px;
+  transition-duration: 160ms;
+  transition-property: background-color, box-shadow;
+  transition-timing-function: ease-out;
+}
+
+:where([class*="divide-y"] > [class*="p-4"], [class*="divide-y"] > [class*="p-3"]):hover {
+  background-color: #ffffff;
+  box-shadow: 0 12px 28px rgb(15 23 42 / 0.07);
 }
 
 :where(a[class*="block"][class*="p-4"]):hover {
