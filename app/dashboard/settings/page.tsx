@@ -478,6 +478,31 @@ export default function SettingsPage() {
 
         <div className="xl:col-span-4 grid gap-4 h-fit">
           <Link
+            href="/dashboard/setup"
+            className={`${panelClass} block hover:border-slate-300 transition`}
+          >
+            <div className={panelHeaderClass}>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Setup guide
+              </h2>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                First-use checklist
+              </p>
+            </div>
+
+            <div className="p-4">
+              <p className="text-sm text-slate-600 leading-6">
+                Work through business details, templates, imports, public enquiries and your first booking.
+              </p>
+
+              <p className="text-xs font-medium text-slate-500 mt-4">
+                Open setup guide {'>'}
+              </p>
+            </div>
+          </Link>
+
+          <Link
             href="/dashboard/settings/email-templates"
             className={`${panelClass} block hover:border-slate-300 transition`}
           >

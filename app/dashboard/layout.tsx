@@ -23,6 +23,7 @@ import {
   GraduationCap,
   BarChart3,
   Upload,
+  ListChecks,
 } from 'lucide-react'
 
 const navItems = [
@@ -88,6 +89,11 @@ const navItems = [
     icon: Upload,
   },
   {
+    href: '/dashboard/setup',
+    label: 'Setup',
+    icon: ListChecks,
+  },
+  {
     href: '/dashboard/settings',
     label: 'Settings',
     icon: Settings,
@@ -142,6 +148,10 @@ const pageCopy: Record<string, { title: string; subtitle: string }> = {
   '/dashboard/import': {
     title: 'Import',
     subtitle: 'Bring clients and delegates in from CSV files.',
+  },
+  '/dashboard/setup': {
+    title: 'Setup Guide',
+    subtitle: 'Finish the essentials for a ready-to-use workspace.',
   },
   '/dashboard/settings': {
     title: 'Settings',

@@ -4,6 +4,33 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
+import {
+  calculateSetupProgress,
+  type SetupCounts,
+} from '@/lib/setupProgress'
+
+const emptySetupCounts: SetupCounts = {
+  courseTemplates: 0,
+  certificateTemplates: 0,
+  emailTemplates: 0,
+  clients: 0,
+  delegates: 0,
+  bookings: 0,
+}
+
+const getSetupCardDismissalKey = (organisationId: string) =>
+  `hercules.setupCardDismissed.${organisationId}`
+
+const countRows = async (table: string, organisationId: string) => {
+  const { count, error } = await supabase
+    .from(table)
+    .select('*', { count: 'exact', head: true })
+    .eq('organisation_id', organisationId)
+
+  if (error) throw error
+
+  return count || 0
+}
 
 export default function Dashboard() {
   const [clients, setClients] = useState<any[]>([])
@@ -11,9 +38,15 @@ export default function Dashboard() {
   const [invoices, setInvoices] = useState<any[]>([])
   const [certificates, setCertificates] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
+  const [setupCounts, setSetupCounts] = useState<SetupCounts>(emptySetupCounts)
+  const [setupCardDismissed, setSetupCardDismissed] = useState(false)
 
   const load = async () => {
     const profile = await getOrCreateAccount()
+
+    setSetupCardDismissed(
+      localStorage.getItem(getSetupCardDismissalKey(profile.organisation_id)) === 'true'
+    )
 
     const { data: organisationData } = await supabase
       .from('organisations')
@@ -44,11 +77,31 @@ export default function Dashboard() {
       .eq('organisation_id', profile.organisation_id)
       .order('expiry_date', { ascending: true })
 
+    const [
+      courseTemplatesCount,
+      certificateTemplatesCount,
+      emailTemplatesCount,
+      delegatesCount,
+    ] = await Promise.all([
+      countRows('course_templates', profile.organisation_id),
+      countRows('certificate_templates', profile.organisation_id),
+      countRows('email_templates', profile.organisation_id),
+      countRows('delegates', profile.organisation_id),
+    ])
+
     setOrganisation(organisationData || null)
     setClients(clientsData || [])
     setBookings(bookingsData || [])
     setInvoices(invoicesData || [])
     setCertificates(certificatesData || [])
+    setSetupCounts({
+      courseTemplates: courseTemplatesCount,
+      certificateTemplates: certificateTemplatesCount,
+      emailTemplates: emailTemplatesCount,
+      clients: clientsData?.length || 0,
+      delegates: delegatesCount,
+      bookings: bookingsData?.length || 0,
+    })
   }
 
   useEffect(() => {
@@ -98,6 +151,18 @@ export default function Dashboard() {
 
     return expiry < today
   })
+
+  const setupProgress = calculateSetupProgress(organisation, setupCounts)
+  const shouldShowSetupCard =
+    Boolean(organisation) && !setupProgress.complete && !setupCardDismissed
+
+  const dismissSetupCard = () => {
+    if (organisation?.id) {
+      localStorage.setItem(getSetupCardDismissalKey(organisation.id), 'true')
+    }
+
+    setSetupCardDismissed(true)
+  }
 
   const getDaysUntilExpiry = (expiryDate: string) => {
     const expiry = new Date(expiryDate)
@@ -220,6 +285,64 @@ export default function Dashboard() {
         </div>
         </div>
       </div>
+
+      {shouldShowSetupCard && (
+        <div className="mb-8 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Setup
+              </p>
+
+              <h2 className="mt-1 text-lg font-semibold text-slate-950">
+                Finish setting up Hercules OS
+              </h2>
+
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                Complete your business details, templates, imports and first booking.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="min-w-44">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                  <span>
+                    {setupProgress.completedSteps} of {setupProgress.totalSteps}
+                  </span>
+
+                  <span>
+                    {setupProgress.percent}%
+                  </span>
+                </div>
+
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-blue-600"
+                    style={{ width: `${setupProgress.percent}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/dashboard/setup"
+                  className="inline-flex items-center justify-center rounded-md bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-md active:translate-y-0"
+                >
+                  Open setup guide
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={dismissSetupCard}
+                  className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-500 transition hover:-translate-y-0.5 hover:bg-slate-50 hover:text-slate-950 active:translate-y-0"
+                >
+                  Hide setup guide
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-5">
         <StatCard
