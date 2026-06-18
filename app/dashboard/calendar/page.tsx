@@ -145,6 +145,19 @@ export default function CalendarPage() {
     })
   }
 
+  const bookingOverlapsDateRange = (
+    booking: any,
+    rangeStart: string,
+    rangeEnd: string
+  ) => {
+    const bookingStart = booking.date
+    const bookingEnd = booking.end_date || booking.date
+
+    if (!bookingStart) return false
+
+    return bookingStart <= rangeEnd && bookingEnd >= rangeStart
+  }
+
   const getClientForBooking = (booking: any) => {
     if (!booking?.client_id) return null
 
@@ -372,13 +385,9 @@ export default function CalendarPage() {
   }
 
   const upcomingBookings = bookings.filter((booking) => {
-    const bookingDate = new Date(booking.date)
-    const todayDate = new Date()
+    const bookingEnd = booking.end_date || booking.date
 
-    todayDate.setHours(0, 0, 0, 0)
-    bookingDate.setHours(0, 0, 0, 0)
-
-    return bookingDate >= todayDate && booking.status !== 'cancelled'
+    return bookingEnd >= todayString && booking.status !== 'cancelled'
   })
 
   const completedBookings = bookings.filter(
@@ -394,14 +403,10 @@ export default function CalendarPage() {
   )
 
   const currentMonthBookings = bookings.filter((booking) => {
-    if (!booking.date) return false
+    const monthStart = formatDate(currentYear, currentMonth, 1)
+    const monthEnd = formatDate(currentYear, currentMonth, daysInMonth)
 
-    const bookingDate = new Date(booking.date)
-
-    return (
-      bookingDate.getMonth() === currentMonth &&
-      bookingDate.getFullYear() === currentYear
-    )
+    return bookingOverlapsDateRange(booking, monthStart, monthEnd)
   })
 
   const selectedDateBookings = selectedDate

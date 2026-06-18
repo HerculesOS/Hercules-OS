@@ -2195,7 +2195,7 @@ export default function BookingDetailPage() {
 
                 <div className="flex flex-wrap gap-2 mt-3">
                   <Link
-                    href={`/dashboard/invoices?search=${encodeURIComponent(invoice.invoice_number || invoice.recipient_name || '')}`}
+                    href={`/dashboard/invoices?search=${encodeURIComponent(invoice.id)}`}
                     className={buttonSecondary}
                   >
                     View invoice

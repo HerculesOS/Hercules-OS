@@ -497,7 +497,7 @@ export default function SettingsPage() {
               </p>
 
               <p className="text-xs font-medium text-slate-500 mt-4">
-                Open email templates →
+                Open email templates {'>'}
               </p>
             </div>
           </Link>
@@ -522,7 +522,32 @@ export default function SettingsPage() {
               </p>
 
               <p className="text-xs font-medium text-slate-500 mt-4">
-                Open certificate templates →
+                Open certificate templates {'>'}
+              </p>
+            </div>
+          </Link>
+
+          <Link
+            href="/dashboard/import"
+            className={`${panelClass} block hover:border-slate-300 transition`}
+          >
+            <div className={panelHeaderClass}>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Import data
+              </h2>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                Clients and delegates
+              </p>
+            </div>
+
+            <div className="p-4">
+              <p className="text-sm text-slate-600 leading-6">
+                Upload CSV files, preview validation results and safely import records into this workspace.
+              </p>
+
+              <p className="text-xs font-medium text-slate-500 mt-4">
+                Open import tools {'>'}
               </p>
             </div>
           </Link>
@@ -603,3 +628,4 @@ export default function SettingsPage() {
     </div>
   )
 }
+

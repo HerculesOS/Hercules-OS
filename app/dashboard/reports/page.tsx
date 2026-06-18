@@ -468,6 +468,22 @@ export default function ReportsPage() {
     return row
   })
 
+  const filteredInvoicesForStats = invoices.filter((invoice) =>
+    isWithinDateRange(getRevenueDateField(invoice))
+  )
+
+  const filteredBookingsForStats = bookings.filter((booking) =>
+    isWithinDateRange(booking.date)
+  )
+
+  const filteredDelegatesForStats = delegates.filter((delegate) =>
+    isWithinDateRange(delegate.created_at)
+  )
+
+  const filteredCertificatesForStats = certificates.filter((certificate) =>
+    isWithinDateRange(certificate.issue_date)
+  )
+
   const exportToExcel = () => {
     if (selectedFields.length === 0) {
       alert('Select at least one field to export.')
@@ -493,38 +509,38 @@ export default function ReportsPage() {
     XLSX.writeFile(workbook, `${reportTitle}-${safeRange}.xlsx`)
   }
 
-  const totalRevenue = invoices.reduce(
+  const totalRevenue = filteredInvoicesForStats.reduce(
     (sum, invoice) => sum + Number(invoice.total_amount || invoice.amount || 0),
     0
   )
 
-  const paidRevenue = invoices
+  const paidRevenue = filteredInvoicesForStats
     .filter((invoice) => invoice.status === 'paid')
     .reduce(
       (sum, invoice) => sum + Number(invoice.total_amount || invoice.amount || 0),
       0
     )
 
-  const outstandingRevenue = invoices
+  const outstandingRevenue = filteredInvoicesForStats
     .filter((invoice) => invoice.status !== 'paid')
     .reduce(
       (sum, invoice) => sum + Number(invoice.total_amount || invoice.amount || 0),
       0
     )
 
-  const publicBookings = bookings.filter(
+  const publicBookings = filteredBookingsForStats.filter(
     (booking) => booking.course_delivery_type === 'public'
   )
 
-  const privateBookings = bookings.filter(
+  const privateBookings = filteredBookingsForStats.filter(
     (booking) => (booking.course_delivery_type || 'private') === 'private'
   )
 
-  const validCertificates = certificates.filter(
+  const validCertificates = filteredCertificatesForStats.filter(
     (certificate) => certificate.status === 'valid'
   )
 
-  const expiringCertificates = certificates.filter((certificate) => {
+  const expiringCertificates = filteredCertificatesForStats.filter((certificate) => {
     if (!certificate.expiry_date || certificate.status !== 'valid') return false
 
     return isLocalDateWithinNextDays(certificate.expiry_date, 90)
@@ -684,7 +700,7 @@ export default function ReportsPage() {
         <StatCard
           label="Total revenue"
           value={currency(totalRevenue)}
-          detail="All invoice value"
+          detail="Invoice value in range"
         />
 
         <StatCard
@@ -701,13 +717,13 @@ export default function ReportsPage() {
 
         <StatCard
           label="Delegates"
-          value={delegates.length}
-          detail="All learner records"
+          value={filteredDelegatesForStats.length}
+          detail="Learners in range"
         />
 
         <StatCard
           label="Bookings"
-          value={bookings.length}
+          value={filteredBookingsForStats.length}
           detail={`${privateBookings.length} private · ${publicBookings.length} public`}
         />
 

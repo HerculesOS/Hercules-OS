@@ -347,6 +347,13 @@ export default function ClientsPage() {
                   <p className="text-sm text-slate-500 mt-1">
                     Add your first client to start managing bookings, delegates and invoices.
                   </p>
+
+                  <Link
+                    href="/dashboard/import"
+                    className={`${buttonSecondary} inline-block mt-4`}
+                  >
+                    Import clients
+                  </Link>
                 </div>
               )}
             </div>

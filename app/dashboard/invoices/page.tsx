@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate } from '@/lib/formatters'
@@ -833,6 +834,7 @@ export default function InvoicesPage() {
         : null
 
       const searchableText = `
+        ${invoice.id || ''}
         ${invoice.invoice_number || ''}
         ${invoice.client_name || ''}
         ${invoice.recipient_name || ''}
@@ -1515,11 +1517,18 @@ export default function InvoicesPage() {
                   No invoices to show
                 </p>
 
-                <p className="text-sm text-slate-500 mt-1">
-                  Create an invoice from a booking, or clear the filters to see more records.
-                </p>
-              </div>
-            )}
+                  <p className="text-sm text-slate-500 mt-1">
+                    Create an invoice from a booking, or clear the filters to see more records.
+                  </p>
+
+                  <Link
+                    href="/dashboard/bookings"
+                    className={`${buttonSecondary} inline-block mt-4`}
+                  >
+                    Open bookings
+                  </Link>
+                </div>
+              )}
           </div>
         </div>
       </div>

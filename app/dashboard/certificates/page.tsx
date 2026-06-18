@@ -954,6 +954,13 @@ export default function CertificatesPage() {
               <p className="text-sm text-slate-500 mt-1">
                 Create certificates from booking delegates to track expiry and verification.
               </p>
+
+              <Link
+                href="/dashboard/bookings"
+                className={`${buttonSecondary} inline-block mt-4`}
+              >
+                Open bookings
+              </Link>
             </div>
           )}
         </div>

@@ -560,6 +560,13 @@ export default function DelegatesPage() {
                   <p className="text-sm text-slate-500 mt-1">
                     Add delegates directly or attach them while creating bookings.
                   </p>
+
+                  <Link
+                    href="/dashboard/import"
+                    className={`${buttonSecondary} inline-block mt-4`}
+                  >
+                    Import delegates
+                  </Link>
                 </div>
               )}
             </div>

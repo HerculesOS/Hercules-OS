@@ -22,6 +22,7 @@ import {
   BookOpen,
   GraduationCap,
   BarChart3,
+  Upload,
 } from 'lucide-react'
 
 const navItems = [
@@ -82,6 +83,11 @@ const navItems = [
     icon: BarChart3,
   },
   {
+    href: '/dashboard/import',
+    label: 'Import',
+    icon: Upload,
+  },
+  {
     href: '/dashboard/settings',
     label: 'Settings',
     icon: Settings,
@@ -132,6 +138,10 @@ const pageCopy: Record<string, { title: string; subtitle: string }> = {
   '/dashboard/reports': {
     title: 'Reports',
     subtitle: 'Analyse performance and export custom reports.',
+  },
+  '/dashboard/import': {
+    title: 'Import',
+    subtitle: 'Bring clients and delegates in from CSV files.',
   },
   '/dashboard/settings': {
     title: 'Settings',
@@ -357,7 +367,7 @@ export default function DashboardLayout({
         )}
 
         <div className="relative flex">
-          <aside className="hidden lg:flex w-64 bg-[#1e2d46] text-white border-r border-white/15 flex-col fixed left-0 top-0 h-screen overflow-y-auto">
+          <aside className="hidden lg:flex w-64 bg-[#1e2d46] text-white border-r border-white/15 flex-col fixed left-0 top-0 h-screen overflow-hidden">
             <div className="px-5 py-6 border-b border-white/15">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-lg bg-white text-slate-950 flex items-center justify-center font-bold shadow-sm">
@@ -388,7 +398,9 @@ export default function DashboardLayout({
               </div>
             </div>
 
-            <NavLinks />
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <NavLinks />
+            </div>
 
             <div className="mt-auto p-3 border-t border-white/15">
               <button
