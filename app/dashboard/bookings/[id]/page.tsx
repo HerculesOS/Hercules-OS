@@ -11,6 +11,13 @@ import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
 import { createCertificateVerificationId } from '@/lib/certificateVerification'
 import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
 import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
+import {
+  getRegisterStatus,
+  isCertificateEligible,
+  normalizeRegisterRow,
+  type AttendanceStatus,
+  type ResultStatus,
+} from '@/lib/attendanceRegister'
 
 export default function BookingDetailPage() {
   const params = useParams()
@@ -69,6 +76,8 @@ export default function BookingDetailPage() {
   const [certificateExpiryDate, setCertificateExpiryDate] = useState('')
   const [creatingCertificates, setCreatingCertificates] = useState(false)
   const [sendingCertificates, setSendingCertificates] = useState(false)
+  const [savingRegister, setSavingRegister] = useState(false)
+  const [registerMessage, setRegisterMessage] = useState('')
 
   const inputClass =
     'border border-slate-200 bg-white px-3 py-2 rounded-md text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
@@ -300,7 +309,12 @@ export default function BookingDetailPage() {
       .eq('booking_id', bookingId)
       .eq('organisation_id', currentProfile.organisation_id)
 
-    const delegateIds = (bookingLinksData || []).map((link) => link.delegate_id)
+    const bookingLinks = bookingLinksData || []
+    const bookingLinksByDelegateId = new Map(
+      bookingLinks.map((link) => [link.delegate_id, link])
+    )
+
+    const delegateIds = bookingLinks.map((link) => link.delegate_id)
 
     let bookingDelegatesData: any[] = []
 
@@ -312,7 +326,22 @@ export default function BookingDetailPage() {
         .eq('organisation_id', currentProfile.organisation_id)
         .order('full_name', { ascending: true })
 
-      bookingDelegatesData = data || []
+      bookingDelegatesData = (data || []).map((delegate) => {
+        const link = bookingLinksByDelegateId.get(delegate.id) || {}
+        const normalizedRegister = normalizeRegisterRow({
+          attendance_status: link.attendance_status,
+          result_status: link.result_status,
+        })
+
+        return {
+          ...delegate,
+          booking_delegate_id: link.id,
+          attendance_status: normalizedRegister.attendance_status,
+          result_status: normalizedRegister.result_status,
+          attendance_notes: link.attendance_notes || '',
+          register_marked_at: link.register_marked_at || null,
+        }
+      })
     }
 
     const selectedTemplate = getCertificateTemplateFromLists(
@@ -885,6 +914,92 @@ export default function BookingDetailPage() {
     setSelectedDelegateIds([])
   }
 
+  const updateDelegateRegisterField = (
+    delegateId: string,
+    field: 'attendance_status' | 'result_status' | 'attendance_notes',
+    value: string
+  ) => {
+    setRegisterMessage('')
+    setDelegates((previous) =>
+      previous.map((delegate) => {
+        if (delegate.id !== delegateId) return delegate
+
+        if (field === 'attendance_status') {
+          const attendanceStatus = value as AttendanceStatus
+          const nextResultStatus =
+            attendanceStatus === 'absent' && delegate.result_status === 'passed'
+              ? 'failed'
+              : delegate.result_status
+
+          return {
+            ...delegate,
+            attendance_status: attendanceStatus,
+            result_status: nextResultStatus,
+          }
+        }
+
+        return {
+          ...delegate,
+          [field]: value,
+        }
+      })
+    )
+  }
+
+  const saveRegister = async () => {
+    if (delegates.length === 0) {
+      setRegisterMessage('Attach delegates before saving the register.')
+      return
+    }
+
+    setSavingRegister(true)
+    setRegisterMessage('')
+
+    const normalizedDelegates = delegates.map((delegate) =>
+      normalizeRegisterRow(delegate)
+    )
+
+    const normalizedAbsentPassed = delegates.some(
+      (delegate) =>
+        delegate.attendance_status === 'absent' &&
+        delegate.result_status === 'passed'
+    )
+
+    const now = new Date().toISOString()
+
+    const results = await Promise.all(
+      normalizedDelegates.map((delegate) =>
+        supabase
+          .from('booking_delegates')
+          .update({
+            attendance_status: delegate.attendance_status,
+            result_status: delegate.result_status,
+            attendance_notes: delegate.attendance_notes?.trim() || null,
+            register_marked_at: now,
+          })
+          .eq('booking_id', booking.id)
+          .eq('delegate_id', delegate.id)
+          .eq('organisation_id', profile.organisation_id)
+      )
+    )
+
+    const firstError = results.find((result) => result.error)?.error
+
+    setSavingRegister(false)
+
+    if (firstError) {
+      setRegisterMessage(firstError.message)
+      return
+    }
+
+    setDelegates(normalizedDelegates)
+    setRegisterMessage(
+      normalizedAbsentPassed
+        ? 'Register saved. Absent delegates marked as passed were saved as failed.'
+        : 'Register saved.'
+    )
+  }
+
   const createCertificatesForSelectedDelegates = async () => {
     if (selectedDelegateIds.length === 0) {
       alert('Select at least one delegate first')
@@ -900,12 +1015,21 @@ export default function BookingDetailPage() {
       selectedDelegateIds.includes(delegate.id)
     )
 
-    const delegatesWithoutCertificates = selectedDelegates.filter(
+    const eligibleSelectedDelegates = selectedDelegates.filter(
+      isCertificateEligible
+    )
+
+    if (eligibleSelectedDelegates.length === 0) {
+      alert('Mark delegates as present and passed before generating certificates.')
+      return
+    }
+
+    const delegatesWithoutCertificates = eligibleSelectedDelegates.filter(
       (delegate) => !getCertificateForDelegate(delegate)
     )
 
     if (delegatesWithoutCertificates.length === 0) {
-      alert('All selected delegates already have certificates.')
+      alert('All selected eligible delegates already have certificates.')
       return
     }
 
@@ -1297,6 +1421,21 @@ export default function BookingDetailPage() {
   )
 
   const selectedWithEmail = selectedDelegates.filter((delegate) => delegate.email)
+  const selectedEligibleDelegates = selectedDelegates.filter(isCertificateEligible)
+  const eligibleDelegates = delegates.filter(isCertificateEligible)
+  const registerStatus = getRegisterStatus(delegates)
+
+  const registerStatusCopy = {
+    not_started: 'Not started',
+    in_progress: 'In progress',
+    complete: 'Complete',
+  }
+
+  const registerStatusClass = {
+    not_started: 'bg-slate-50 text-slate-700 border-slate-200',
+    in_progress: 'bg-amber-50 text-amber-700 border-amber-100',
+    complete: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+  }
 
   const linkedDelegateIds = delegates.map((delegate) => delegate.id)
 
@@ -1854,6 +1993,182 @@ export default function BookingDetailPage() {
             </div>
           </div>
 
+          <div className="bg-white border border-slate-200 rounded-lg p-4 mb-4">
+            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 mb-4">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-semibold text-slate-950">
+                    Attendance & Results
+                  </h3>
+
+                  <span className={`border px-2.5 py-1 rounded-md text-xs font-medium ${registerStatusClass[registerStatus]}`}>
+                    {registerStatusCopy[registerStatus]}
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-500 mt-1">
+                  Present and passed delegates are eligible for certificates.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {registerMessage && (
+                  <span className="text-xs text-slate-500">
+                    {registerMessage}
+                  </span>
+                )}
+
+                <button
+                  className={buttonPrimary}
+                  onClick={saveRegister}
+                  disabled={savingRegister}
+                >
+                  {savingRegister ? 'Saving...' : 'Save register'}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-3">
+              {delegates.map((delegate) => {
+                const eligible = isCertificateEligible(delegate)
+                const certificate = getCertificateForDelegate(delegate)
+
+                return (
+                  <div
+                    key={`register-${delegate.id}`}
+                    className="rounded-lg border border-slate-200 bg-slate-50 p-4"
+                  >
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-slate-950">
+                            {delegate.full_name}
+                          </p>
+
+                          {eligible ? (
+                            <span className="border bg-emerald-50 text-emerald-700 border-emerald-100 px-2 py-1 rounded-md text-xs font-medium">
+                              Certificate eligible
+                            </span>
+                          ) : (
+                            <span className="border bg-slate-100 text-slate-600 border-slate-200 px-2 py-1 rounded-md text-xs font-medium">
+                              Not eligible
+                            </span>
+                          )}
+
+                          {certificate && (
+                            <span className="border bg-blue-50 text-blue-700 border-blue-100 px-2 py-1 rounded-md text-xs font-medium">
+                              Certificate created
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-xs text-slate-500 mt-1">
+                          {isPublicBooking() ? getDelegateClientDisplay(delegate) : delegate.email || 'No email'}
+                        </p>
+                      </div>
+
+                      <div className="grid gap-3 xl:min-w-[620px]">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 mb-1.5">
+                              Attendance
+                            </p>
+
+                            <div className="inline-flex rounded-md border border-slate-200 bg-white p-1">
+                              {[
+                                ['not_marked', 'Not marked'],
+                                ['present', 'Present'],
+                                ['absent', 'Absent'],
+                              ].map(([value, label]) => (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  onClick={() =>
+                                    updateDelegateRegisterField(
+                                      delegate.id,
+                                      'attendance_status',
+                                      value
+                                    )
+                                  }
+                                  className={`rounded px-3 py-1.5 text-xs font-semibold transition ${
+                                    delegate.attendance_status === value
+                                      ? 'bg-slate-950 text-white'
+                                      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950'
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 mb-1.5">
+                              Result
+                            </p>
+
+                            <div className="inline-flex rounded-md border border-slate-200 bg-white p-1">
+                              {[
+                                ['not_assessed', 'Not assessed'],
+                                ['passed', 'Passed'],
+                                ['failed', 'Failed'],
+                              ].map(([value, label]) => {
+                                const disabled =
+                                  delegate.attendance_status === 'absent' &&
+                                  value === 'passed'
+
+                                return (
+                                  <button
+                                    key={value}
+                                    type="button"
+                                    onClick={() =>
+                                      updateDelegateRegisterField(
+                                        delegate.id,
+                                        'result_status',
+                                        value
+                                      )
+                                    }
+                                    disabled={disabled}
+                                    className={`rounded px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:text-slate-300 ${
+                                      delegate.result_status === value
+                                        ? 'bg-slate-950 text-white'
+                                        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950'
+                                    }`}
+                                  >
+                                    {label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </div>
+
+                        <textarea
+                          className={`${inputClass} min-h-16`}
+                          placeholder="Optional note"
+                          value={delegate.attendance_notes || ''}
+                          onChange={(e) =>
+                            updateDelegateRegisterField(
+                              delegate.id,
+                              'attendance_notes',
+                              e.target.value
+                            )
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+
+              {delegates.length === 0 && (
+                <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                  Attach delegates before marking attendance and results.
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
               <div>
@@ -1863,6 +2178,7 @@ export default function BookingDetailPage() {
 
                 <p className="text-xs text-slate-500 mt-1">
                   Select delegates below, then create or email their certificates.
+                  Only present and passed delegates can receive new certificates.
                 </p>
 
                 <p className="text-xs text-slate-500 mt-1">
@@ -1931,6 +2247,10 @@ export default function BookingDetailPage() {
 
                 <p>
                   {selectedWithEmail.length} with email
+                </p>
+
+                <p>
+                  {selectedEligibleDelegates.length} certificate eligible
                 </p>
               </div>
 
