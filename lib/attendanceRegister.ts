@@ -7,6 +7,24 @@ export type RegisterRow = {
   result_status?: ResultStatus | null
 }
 
+export type CertificateTarget = RegisterRow & {
+  id: string
+  email?: string | null
+}
+
+export type BulkGenerationSummary<T extends CertificateTarget> = {
+  delegatesToGenerate: T[]
+  skippedNotEligible: number
+  skippedExistingCertificate: number
+}
+
+export type BulkEmailSummary<T extends CertificateTarget, C> = {
+  delegatesToEmail: Array<{ delegate: T; certificate: C }>
+  skippedNotEligible: number
+  skippedMissingCertificate: number
+  skippedMissingEmail: number
+}
+
 export const normalizeAttendanceStatus = (
   status?: string | null
 ): AttendanceStatus => {
@@ -73,4 +91,71 @@ export const getRegisterStatus = (rows: RegisterRow[]): RegisterStatus => {
   })
 
   return completeRows.length === rows.length ? 'complete' : 'in_progress'
+}
+
+export const getBulkCertificateGenerationSummary = <
+  T extends CertificateTarget,
+>(
+  delegates: T[],
+  hasCertificate: (delegate: T) => boolean
+): BulkGenerationSummary<T> => {
+  const summary: BulkGenerationSummary<T> = {
+    delegatesToGenerate: [],
+    skippedNotEligible: 0,
+    skippedExistingCertificate: 0,
+  }
+
+  delegates.forEach((delegate) => {
+    if (!isCertificateEligible(delegate)) {
+      summary.skippedNotEligible += 1
+      return
+    }
+
+    if (hasCertificate(delegate)) {
+      summary.skippedExistingCertificate += 1
+      return
+    }
+
+    summary.delegatesToGenerate.push(delegate)
+  })
+
+  return summary
+}
+
+export const getBulkCertificateEmailSummary = <
+  T extends CertificateTarget,
+  C,
+>(
+  delegates: T[],
+  getCertificate: (delegate: T) => C | null | undefined
+): BulkEmailSummary<T, C> => {
+  const summary: BulkEmailSummary<T, C> = {
+    delegatesToEmail: [],
+    skippedNotEligible: 0,
+    skippedMissingCertificate: 0,
+    skippedMissingEmail: 0,
+  }
+
+  delegates.forEach((delegate) => {
+    if (!isCertificateEligible(delegate)) {
+      summary.skippedNotEligible += 1
+      return
+    }
+
+    const certificate = getCertificate(delegate)
+
+    if (!certificate) {
+      summary.skippedMissingCertificate += 1
+      return
+    }
+
+    if (!delegate.email) {
+      summary.skippedMissingEmail += 1
+      return
+    }
+
+    summary.delegatesToEmail.push({ delegate, certificate })
+  })
+
+  return summary
 }

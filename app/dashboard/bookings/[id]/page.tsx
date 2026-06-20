@@ -12,6 +12,8 @@ import { createCertificateVerificationId } from '@/lib/certificateVerification'
 import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
 import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
 import {
+  getBulkCertificateEmailSummary,
+  getBulkCertificateGenerationSummary,
   getRegisterStatus,
   isCertificateEligible,
   normalizeRegisterRow,
@@ -1000,51 +1002,41 @@ export default function BookingDetailPage() {
     )
   }
 
-  const createCertificatesForSelectedDelegates = async () => {
-    if (selectedDelegateIds.length === 0) {
-      alert('Select at least one delegate first')
-      return
+  const createCertificatesForDelegates = async (
+    delegatesToGenerate: any[],
+    summary: {
+      skippedNotEligible: number
+      skippedExistingCertificate: number
     }
-
+  ) => {
     if (!certificateIssueDate || !certificateExpiryDate) {
       alert('Issue date and expiry date are required')
-      return
+      return false
     }
 
-    const selectedDelegates = delegates.filter((delegate) =>
-      selectedDelegateIds.includes(delegate.id)
-    )
-
-    const eligibleSelectedDelegates = selectedDelegates.filter(
-      isCertificateEligible
-    )
-
-    if (eligibleSelectedDelegates.length === 0) {
-      alert('Mark delegates as present and passed before generating certificates.')
-      return
-    }
-
-    const delegatesWithoutCertificates = eligibleSelectedDelegates.filter(
-      (delegate) => !getCertificateForDelegate(delegate)
-    )
-
-    if (delegatesWithoutCertificates.length === 0) {
-      alert('All selected eligible delegates already have certificates.')
-      return
+    if (delegatesToGenerate.length === 0) {
+      alert(
+        [
+          'No certificates created.',
+          `Skipped not eligible: ${summary.skippedNotEligible}.`,
+          `Skipped already certified: ${summary.skippedExistingCertificate}.`,
+        ].join('\n')
+      )
+      return false
     }
 
     const selectedTemplate = getCertificateTemplateForBooking()
 
     if (!selectedTemplate) {
       alert('No certificate template found. Create a default certificate template in Settings first.')
-      return
+      return false
     }
 
     setCreatingCertificates(true)
 
     const { data: userData } = await supabase.auth.getUser()
 
-    const rows = delegatesWithoutCertificates.map((delegate, index) => {
+    const rows = delegatesToGenerate.map((delegate, index) => {
       const certificateNumber = `CERT-${Date.now()}-${String(index + 1).padStart(2, '0')}`
 
       const placeholderValues = {
@@ -1094,11 +1086,46 @@ export default function BookingDetailPage() {
 
     if (error) {
       alert(error.message)
+      return false
+    }
+
+    alert(
+      [
+        `Certificates created: ${rows.length}.`,
+        `Skipped not eligible: ${summary.skippedNotEligible}.`,
+        `Skipped already certified: ${summary.skippedExistingCertificate}.`,
+        `Template: ${selectedTemplate.name}.`,
+      ].join('\n')
+    )
+    load()
+    return true
+  }
+
+  const createCertificatesForSelectedDelegates = async () => {
+    if (selectedDelegateIds.length === 0) {
+      alert('Select at least one delegate first')
       return
     }
 
-    alert(`Created ${rows.length} certificate${rows.length === 1 ? '' : 's'} using "${selectedTemplate.name}".`)
-    load()
+    const selectedDelegates = delegates.filter((delegate) =>
+      selectedDelegateIds.includes(delegate.id)
+    )
+
+    const summary = getBulkCertificateGenerationSummary(
+      selectedDelegates,
+      (delegate) => Boolean(getCertificateForDelegate(delegate))
+    )
+
+    await createCertificatesForDelegates(summary.delegatesToGenerate, summary)
+  }
+
+  const createCertificatesForEligibleDelegates = async () => {
+    const summary = getBulkCertificateGenerationSummary(
+      delegates,
+      (delegate) => Boolean(getCertificateForDelegate(delegate))
+    )
+
+    await createCertificatesForDelegates(summary.delegatesToGenerate, summary)
   }
 
   const ensureCertificateVerificationId = async (certificate: any) => {
@@ -1282,23 +1309,23 @@ export default function BookingDetailPage() {
     doc.save(`${safeName || 'certificate'}-${certificateNumber}.pdf`)
   }
 
-  const sendCertificatesToSelectedDelegates = async () => {
-    if (selectedDelegateIds.length === 0) {
-      alert('Select at least one delegate first')
-      return
+  const sendCertificatesForDelegates = async (
+    delegatesToEmail: Array<{ delegate: any; certificate: any }>,
+    summary: {
+      skippedNotEligible: number
+      skippedMissingCertificate: number
+      skippedMissingEmail: number
     }
-
-    const selectedDelegates = delegates.filter((delegate) =>
-      selectedDelegateIds.includes(delegate.id)
-    )
-
-    const sendableDelegates = selectedDelegates.filter((delegate) => {
-      const certificate = getCertificateForDelegate(delegate)
-      return certificate && delegate.email
-    })
-
-    if (sendableDelegates.length === 0) {
-      alert('Selected delegates need both an email address and a certificate before sending.')
+  ) => {
+    if (delegatesToEmail.length === 0) {
+      alert(
+        [
+          'No certificate emails sent.',
+          `Skipped not eligible: ${summary.skippedNotEligible}.`,
+          `Skipped missing certificate: ${summary.skippedMissingCertificate}.`,
+          `Skipped missing email: ${summary.skippedMissingEmail}.`,
+        ].join('\n')
+      )
       return
     }
 
@@ -1307,9 +1334,7 @@ export default function BookingDetailPage() {
     let sentCount = 0
     let failedCount = 0
 
-    for (const delegate of sendableDelegates) {
-      const certificate = getCertificateForDelegate(delegate)
-
+    for (const { delegate, certificate } of delegatesToEmail) {
       let verificationId = ''
 
       try {
@@ -1350,11 +1375,53 @@ export default function BookingDetailPage() {
     setSendingCertificates(false)
 
     if (failedCount > 0) {
-      alert(`Sent ${sentCount}. Failed ${failedCount}.`)
+      alert(
+        [
+          `Certificate emails sent: ${sentCount}.`,
+          `Failed: ${failedCount}.`,
+          `Skipped not eligible: ${summary.skippedNotEligible}.`,
+          `Skipped missing certificate: ${summary.skippedMissingCertificate}.`,
+          `Skipped missing email: ${summary.skippedMissingEmail}.`,
+        ].join('\n')
+      )
       return
     }
 
-    alert(`Certificate email sent to ${sentCount} delegate${sentCount === 1 ? '' : 's'}.`)
+    alert(
+      [
+        `Certificate emails sent: ${sentCount}.`,
+        `Skipped not eligible: ${summary.skippedNotEligible}.`,
+        `Skipped missing certificate: ${summary.skippedMissingCertificate}.`,
+        `Skipped missing email: ${summary.skippedMissingEmail}.`,
+      ].join('\n')
+    )
+  }
+
+  const sendCertificatesToSelectedDelegates = async () => {
+    if (selectedDelegateIds.length === 0) {
+      alert('Select at least one delegate first')
+      return
+    }
+
+    const selectedDelegates = delegates.filter((delegate) =>
+      selectedDelegateIds.includes(delegate.id)
+    )
+
+    const summary = getBulkCertificateEmailSummary(
+      selectedDelegates,
+      getCertificateForDelegate
+    )
+
+    await sendCertificatesForDelegates(summary.delegatesToEmail, summary)
+  }
+
+  const sendCertificatesToEligibleDelegates = async () => {
+    const summary = getBulkCertificateEmailSummary(
+      delegates,
+      getCertificateForDelegate
+    )
+
+    await sendCertificatesForDelegates(summary.delegatesToEmail, summary)
   }
 
   const getStatusStyle = (status: string) => {
@@ -1423,6 +1490,14 @@ export default function BookingDetailPage() {
   const selectedWithEmail = selectedDelegates.filter((delegate) => delegate.email)
   const selectedEligibleDelegates = selectedDelegates.filter(isCertificateEligible)
   const eligibleDelegates = delegates.filter(isCertificateEligible)
+  const bulkGenerationSummary = getBulkCertificateGenerationSummary(
+    delegates,
+    (delegate) => Boolean(getCertificateForDelegate(delegate))
+  )
+  const bulkEmailSummary = getBulkCertificateEmailSummary(
+    delegates,
+    getCertificateForDelegate
+  )
   const registerStatus = getRegisterStatus(delegates)
 
   const registerStatusCopy = {
@@ -2203,6 +2278,46 @@ export default function BookingDetailPage() {
                 >
                   Clear
                 </button>
+              </div>
+            </div>
+
+            <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-950">
+                    Bulk certificates
+                  </h4>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Only delegates marked present and passed are eligible for certificates.
+                  </p>
+
+                  <p className="mt-2 text-xs text-slate-500">
+                    {eligibleDelegates.length} eligible - {bulkGenerationSummary.delegatesToGenerate.length} ready to generate - {bulkEmailSummary.delegatesToEmail.length} ready to email
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className={buttonPrimary}
+                    onClick={createCertificatesForEligibleDelegates}
+                    disabled={creatingCertificates}
+                  >
+                    {creatingCertificates
+                      ? 'Generating...'
+                      : 'Generate certificates for eligible delegates'}
+                  </button>
+
+                  <button
+                    className={buttonSecondary}
+                    onClick={sendCertificatesToEligibleDelegates}
+                    disabled={sendingCertificates}
+                  >
+                    {sendingCertificates
+                      ? 'Sending...'
+                      : 'Email certificates to eligible delegates'}
+                  </button>
+                </div>
               </div>
             </div>
 
