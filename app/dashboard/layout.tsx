@@ -24,6 +24,7 @@ import {
   BarChart3,
   Upload,
   ListChecks,
+  RefreshCw,
 } from 'lucide-react'
 
 const navItems = [
@@ -77,6 +78,11 @@ const navItems = [
     href: '/dashboard/certificates',
     label: 'Certificates',
     icon: Award,
+  },
+  {
+    href: '/dashboard/renewals',
+    label: 'Renewals',
+    icon: RefreshCw,
   },
   {
     href: '/dashboard/reports',
@@ -140,6 +146,10 @@ const pageCopy: Record<string, { title: string; subtitle: string }> = {
   '/dashboard/certificates': {
     title: 'Certificates',
     subtitle: 'Create, verify and send learner certificates.',
+  },
+  '/dashboard/renewals': {
+    title: 'Renewals',
+    subtitle: 'Turn expiring certificates into repeat bookings.',
   },
   '/dashboard/reports': {
     title: 'Reports',

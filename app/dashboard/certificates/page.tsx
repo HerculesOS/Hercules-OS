@@ -639,7 +639,7 @@ export default function CertificatesPage() {
         </div>
 
         <div className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <input
               className={`${inputClass} md:col-span-2`}
               placeholder="Search certificates..."
@@ -657,16 +657,6 @@ export default function CertificatesPage() {
               <option value="expiring_soon">Expiring soon</option>
               <option value="expired">Expired</option>
               <option value="revoked">Revoked</option>
-            </select>
-
-            <select
-              className={inputClass}
-              value={linkFilter}
-              onChange={(e) => setLinkFilter(e.target.value)}
-            >
-              <option value="all">All link types</option>
-              <option value="linked">Linked to delegate</option>
-              <option value="manual">Manual / old certificates</option>
             </select>
 
             <button
@@ -725,7 +715,7 @@ export default function CertificatesPage() {
                           certificate
                         )}`}
                       >
-                        {certificate.delegate_id ? 'Linked delegate' : 'Manual / old'}
+                        {certificate.delegate_id ? 'Linked delegate' : 'Unlinked certificate'}
                       </span>
                     </div>
 
