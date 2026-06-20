@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 
@@ -375,6 +376,13 @@ export default function TrainersPage() {
                         </div>
 
                         <div className="flex flex-wrap gap-2 mt-4">
+                          <Link
+                            href={`/dashboard/trainers/${trainer.id}`}
+                            className={buttonPrimary}
+                          >
+                            View schedule
+                          </Link>
+
                           <button
                             className={buttonSecondary}
                             onClick={() => startEditing(trainer)}
