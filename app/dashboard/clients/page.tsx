@@ -160,7 +160,7 @@ export default function ClientsPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-        <div className={`xl:col-span-4 ${panelClass} h-fit`}>
+        <div id="add-client" className={`xl:col-span-4 ${panelClass} h-fit`}>
           <div className={panelHeaderClass}>
             <h2 className="text-sm font-semibold text-slate-950">
               Add client
@@ -348,12 +348,21 @@ export default function ClientsPage() {
                     Add your first client to start managing bookings, delegates and invoices.
                   </p>
 
-                  <Link
-                    href="/dashboard/import"
-                    className={`${buttonSecondary} inline-block mt-4`}
-                  >
-                    Import clients
-                  </Link>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <a
+                      href="#add-client"
+                      className={buttonPrimary}
+                    >
+                      Add client
+                    </a>
+
+                    <Link
+                      href="/dashboard/import"
+                      className={buttonSecondary}
+                    >
+                      Import clients
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>

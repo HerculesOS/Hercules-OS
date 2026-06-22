@@ -262,7 +262,7 @@ export default function DelegatesPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-        <div className={`xl:col-span-4 ${panelClass} h-fit`}>
+        <div id="add-delegate" className={`xl:col-span-4 ${panelClass} h-fit`}>
           <div className={panelHeaderClass}>
             <h2 className="text-sm font-semibold text-slate-950">
               Add delegate
@@ -561,12 +561,21 @@ export default function DelegatesPage() {
                     Add delegates directly or attach them while creating bookings.
                   </p>
 
-                  <Link
-                    href="/dashboard/import"
-                    className={`${buttonSecondary} inline-block mt-4`}
-                  >
-                    Import delegates
-                  </Link>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <a
+                      href="#add-delegate"
+                      className={buttonPrimary}
+                    >
+                      Add delegate
+                    </a>
+
+                    <Link
+                      href="/dashboard/import"
+                      className={buttonSecondary}
+                    >
+                      Import delegates
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>

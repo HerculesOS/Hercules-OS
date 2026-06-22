@@ -351,8 +351,8 @@ export default function DashboardLayout({
 
         {mobileMenuOpen && (
           <div className="lg:hidden fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm">
-            <div className="bg-white w-80 max-w-[85%] min-h-screen shadow-xl flex flex-col">
-              <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between">
+            <div className="bg-white w-80 max-w-[85%] h-dvh max-h-dvh shadow-xl flex flex-col overflow-hidden">
+              <div className="shrink-0 px-5 py-4 border-b border-slate-100 flex items-start justify-between">
                 <div>
                   <h1 className="text-lg font-semibold tracking-tight">
                     Hercules OS
@@ -371,9 +371,11 @@ export default function DashboardLayout({
                 </button>
               </div>
 
-              <NavLinks mobile />
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <NavLinks mobile />
+              </div>
 
-              <div className="mt-auto p-3 border-t">
+              <div className="shrink-0 p-3 border-t bg-white">
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md border text-sm font-medium hover:bg-slate-50 transition text-left"

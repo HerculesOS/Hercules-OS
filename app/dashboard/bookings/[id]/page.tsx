@@ -1696,6 +1696,26 @@ export default function BookingDetailPage() {
               </div>
             ) : (
               <div>
+                <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
+                  <p className="font-semibold">
+                    Editing delivery details
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5">
+                    This page is the control centre for course, date, trainer, template, location, price and notes. Delivery type and main client stay locked here to protect delegate, invoice and public-course links.
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-md border border-blue-100 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700">
+                      {booking.course_delivery_type === 'public' ? 'Public course' : 'Private course'}
+                    </span>
+
+                    <span className="rounded-md border border-blue-100 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700">
+                      {getBookingClientDisplay()}
+                    </span>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <select
                     className={`${inputClass} md:col-span-2`}

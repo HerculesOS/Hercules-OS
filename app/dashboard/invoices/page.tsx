@@ -1521,12 +1521,21 @@ export default function InvoicesPage() {
                     Create an invoice from a booking, or clear the filters to see more records.
                   </p>
 
-                  <Link
-                    href="/dashboard/bookings"
-                    className={`${buttonSecondary} inline-block mt-4`}
-                  >
-                    Open bookings
-                  </Link>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Link
+                      href="/dashboard/bookings"
+                      className={buttonPrimary}
+                    >
+                      Create invoice from booking
+                    </Link>
+
+                    <button
+                      className={buttonSecondary}
+                      onClick={clearFilters}
+                    >
+                      Clear filters
+                    </button>
+                  </div>
                 </div>
               )}
           </div>

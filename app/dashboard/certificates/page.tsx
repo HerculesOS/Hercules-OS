@@ -945,12 +945,21 @@ export default function CertificatesPage() {
                 Create certificates from booking delegates to track expiry and verification.
               </p>
 
-              <Link
-                href="/dashboard/bookings"
-                className={`${buttonSecondary} inline-block mt-4`}
-              >
-                Open bookings
-              </Link>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link
+                  href="/dashboard/bookings"
+                  className={buttonPrimary}
+                >
+                  Go to bookings
+                </Link>
+
+                <Link
+                  href="/dashboard/bookings"
+                  className={buttonSecondary}
+                >
+                  Generate certificates
+                </Link>
+              </div>
             </div>
           )}
         </div>

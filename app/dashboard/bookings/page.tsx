@@ -883,7 +883,7 @@ export default function BookingsPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-        <div className="xl:col-span-4 bg-white border border-slate-200 rounded-lg h-fit">
+        <div id="create-booking" className="xl:col-span-4 bg-white border border-slate-200 rounded-lg h-fit">
           <div className="px-4 py-3 border-b border-slate-200">
             <h2 className="text-sm font-semibold text-slate-950">
               Create booking
@@ -1510,6 +1510,22 @@ export default function BookingsPage() {
                 <p className="text-sm text-slate-500 mt-1">
                   Create a private booking or public course, or clear the filters to see more records.
                 </p>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <a
+                    href="#create-booking"
+                    className={buttonPrimary}
+                  >
+                    Create booking
+                  </a>
+
+                  <button
+                    className={buttonSecondary}
+                    onClick={clearFilters}
+                  >
+                    Clear filters
+                  </button>
+                </div>
               </div>
             )}
           </div>

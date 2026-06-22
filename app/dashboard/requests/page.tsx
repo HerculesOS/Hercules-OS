@@ -72,6 +72,17 @@ export default function RequestsPage() {
     return formatAppDate(dateOnly, organisation)
   }
 
+  const publicRequestUrl = organisation?.public_request_slug
+    ? `${window.location.origin}/request-training/${organisation.public_request_slug}`
+    : ''
+
+  const copyPublicRequestLink = async () => {
+    if (!publicRequestUrl) return
+
+    await navigator.clipboard.writeText(publicRequestUrl)
+    alert('Public request link copied')
+  }
+
   const getRequestType = (request: any) => {
     const notes = String(request.notes || '').toLowerCase()
 
@@ -580,6 +591,34 @@ export default function RequestsPage() {
               <p className="text-sm text-slate-500 mt-1">
                 New enquiries from your public request form will appear here.
               </p>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {publicRequestUrl ? (
+                  <>
+                    <Link
+                      href={publicRequestUrl}
+                      target="_blank"
+                      className={buttonPrimary}
+                    >
+                      Open public form
+                    </Link>
+
+                    <button
+                      className={buttonSecondary}
+                      onClick={copyPublicRequestLink}
+                    >
+                      Copy public link
+                    </button>
+                  </>
+                ) : (
+                  <Link
+                    href="/dashboard/settings"
+                    className={buttonPrimary}
+                  >
+                    Set public request link
+                  </Link>
+                )}
+              </div>
             </div>
           )}
         </div>
