@@ -5,6 +5,12 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
+import { fetchPaginatedImportRecords } from '@/lib/importCsv'
+
+const RELATED_PAGE_SIZE = 20
+
+const cleanSearchTerm = (value: string) =>
+  value.trim().replace(/[%_,]/g, ' ')
 
 export default function ClientDetailPage() {
   const params = useParams()
@@ -17,6 +23,20 @@ export default function ClientDetailPage() {
   const [certificates, setCertificates] = useState<any[]>([])
   const [delegates, setDelegates] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [delegatePage, setDelegatePage] = useState(1)
+  const [bookingPage, setBookingPage] = useState(1)
+  const [invoicePage, setInvoicePage] = useState(1)
+  const [certificatePage, setCertificatePage] = useState(1)
+  const [delegateCount, setDelegateCount] = useState(0)
+  const [delegateEmailCount, setDelegateEmailCount] = useState(0)
+  const [bookingCount, setBookingCount] = useState(0)
+  const [upcomingBookingCount, setUpcomingBookingCount] = useState(0)
+  const [completedBookingCount, setCompletedBookingCount] = useState(0)
+  const [invoiceCount, setInvoiceCount] = useState(0)
+  const [unpaidInvoiceCount, setUnpaidInvoiceCount] = useState(0)
+  const [totalInvoiceValue, setTotalInvoiceValue] = useState(0)
+  const [certificateCount, setCertificateCount] = useState(0)
+  const [validCertificateCount, setValidCertificateCount] = useState(0)
 
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -58,7 +78,22 @@ export default function ClientDetailPage() {
   const panelHeaderClass =
     'px-4 py-3 border-b border-slate-200'
 
-  const load = async () => {
+  const getPageRange = (page: number) => {
+    const from = (page - 1) * RELATED_PAGE_SIZE
+    const to = from + RELATED_PAGE_SIZE - 1
+
+    return { from, to }
+  }
+
+  const load = async ({
+    nextDelegatePage = delegatePage,
+    nextBookingPage = bookingPage,
+    nextInvoicePage = invoicePage,
+    nextCertificatePage = certificatePage,
+    nextDelegateSearch = delegateSearch,
+  } = {}) => {
+    setLoading(true)
+
     const currentProfile = await getOrCreateAccount()
     const clientId = params.id as string
 
@@ -77,60 +112,236 @@ export default function ClientDetailPage() {
       return
     }
 
-    const { data: bookingsData } = await supabase
-      .from('bookings')
-      .select('*')
-      .eq('client_id', clientId)
-      .eq('organisation_id', currentProfile.organisation_id)
-      .order('date', { ascending: false })
+    const { from: delegateFrom, to: delegateTo } = getPageRange(nextDelegatePage)
+    const { from: bookingFrom, to: bookingTo } = getPageRange(nextBookingPage)
+    const { from: invoiceFrom, to: invoiceTo } = getPageRange(nextInvoicePage)
+    const { from: certificateFrom, to: certificateTo } = getPageRange(nextCertificatePage)
 
-    const { data: delegatesData } = await supabase
+    const allBookingRows = await fetchPaginatedImportRecords<{
+      id: string
+      course_name?: string | null
+      date?: string | null
+    }>(
+      async (from, to) =>
+        await supabase
+          .from('bookings')
+          .select('id, course_name, date')
+          .eq('client_id', clientId)
+          .eq('organisation_id', currentProfile.organisation_id)
+          .range(from, to)
+    )
+
+    const allDelegateIds = await fetchPaginatedImportRecords<{ id: string }>(
+      async (from, to) =>
+        await supabase
+          .from('delegates')
+          .select('id')
+          .eq('client_id', clientId)
+          .eq('organisation_id', currentProfile.organisation_id)
+          .range(from, to)
+    )
+
+    const bookingIds = allBookingRows.map((booking) => booking.id)
+    const delegateIds = allDelegateIds.map((delegate) => delegate.id)
+
+    const searchTerm = cleanSearchTerm(nextDelegateSearch)
+    let matchingDelegateIds: string[] = []
+
+    if (searchTerm) {
+      const lowerSearchTerm = searchTerm.toLowerCase()
+      const matchingBookingIds = allBookingRows
+        .filter((booking) =>
+          `${booking.course_name || ''} ${booking.date || ''}`
+            .toLowerCase()
+            .includes(lowerSearchTerm)
+        )
+        .map((booking) => booking.id)
+
+      if (matchingBookingIds.length > 0) {
+        const matchingLinks = await fetchPaginatedImportRecords<{
+          delegate_id: string | null
+        }>(
+          async (from, to) =>
+            await supabase
+              .from('booking_delegates')
+              .select('delegate_id')
+              .eq('client_id', clientId)
+              .eq('organisation_id', currentProfile.organisation_id)
+              .in('booking_id', matchingBookingIds)
+              .range(from, to)
+        )
+
+        matchingDelegateIds = Array.from(
+          new Set(
+            matchingLinks
+              .map((link) => link.delegate_id)
+              .filter(Boolean) as string[]
+          )
+        )
+      }
+    }
+
+    let delegateQuery = supabase
       .from('delegates')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('client_id', clientId)
       .eq('organisation_id', currentProfile.organisation_id)
       .order('full_name', { ascending: true })
+      .range(delegateFrom, delegateTo)
 
-    const { data: bookingDelegateLinksData } = await supabase
-      .from('booking_delegates')
-      .select('*')
-      .eq('client_id', clientId)
-      .eq('organisation_id', currentProfile.organisation_id)
+    if (searchTerm) {
+      const term = `%${searchTerm}%`
+      const filters = [
+        `full_name.ilike.${term}`,
+        `email.ilike.${term}`,
+        `phone.ilike.${term}`,
+        `notes.ilike.${term}`,
+      ]
 
-    const bookingIds = (bookingsData || []).map((booking) => booking.id)
-    const delegateIds = (delegatesData || []).map((delegate) => delegate.id)
+      if (matchingDelegateIds.length > 0) {
+        filters.push(`id.in.(${matchingDelegateIds.join(',')})`)
+      }
 
-    let invoicesData: any[] = []
-    let certificatesData: any[] = []
-
-    if (bookingIds.length > 0) {
-      const { data: invoiceResults } = await supabase
-        .from('invoices')
-        .select('*')
-        .in('booking_id', bookingIds)
-        .eq('organisation_id', currentProfile.organisation_id)
-        .order('created_at', { ascending: false })
-
-      invoicesData = invoiceResults || []
+      delegateQuery = delegateQuery.or(filters.join(','))
     }
 
-    if (delegateIds.length > 0) {
-      const { data: certificateResults } = await supabase
-        .from('certificates')
+    const { data: delegatesData, count: delegatesTotal } = await delegateQuery
+
+    const visibleDelegateIds = (delegatesData || []).map((delegate) => delegate.id)
+
+    let bookingDelegateLinksData: any[] = []
+
+    if (visibleDelegateIds.length > 0) {
+      const { data: visibleLinks } = await supabase
+        .from('booking_delegates')
         .select('*')
+        .in('delegate_id', visibleDelegateIds)
+        .eq('client_id', clientId)
+        .eq('organisation_id', currentProfile.organisation_id)
+
+      bookingDelegateLinksData = visibleLinks || []
+    }
+
+    const { data: bookingsData, count: bookingsTotal } = await supabase
+      .from('bookings')
+      .select('*', { count: 'exact' })
+      .eq('client_id', clientId)
+      .eq('organisation_id', currentProfile.organisation_id)
+      .order('date', { ascending: false })
+      .range(bookingFrom, bookingTo)
+
+    let invoicesQuery = supabase
+      .from('invoices')
+      .select('*', { count: 'exact' })
+      .eq('organisation_id', currentProfile.organisation_id)
+      .order('created_at', { ascending: false })
+      .range(invoiceFrom, invoiceTo)
+
+    if (bookingIds.length > 0) {
+      invoicesQuery = invoicesQuery.or(
+        `client_id.eq.${clientId},booking_id.in.(${bookingIds.join(',')})`
+      )
+    } else {
+      invoicesQuery = invoicesQuery.eq('client_id', clientId)
+    }
+
+    const { data: invoicesData, count: invoicesTotal } = await invoicesQuery
+
+    let certificatesData: any[] = []
+    let certificatesTotal = 0
+
+    if (delegateIds.length > 0) {
+      const certificateResults = await supabase
+        .from('certificates')
+        .select('*', { count: 'exact' })
         .in('delegate_id', delegateIds)
         .eq('organisation_id', currentProfile.organisation_id)
         .order('created_at', { ascending: false })
+        .range(certificateFrom, certificateTo)
 
-      certificatesData = certificateResults || []
+      certificatesData = certificateResults.data || []
+      certificatesTotal = certificateResults.count || 0
+    }
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const { count: delegatesWithEmailTotal } = await supabase
+      .from('delegates')
+      .select('id', { count: 'exact', head: true })
+      .eq('client_id', clientId)
+      .eq('organisation_id', currentProfile.organisation_id)
+      .not('email', 'is', null)
+
+    const { count: upcomingTotal } = await supabase
+      .from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('client_id', clientId)
+      .eq('organisation_id', currentProfile.organisation_id)
+      .neq('status', 'cancelled')
+      .gte('date', today.toISOString().split('T')[0])
+
+    const { count: completedTotal } = await supabase
+      .from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('client_id', clientId)
+      .eq('organisation_id', currentProfile.organisation_id)
+      .eq('status', 'completed')
+
+    const invoiceSummary = await fetchPaginatedImportRecords<any>(
+      async (from, to) => {
+        let summaryQuery = supabase
+          .from('invoices')
+          .select('amount,total_amount,status')
+          .eq('organisation_id', currentProfile.organisation_id)
+          .range(from, to)
+
+        if (bookingIds.length > 0) {
+          summaryQuery = summaryQuery.or(
+            `client_id.eq.${clientId},booking_id.in.(${bookingIds.join(',')})`
+          )
+        } else {
+          summaryQuery = summaryQuery.eq('client_id', clientId)
+        }
+
+        return await summaryQuery
+      }
+    )
+
+    let validCertificateTotal = 0
+
+    if (delegateIds.length > 0) {
+      const { count } = await supabase
+        .from('certificates')
+        .select('id', { count: 'exact', head: true })
+        .in('delegate_id', delegateIds)
+        .eq('organisation_id', currentProfile.organisation_id)
+        .eq('status', 'valid')
+
+      validCertificateTotal = count || 0
     }
 
     setClient(clientData)
     setBookings(bookingsData || [])
     setDelegates(delegatesData || [])
     setBookingDelegateLinks(bookingDelegateLinksData || [])
-    setInvoices(invoicesData)
+    setInvoices(invoicesData || [])
     setCertificates(certificatesData)
+    setDelegateCount(delegatesTotal || 0)
+    setDelegateEmailCount(delegatesWithEmailTotal || 0)
+    setBookingCount(bookingsTotal || 0)
+    setUpcomingBookingCount(upcomingTotal || 0)
+    setCompletedBookingCount(completedTotal || 0)
+    setInvoiceCount(invoicesTotal || 0)
+    setUnpaidInvoiceCount(invoiceSummary.filter((invoice) => invoice.status !== 'paid').length)
+    setTotalInvoiceValue(
+      invoiceSummary.reduce(
+        (sum, invoice) => sum + Number(invoice.total_amount || invoice.amount || 0),
+        0
+      )
+    )
+    setCertificateCount(certificatesTotal)
+    setValidCertificateCount(validCertificateTotal)
 
     setEditCompany(clientData.company || '')
     setEditName(clientData.name || '')
@@ -145,6 +356,20 @@ export default function ClientDetailPage() {
   useEffect(() => {
     load()
   }, [])
+
+  useEffect(() => {
+    if (!profile?.organisation_id) return
+
+    const timeout = window.setTimeout(() => {
+      setDelegatePage(1)
+      load({
+        nextDelegatePage: 1,
+        nextDelegateSearch: delegateSearch,
+      })
+    }, 250)
+
+    return () => window.clearTimeout(timeout)
+  }, [delegateSearch, profile?.organisation_id])
 
   const startEditing = () => {
     setEditCompany(client.company || '')
@@ -223,7 +448,8 @@ export default function ClientDetailPage() {
     setDelegatePhone('')
     setDelegateNotes('')
 
-    load()
+    setDelegatePage(1)
+    load({ nextDelegatePage: 1 })
   }
 
   const startEditingDelegate = (delegate: any) => {
@@ -264,7 +490,7 @@ export default function ClientDetailPage() {
     }
 
     cancelEditingDelegate()
-    load()
+    load({ nextDelegatePage: delegatePage })
   }
 
   const deleteDelegate = async (delegateId: string) => {
@@ -284,7 +510,7 @@ export default function ClientDetailPage() {
       return
     }
 
-    load()
+    load({ nextDelegatePage: delegatePage })
   }
 
   const getBookingsForDelegate = (delegate: any) => {
@@ -311,52 +537,45 @@ export default function ClientDetailPage() {
     return bookings.find((booking) => booking.id === certificate.booking_id)
   }
 
-  const totalInvoiceValue = invoices.reduce(
-    (sum, invoice) => sum + Number(invoice.total_amount || invoice.amount || 0),
-    0
-  )
+  const getPageSummary = (page: number, count: number, label: string) => {
+    if (count === 0) return `Showing 0 of 0 ${label}`
 
-  const unpaidInvoices = invoices.filter(
-    (invoice) => invoice.status !== 'paid'
-  )
+    const start = (page - 1) * RELATED_PAGE_SIZE + 1
+    const end = Math.min(page * RELATED_PAGE_SIZE, count)
 
-  const validCertificates = certificates.filter(
-    (certificate) => certificate.status === 'valid'
-  )
+    return `Showing ${start}-${end} of ${count} ${label}`
+  }
 
-  const upcomingBookings = bookings.filter((booking) => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+  const getTotalPages = (count: number) =>
+    Math.max(1, Math.ceil(count / RELATED_PAGE_SIZE))
 
-    const bookingDate = new Date(booking.date)
-    bookingDate.setHours(0, 0, 0, 0)
+  const goToDelegatePage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), getTotalPages(delegateCount))
 
-    return bookingDate >= today && booking.status !== 'cancelled'
-  })
+    setDelegatePage(nextPage)
+    load({ nextDelegatePage: nextPage })
+  }
 
-  const completedBookings = bookings.filter(
-    (booking) => booking.status === 'completed'
-  )
+  const goToBookingPage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), getTotalPages(bookingCount))
 
-  const delegatesWithEmail = delegates.filter((delegate) => delegate.email)
+    setBookingPage(nextPage)
+    load({ nextBookingPage: nextPage })
+  }
 
-  const filteredDelegates = delegates.filter((delegate) => {
-    const delegateBookings = getBookingsForDelegate(delegate)
+  const goToInvoicePage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), getTotalPages(invoiceCount))
 
-    const bookingText = delegateBookings
-      .map((booking) => `${booking.course_name} ${booking.date}`)
-      .join(' ')
+    setInvoicePage(nextPage)
+    load({ nextInvoicePage: nextPage })
+  }
 
-    const searchableText = `
-      ${delegate.full_name || ''}
-      ${delegate.email || ''}
-      ${delegate.phone || ''}
-      ${delegate.notes || ''}
-      ${bookingText}
-    `.toLowerCase()
+  const goToCertificatePage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), getTotalPages(certificateCount))
 
-    return searchableText.includes(delegateSearch.toLowerCase())
-  })
+    setCertificatePage(nextPage)
+    load({ nextCertificatePage: nextPage })
+  }
 
   const getBookingStatusStyle = (status: string) => {
     if (status === 'completed') return 'bg-emerald-50 text-emerald-700 border-emerald-100'
@@ -602,25 +821,25 @@ export default function ClientDetailPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-4">
         <StatCard
           label="Bookings"
-          value={bookings.length}
+          value={bookingCount}
           detail="Total sessions"
         />
 
         <StatCard
           label="Upcoming"
-          value={upcomingBookings.length}
+          value={upcomingBookingCount}
           detail="Future sessions"
         />
 
         <StatCard
           label="Completed"
-          value={completedBookings.length}
+          value={completedBookingCount}
           detail="Finished sessions"
         />
 
         <StatCard
           label="Delegates"
-          value={delegates.length}
+          value={delegateCount}
           detail="Learner profiles"
         />
 
@@ -632,15 +851,15 @@ export default function ClientDetailPage() {
 
         <StatCard
           label="Valid certs"
-          value={validCertificates.length}
+          value={validCertificateCount}
           detail="Current certificates"
         />
       </div>
 
-      {unpaidInvoices.length > 0 && (
+      {unpaidInvoiceCount > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4 text-sm text-amber-800">
-          This client has {unpaidInvoices.length} unpaid invoice
-          {unpaidInvoices.length === 1 ? '' : 's'}.
+          This client has {unpaidInvoiceCount} unpaid invoice
+          {unpaidInvoiceCount === 1 ? '' : 's'}.
         </div>
       )}
 
@@ -658,11 +877,11 @@ export default function ClientDetailPage() {
 
           <div className="flex flex-wrap gap-2">
             <span className="border border-slate-200 bg-slate-50 px-2.5 py-1 rounded-md text-xs font-medium text-slate-700">
-              {delegates.length} total
+              {delegateCount} total
             </span>
 
             <span className="border border-slate-200 bg-slate-50 px-2.5 py-1 rounded-md text-xs font-medium text-slate-700">
-              {delegatesWithEmail.length} with email
+              {delegateEmailCount} with email
             </span>
           </div>
         </div>
@@ -718,8 +937,12 @@ export default function ClientDetailPage() {
             onChange={(e) => setDelegateSearch(e.target.value)}
           />
 
+          <p className="mb-3 text-xs text-slate-500">
+            {getPageSummary(delegatePage, delegateCount, 'delegates')}
+          </p>
+
           <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
-            {filteredDelegates.map((delegate) => {
+            {delegates.map((delegate) => {
               const delegateBookings = getBookingsForDelegate(delegate)
               const delegateCertificates = getCertificatesForDelegate(delegate)
               const isEditingDelegate = editingDelegateId === delegate.id
@@ -874,12 +1097,38 @@ export default function ClientDetailPage() {
               )
             })}
 
-            {filteredDelegates.length === 0 && (
+            {delegates.length === 0 && (
               <div className="bg-white p-4 text-sm text-slate-500">
                 No delegates found for this company.
               </div>
             )}
           </div>
+
+          {delegateCount > RELATED_PAGE_SIZE && (
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-slate-500">
+                Page {delegatePage} of {getTotalPages(delegateCount)}
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToDelegatePage(delegatePage - 1)}
+                  disabled={delegatePage <= 1}
+                >
+                  Previous
+                </button>
+
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToDelegatePage(delegatePage + 1)}
+                  disabled={delegatePage >= getTotalPages(delegateCount)}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -905,7 +1154,7 @@ export default function ClientDetailPage() {
           </div>
 
           <div className="divide-y divide-slate-100">
-            {bookings.slice(0, 10).map((booking) => (
+            {bookings.map((booking) => (
               <Link
                 key={booking.id}
                 href={`/dashboard/bookings/${booking.id}`}
@@ -936,6 +1185,32 @@ export default function ClientDetailPage() {
               </div>
             )}
           </div>
+
+          <div className="border-t border-slate-100 p-4">
+            <p className="text-xs text-slate-500">
+              {getPageSummary(bookingPage, bookingCount, 'bookings')}
+            </p>
+
+            {bookingCount > RELATED_PAGE_SIZE && (
+              <div className="mt-3 flex gap-2">
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToBookingPage(bookingPage - 1)}
+                  disabled={bookingPage <= 1}
+                >
+                  Previous
+                </button>
+
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToBookingPage(bookingPage + 1)}
+                  disabled={bookingPage >= getTotalPages(bookingCount)}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className={panelClass}>
@@ -959,7 +1234,7 @@ export default function ClientDetailPage() {
           </div>
 
           <div className="divide-y divide-slate-100">
-            {invoices.slice(0, 10).map((invoice) => {
+            {invoices.map((invoice) => {
               const booking = getBookingForInvoice(invoice)
 
               return (
@@ -1000,6 +1275,32 @@ export default function ClientDetailPage() {
               </div>
             )}
           </div>
+
+          <div className="border-t border-slate-100 p-4">
+            <p className="text-xs text-slate-500">
+              {getPageSummary(invoicePage, invoiceCount, 'invoices')}
+            </p>
+
+            {invoiceCount > RELATED_PAGE_SIZE && (
+              <div className="mt-3 flex gap-2">
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToInvoicePage(invoicePage - 1)}
+                  disabled={invoicePage <= 1}
+                >
+                  Previous
+                </button>
+
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToInvoicePage(invoicePage + 1)}
+                  disabled={invoicePage >= getTotalPages(invoiceCount)}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className={panelClass}>
@@ -1023,7 +1324,7 @@ export default function ClientDetailPage() {
           </div>
 
           <div className="divide-y divide-slate-100">
-            {certificates.slice(0, 10).map((certificate) => {
+            {certificates.map((certificate) => {
               const booking = getBookingForCertificate(certificate)
 
               return (
@@ -1053,6 +1354,32 @@ export default function ClientDetailPage() {
             {certificates.length === 0 && (
               <div className="p-4 text-sm text-slate-500">
                 No certificates for this company yet.
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-slate-100 p-4">
+            <p className="text-xs text-slate-500">
+              {getPageSummary(certificatePage, certificateCount, 'certificates')}
+            </p>
+
+            {certificateCount > RELATED_PAGE_SIZE && (
+              <div className="mt-3 flex gap-2">
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToCertificatePage(certificatePage - 1)}
+                  disabled={certificatePage <= 1}
+                >
+                  Previous
+                </button>
+
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToCertificatePage(certificatePage + 1)}
+                  disabled={certificatePage >= getTotalPages(certificateCount)}
+                >
+                  Next
+                </button>
               </div>
             )}
           </div>
