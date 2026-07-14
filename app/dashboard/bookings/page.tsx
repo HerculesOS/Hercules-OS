@@ -7,15 +7,31 @@ import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
 import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
 import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
+import { fetchPaginatedImportRecords } from '@/lib/importCsv'
+import ClientPicker from './ClientPicker'
+
+const BOOKINGS_PAGE_SIZE = 50
+
+const cleanSearchTerm = (value: string) =>
+  value.trim().replace(/[%_,]/g, ' ')
 
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<any[]>([])
+  const [bookingLocations, setBookingLocations] = useState<string[]>([])
   const [clients, setClients] = useState<any[]>([])
   const [trainers, setTrainers] = useState<any[]>([])
   const [courseTemplates, setCourseTemplates] = useState<any[]>([])
   const [certificateTemplates, setCertificateTemplates] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
   const [organisationId, setOrganisationId] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalBookings, setTotalBookings] = useState(0)
+  const [matchingBookings, setMatchingBookings] = useState(0)
+  const [privateBookingsCount, setPrivateBookingsCount] = useState(0)
+  const [publicBookingsCount, setPublicBookingsCount] = useState(0)
+  const [scheduledBookingsCount, setScheduledBookingsCount] = useState(0)
+  const [cancelledBookingsCount, setCancelledBookingsCount] = useState(0)
 
   const [courseDeliveryType, setCourseDeliveryType] = useState('private')
   const [clientId, setClientId] = useState('')
@@ -28,6 +44,7 @@ export default function BookingsPage() {
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
   const [location, setLocation] = useState('')
+  const [autoFilledLocation, setAutoFilledLocation] = useState('')
   const [price, setPrice] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -49,6 +66,7 @@ export default function BookingsPage() {
   const [editStartTime, setEditStartTime] = useState('')
   const [editEndTime, setEditEndTime] = useState('')
   const [editLocation, setEditLocation] = useState('')
+  const [editAutoFilledLocation, setEditAutoFilledLocation] = useState('')
   const [editPrice, setEditPrice] = useState('')
   const [editNotes, setEditNotes] = useState('')
 
@@ -67,7 +85,80 @@ export default function BookingsPage() {
   const buttonPrimary =
     'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
 
-  const load = async () => {
+  const getMatchingIds = async (
+    table: 'clients' | 'trainers',
+    organisationIdValue: string,
+    searchTerm: string
+  ) => {
+    const cleanTerm = cleanSearchTerm(searchTerm)
+
+    if (!cleanTerm) return []
+
+    const term = `%${cleanTerm}%`
+    const searchFilter =
+      table === 'clients'
+        ? `company.ilike.${term},name.ilike.${term},email.ilike.${term}`
+        : `name.ilike.${term},email.ilike.${term}`
+
+    return fetchPaginatedImportRecords<any>(
+      async (from, to) =>
+        await supabase
+          .from(table)
+          .select('id')
+          .eq('organisation_id', organisationIdValue)
+          .or(searchFilter)
+          .range(from, to)
+    )
+  }
+
+  const applyBookingFilters = (
+    query: any,
+    searchTerm: string,
+    matchingClientIds: string[],
+    matchingTrainerIds: string[]
+  ) => {
+    let nextQuery = query
+
+    if (deliveryTypeFilter !== 'all') {
+      nextQuery = nextQuery.eq('course_delivery_type', deliveryTypeFilter)
+    }
+
+    if (statusFilter !== 'all') {
+      nextQuery = nextQuery.eq('status', statusFilter)
+    }
+
+    if (trainerFilter !== 'all') {
+      nextQuery = nextQuery.eq('trainer_id', trainerFilter)
+    }
+
+    const cleanTerm = cleanSearchTerm(searchTerm)
+
+    if (!cleanTerm) return nextQuery
+
+    const term = `%${cleanTerm}%`
+    const filters = [
+      `course_name.ilike.${term}`,
+      `client_name.ilike.${term}`,
+      `location.ilike.${term}`,
+      `notes.ilike.${term}`,
+      `status.ilike.${term}`,
+      `course_delivery_type.ilike.${term}`,
+    ]
+
+    if (matchingClientIds.length > 0) {
+      filters.push(`client_id.in.(${matchingClientIds.join(',')})`)
+    }
+
+    if (matchingTrainerIds.length > 0) {
+      filters.push(`trainer_id.in.(${matchingTrainerIds.join(',')})`)
+    }
+
+    return nextQuery.or(filters.join(','))
+  }
+
+  const load = async (page = currentPage, searchTerm = search) => {
+    setLoading(true)
+
     const profile = await getOrCreateAccount()
 
     setOrganisationId(profile.organisation_id)
@@ -78,11 +169,15 @@ export default function BookingsPage() {
       .eq('id', profile.organisation_id)
       .single()
 
-    const { data: clientsData } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
-      .order('company', { ascending: true })
+    const clientsData = await fetchPaginatedImportRecords<any>(
+      async (from, to) =>
+        await supabase
+          .from('clients')
+          .select('*')
+          .eq('organisation_id', profile.organisation_id)
+          .order('company', { ascending: true })
+          .range(from, to)
+    )
 
     const { data: trainersData } = await supabase
       .from('trainers')
@@ -103,12 +198,59 @@ export default function BookingsPage() {
       .order('is_default', { ascending: false })
       .order('name', { ascending: true })
 
-    const { data: bookingsData } = await supabase
+    const matchingClients = await getMatchingIds('clients', profile.organisation_id, searchTerm)
+    const matchingTrainers = await getMatchingIds('trainers', profile.organisation_id, searchTerm)
+    const from = (page - 1) * BOOKINGS_PAGE_SIZE
+    const to = from + BOOKINGS_PAGE_SIZE - 1
+    let bookingQuery = supabase
       .from('bookings')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('organisation_id', profile.organisation_id)
-      .order('date', { ascending: false })
-      .order('created_at', { ascending: false })
+      .range(from, to)
+
+    bookingQuery = applyBookingFilters(
+      bookingQuery,
+      searchTerm,
+      matchingClients.map((client) => client.id),
+      matchingTrainers.map((trainer) => trainer.id)
+    )
+
+    const sortAscending = dateSort === 'ascending'
+    const { data: bookingsData, count: bookingsCount, error: bookingsError } =
+      await bookingQuery
+        .order('date', { ascending: sortAscending })
+        .order('created_at', { ascending: sortAscending })
+
+    if (bookingsError) {
+      alert(bookingsError.message)
+      setLoading(false)
+      return
+    }
+
+    const { count: allCount } = await supabase
+      .from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', profile.organisation_id)
+
+    const getBookingCount = async (column: string, value: string) => {
+      const { count } = await supabase
+        .from('bookings')
+        .select('id', { count: 'exact', head: true })
+        .eq('organisation_id', profile.organisation_id)
+        .eq(column, value)
+
+      return count || 0
+    }
+
+    const locationRows = await fetchPaginatedImportRecords<{ location?: string | null }>(
+      async (fromIndex, toIndex) =>
+        await supabase
+          .from('bookings')
+          .select('location')
+          .eq('organisation_id', profile.organisation_id)
+          .not('location', 'is', null)
+          .range(fromIndex, toIndex)
+    )
 
     setOrganisation(organisationData || null)
     setClients(clientsData || [])
@@ -116,11 +258,34 @@ export default function BookingsPage() {
     setCourseTemplates(courseTemplatesData || [])
     setCertificateTemplates(certificateTemplatesData || [])
     setBookings(bookingsData || [])
+    setBookingLocations(
+      locationRows
+        .map((row) => String(row.location || '').trim())
+        .filter(Boolean)
+    )
+    setMatchingBookings(bookingsCount || 0)
+    setTotalBookings(allCount || 0)
+    setPrivateBookingsCount(await getBookingCount('course_delivery_type', 'private'))
+    setPublicBookingsCount(await getBookingCount('course_delivery_type', 'public'))
+    setScheduledBookingsCount(await getBookingCount('status', 'scheduled'))
+    setCancelledBookingsCount(await getBookingCount('status', 'cancelled'))
+    setLoading(false)
   }
 
   useEffect(() => {
-    load()
+    load(1, '')
   }, [])
+
+  useEffect(() => {
+    if (!organisationId) return
+
+    const timeout = window.setTimeout(() => {
+      setCurrentPage(1)
+      load(1, search)
+    }, 250)
+
+    return () => window.clearTimeout(timeout)
+  }, [search, deliveryTypeFilter, statusFilter, trainerFilter, dateSort, organisationId])
 
   const getFormattedDate = (dateValue: string | null | undefined) => {
     return formatAppDate(dateValue, organisation)
@@ -191,30 +356,66 @@ export default function BookingsPage() {
   const getLocationSuggestions = () => {
     return Array.from(
       new Set(
-        bookings
-          .map((booking) => String(booking.location || '').trim())
-          .filter(Boolean)
+        bookingLocations
       )
     ).sort((a, b) => a.localeCompare(b))
   }
 
   const setClientAndMaybeLocation = (selectedClientId: string) => {
+    const previousAutoFill = autoFilledLocation
+
+    if (!selectedClientId) {
+      setClientId('')
+
+      if (previousAutoFill && location === previousAutoFill) {
+        setLocation('')
+      }
+
+      setAutoFilledLocation('')
+      return
+    }
+
     setClientId(selectedClientId)
 
     const selectedClient = clients.find((client) => client.id === selectedClientId)
+    const selectedAddress = selectedClient?.address || ''
 
-    if (courseDeliveryType === 'private' && !location.trim() && selectedClient?.address) {
-      setLocation(selectedClient.address)
+    if (
+      selectedAddress &&
+      (courseDeliveryType === 'private' || courseDeliveryType === 'public') &&
+      (!location.trim() || (previousAutoFill && location === previousAutoFill))
+    ) {
+      setLocation(selectedAddress)
+      setAutoFilledLocation(selectedAddress)
     }
   }
 
   const setEditClientAndMaybeLocation = (selectedClientId: string) => {
+    const previousAutoFill = editAutoFilledLocation
+
+    if (!selectedClientId) {
+      setEditClientId('')
+
+      if (previousAutoFill && editLocation === previousAutoFill) {
+        setEditLocation('')
+      }
+
+      setEditAutoFilledLocation('')
+      return
+    }
+
     setEditClientId(selectedClientId)
 
     const selectedClient = clients.find((client) => client.id === selectedClientId)
+    const selectedAddress = selectedClient?.address || ''
 
-    if (editCourseDeliveryType === 'private' && !editLocation.trim() && selectedClient?.address) {
-      setEditLocation(selectedClient.address)
+    if (
+      selectedAddress &&
+      (editCourseDeliveryType === 'private' || editCourseDeliveryType === 'public') &&
+      (!editLocation.trim() || (previousAutoFill && editLocation === previousAutoFill))
+    ) {
+      setEditLocation(selectedAddress)
+      setEditAutoFilledLocation(selectedAddress)
     }
   }
 
@@ -391,10 +592,12 @@ export default function BookingsPage() {
     setStartTime('')
     setEndTime('')
     setLocation('')
+    setAutoFilledLocation('')
     setPrice('')
     setNotes('')
 
-    load()
+    setCurrentPage(1)
+    load(1, search)
   }
 
   const startEditing = (booking: any) => {
@@ -410,6 +613,7 @@ export default function BookingsPage() {
     setEditStartTime(booking.start_time || '')
     setEditEndTime(booking.end_time || '')
     setEditLocation(booking.location || '')
+    setEditAutoFilledLocation('')
     setEditPrice(booking.price ? String(booking.price) : '')
     setEditNotes(booking.notes || '')
   }
@@ -427,6 +631,7 @@ export default function BookingsPage() {
     setEditStartTime('')
     setEditEndTime('')
     setEditLocation('')
+    setEditAutoFilledLocation('')
     setEditPrice('')
     setEditNotes('')
   }
@@ -488,7 +693,7 @@ export default function BookingsPage() {
     }
 
     cancelEditing()
-    load()
+    load(currentPage, search)
   }
 
   const updateBookingStatus = async (
@@ -507,7 +712,7 @@ export default function BookingsPage() {
       return
     }
 
-    load()
+    load(currentPage, search)
   }
 
   const deleteBooking = async (bookingId: string) => {
@@ -527,7 +732,7 @@ export default function BookingsPage() {
       return
     }
 
-    load()
+    load(currentPage, search)
   }
 
   const getTrainerForBooking = (booking: any) => {
@@ -645,82 +850,21 @@ export default function BookingsPage() {
     setDateSort('descending')
   }
 
-  const scheduledBookings = bookings.filter(
-    (booking) => booking.status === 'scheduled'
-  )
-
-  const completedBookings = bookings.filter(
-    (booking) => booking.status === 'completed'
-  )
-
-  const cancelledBookings = bookings.filter(
-    (booking) => booking.status === 'cancelled'
-  )
-
-  const publicBookings = bookings.filter(
-    (booking) => booking.course_delivery_type === 'public'
-  )
-
-  const privateBookings = bookings.filter(
-    (booking) => (booking.course_delivery_type || 'private') === 'private'
-  )
-
   const estimatedValue = bookings.reduce(
     (sum, booking) => sum + Number(booking.price || 0),
     0
   )
 
-  const filteredBookings = bookings
-    .filter((booking) => {
-      const trainer = getTrainerForBooking(booking)
-      const client = getClientForBooking(booking)
-      const certificateTemplate = getCertificateTemplateForBooking(booking)
-      const bookingDeliveryType = booking.course_delivery_type || 'private'
+  const totalPages = Math.max(1, Math.ceil(matchingBookings / BOOKINGS_PAGE_SIZE))
+  const pageStart = matchingBookings === 0 ? 0 : (currentPage - 1) * BOOKINGS_PAGE_SIZE + 1
+  const pageEnd = Math.min(currentPage * BOOKINGS_PAGE_SIZE, matchingBookings)
 
-      const searchableText = `
-        ${booking.client_name || ''}
-        ${client?.company || ''}
-        ${client?.name || ''}
-        ${client?.email || ''}
-        ${bookingDeliveryType}
-        ${booking.course_name || ''}
-        ${booking.location || ''}
-        ${booking.notes || ''}
-        ${booking.date || ''}
-        ${booking.end_date || ''}
-        ${getFormattedDate(booking.date)}
-        ${booking.end_date ? getFormattedDate(booking.end_date) : ''}
-        ${getFormattedTimeRange(booking.start_time, booking.end_time)}
-        ${trainer?.name || ''}
-        ${certificateTemplate?.name || ''}
-        ${booking.status || ''}
-      `.toLowerCase()
+  const goToPage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), totalPages)
 
-      const matchesSearch = searchableText.includes(search.toLowerCase())
-
-      const matchesDeliveryType =
-        deliveryTypeFilter === 'all' || bookingDeliveryType === deliveryTypeFilter
-
-      const matchesStatus =
-        statusFilter === 'all' || booking.status === statusFilter
-
-      const matchesTrainer =
-        trainerFilter === 'all' || booking.trainer_id === trainerFilter
-
-      return matchesSearch && matchesDeliveryType && matchesStatus && matchesTrainer
-    })
-    .sort((a, b) => {
-      const dateA = new Date(a.date || 0).getTime()
-      const dateB = new Date(b.date || 0).getTime()
-      const createdA = new Date(a.created_at || 0).getTime()
-      const createdB = new Date(b.created_at || 0).getTime()
-
-      if (dateSort === 'descending') {
-        return dateB - dateA || createdB - createdA
-      }
-
-      return dateA - dateB || createdA - createdB
-    })
+    setCurrentPage(nextPage)
+    load(nextPage, search)
+  }
 
   const getStatusStyle = (status: string) => {
     if (status === 'completed') {
@@ -773,32 +917,32 @@ export default function BookingsPage() {
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
         <StatCard
           label="Total bookings"
-          value={bookings.length}
+          value={totalBookings}
           detail="All bookings recorded"
         />
 
         <StatCard
           label="Private"
-          value={privateBookings.length}
+          value={privateBookingsCount}
           detail="Client-specific courses"
         />
 
         <StatCard
           label="Public"
-          value={publicBookings.length}
+          value={publicBookingsCount}
           detail="Open courses"
         />
 
         <StatCard
           label="Scheduled"
-          value={scheduledBookings.length}
+          value={scheduledBookingsCount}
           detail="Upcoming or planned"
         />
 
         <StatCard
           label="Estimated value"
           value={`£${estimatedValue.toFixed(2)}`}
-          detail="Booking revenue"
+          detail="Visible page value"
         />
       </div>
 
@@ -869,7 +1013,9 @@ export default function BookingsPage() {
 
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-4">
             <p className="text-xs text-slate-500">
-              Showing {filteredBookings.length} of {bookings.length} bookings · {privateBookings.length} private · {publicBookings.length} public
+              {loading
+                ? 'Loading bookings...'
+                : `Showing ${pageStart}-${pageEnd} of ${matchingBookings} matching bookings. Total bookings: ${totalBookings}.`}
             </p>
 
             <button
@@ -904,7 +1050,7 @@ export default function BookingsPage() {
                 setCourseDeliveryType(selectedType)
 
                 if (selectedType === 'public') {
-                  setClientId('')
+                  setClientAndMaybeLocation('')
                 }
               }}
             >
@@ -912,23 +1058,17 @@ export default function BookingsPage() {
               <option value="public">Public course</option>
             </select>
 
-            <select
-              className={inputClass}
+            <ClientPicker
+              clients={clients}
               value={clientId}
-              onChange={(e) => setClientAndMaybeLocation(e.target.value)}
-            >
-              <option value="">
-                {courseDeliveryType === 'public'
-                  ? 'Optional main client'
-                  : 'Select client'}
-              </option>
-
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.company} - {client.name}
-                </option>
-              ))}
-            </select>
+              onChange={setClientAndMaybeLocation}
+              inputClass={inputClass}
+              placeholder={
+                courseDeliveryType === 'public'
+                  ? 'Search optional main client...'
+                  : 'Search clients...'
+              }
+            />
 
             <select
               className={inputClass}
@@ -1015,7 +1155,10 @@ export default function BookingsPage() {
               placeholder="Location"
               list="booking-location-suggestions"
               value={location}
-              onChange={(e) => setLocation(e.target.value)}
+              onChange={(e) => {
+                setLocation(e.target.value)
+                setAutoFilledLocation('')
+              }}
             />
 
             <datalist id="booking-location-suggestions">
@@ -1071,15 +1214,15 @@ export default function BookingsPage() {
               </p>
             </div>
 
-            {cancelledBookings.length > 0 && (
+            {cancelledBookingsCount > 0 && (
               <p className="text-xs text-slate-500">
-                Cancelled: {cancelledBookings.length}
+                Cancelled: {cancelledBookingsCount}
               </p>
             )}
           </div>
 
           <div className="divide-y divide-slate-100">
-            {filteredBookings.map((booking) => {
+            {bookings.map((booking) => {
               const trainer = getTrainerForBooking(booking)
               const client = getClientForBooking(booking)
               const savedClientEmail = client?.email || ''
@@ -1122,6 +1265,10 @@ export default function BookingsPage() {
 
                           <p className="text-sm text-slate-600 mt-1">
                             {getBookingClientDisplay(booking)}
+                          </p>
+
+                          <p className="text-xs text-slate-500 mt-1">
+                            {getFormattedDateRange(booking)}
                           </p>
 
                           {client?.name && (
@@ -1334,7 +1481,7 @@ export default function BookingsPage() {
                             }
                             onClick={() => {
                               setEditCourseDeliveryType('public')
-                              setEditClientId('')
+                              setEditClientAndMaybeLocation('')
                             }}
                           >
                             Public
@@ -1347,23 +1494,17 @@ export default function BookingsPage() {
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <select
-                          className={inputClass}
+                        <ClientPicker
+                          clients={clients}
                           value={editClientId}
-                          onChange={(e) => setEditClientAndMaybeLocation(e.target.value)}
-                        >
-                          <option value="">
-                            {editCourseDeliveryType === 'public'
-                              ? 'Optional main client'
-                              : 'Select client'}
-                          </option>
-
-                          {clients.map((client) => (
-                            <option key={client.id} value={client.id}>
-                              {client.company} - {client.name}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={setEditClientAndMaybeLocation}
+                          inputClass={inputClass}
+                          placeholder={
+                            editCourseDeliveryType === 'public'
+                              ? 'Search optional main client...'
+                              : 'Search clients...'
+                          }
+                        />
 
                         <select
                           className={inputClass}
@@ -1448,7 +1589,10 @@ export default function BookingsPage() {
                           placeholder="Location"
                           list="booking-location-suggestions"
                           value={editLocation}
-                          onChange={(e) => setEditLocation(e.target.value)}
+                          onChange={(e) => {
+                            setEditLocation(e.target.value)
+                            setEditAutoFilledLocation('')
+                          }}
                         />
 
                         <input
@@ -1501,7 +1645,7 @@ export default function BookingsPage() {
               )
             })}
 
-            {filteredBookings.length === 0 && (
+            {bookings.length === 0 && !loading && (
               <div className="p-6">
                 <p className="text-sm font-semibold text-slate-950">
                   No bookings to show
@@ -1529,6 +1673,32 @@ export default function BookingsPage() {
               </div>
             )}
           </div>
+
+          {matchingBookings > BOOKINGS_PAGE_SIZE && (
+            <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-slate-500">
+                Page {currentPage} of {totalPages}
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage <= 1 || loading}
+                >
+                  Previous
+                </button>
+
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage >= totalPages || loading}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

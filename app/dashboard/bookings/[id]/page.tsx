@@ -11,6 +11,7 @@ import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
 import { createCertificateVerificationId } from '@/lib/certificateVerification'
 import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
 import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
+import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import {
   getBulkCertificateEmailSummary,
   getBulkCertificateGenerationSummary,
@@ -213,11 +214,15 @@ export default function BookingDetailPage() {
       .eq('id', currentProfile.organisation_id)
       .single()
 
-    const { data: clientsData } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('organisation_id', currentProfile.organisation_id)
-      .order('company', { ascending: true })
+    const clientsData = await fetchPaginatedImportRecords<any>(
+      async (from, to) =>
+        await supabase
+          .from('clients')
+          .select('*')
+          .eq('organisation_id', currentProfile.organisation_id)
+          .order('company', { ascending: true })
+          .range(from, to)
+    )
 
     const { data: bookingData, error: bookingError } = await supabase
       .from('bookings')
