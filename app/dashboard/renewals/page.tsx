@@ -6,14 +6,24 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate } from '@/lib/formatters'
 import { createCertificateVerificationId } from '@/lib/certificateVerification'
+import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import {
   buildRenewalOpportunities,
   canSendRenewalReminder,
   getRenewalReminderSkipReason,
-  getRenewalSummary,
   groupRenewalOpportunitiesByClient,
   type RenewalWindow,
 } from '@/lib/renewals'
+
+const RENEWALS_PAGE_SIZE = 50
+
+const toLocalDateInputValue = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
 
 const windowLabels: Record<RenewalWindow, string> = {
   expired: 'Expired',
@@ -40,6 +50,16 @@ export default function RenewalsPage() {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [message, setMessage] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [matchingRenewals, setMatchingRenewals] = useState(0)
+  const [summary, setSummary] = useState({
+    expired: 0,
+    within30: 0,
+    within60: 0,
+    within90: 0,
+    clientsAffected: 0,
+    potentialRenewalDelegates: 0,
+  })
   const [windowFilter, setWindowFilter] = useState<'all' | RenewalWindow>('all')
   const [reminderFilter, setReminderFilter] = useState<'all' | 'sent' | 'not_sent'>('all')
 
@@ -58,7 +78,142 @@ export default function RenewalsPage() {
   const panelHeaderClass =
     'px-4 py-3 border-b border-slate-200'
 
-  const load = async () => {
+  const getRenewalDateWindows = () => {
+    const todayDate = new Date()
+    const today = new Date(
+      todayDate.getFullYear(),
+      todayDate.getMonth(),
+      todayDate.getDate()
+    )
+    const day30 = new Date(today)
+    const day60 = new Date(today)
+    const day90 = new Date(today)
+
+    day30.setDate(today.getDate() + 30)
+    day60.setDate(today.getDate() + 60)
+    day90.setDate(today.getDate() + 90)
+
+    return {
+      today: toLocalDateInputValue(today),
+      day30: toLocalDateInputValue(day30),
+      day60: toLocalDateInputValue(day60),
+      day90: toLocalDateInputValue(day90),
+    }
+  }
+
+  const applyRenewalFilters = (query: any) => {
+    const { today, day30, day60, day90 } = getRenewalDateWindows()
+    let nextQuery = query
+
+    if (windowFilter === 'expired') {
+      nextQuery = nextQuery.lt('expiry_date', today)
+    } else if (windowFilter === '30') {
+      nextQuery = nextQuery.gte('expiry_date', today).lte('expiry_date', day30)
+    } else if (windowFilter === '60') {
+      nextQuery = nextQuery.gt('expiry_date', day30).lte('expiry_date', day60)
+    } else if (windowFilter === '90') {
+      nextQuery = nextQuery.gt('expiry_date', day60).lte('expiry_date', day90)
+    } else {
+      nextQuery = nextQuery.lte('expiry_date', day90)
+    }
+
+    if (reminderFilter === 'sent') {
+      nextQuery = nextQuery.not('expiry_reminder_sent_at', 'is', null)
+    }
+
+    if (reminderFilter === 'not_sent') {
+      nextQuery = nextQuery.is('expiry_reminder_sent_at', null)
+    }
+
+    return nextQuery
+  }
+
+  const countRenewals = async (
+    organisationId: string,
+    filter: 'expired' | '30' | '60' | '90' | 'all'
+  ) => {
+    const { today, day30, day60, day90 } = getRenewalDateWindows()
+    let query = supabase
+      .from('certificates')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', organisationId)
+      .neq('status', 'revoked')
+
+    if (filter === 'expired') {
+      query = query.lt('expiry_date', today)
+    } else if (filter === '30') {
+      query = query.gte('expiry_date', today).lte('expiry_date', day30)
+    } else if (filter === '60') {
+      query = query.gt('expiry_date', day30).lte('expiry_date', day60)
+    } else if (filter === '90') {
+      query = query.gt('expiry_date', day60).lte('expiry_date', day90)
+    } else {
+      query = query.lte('expiry_date', day90)
+    }
+
+    const { count } = await query
+
+    return count || 0
+  }
+
+  const countAffectedClients = async (organisationId: string) => {
+    const { day90 } = getRenewalDateWindows()
+    const { count: unlinkedCount } = await supabase
+      .from('certificates')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', organisationId)
+      .neq('status', 'revoked')
+      .lte('expiry_date', day90)
+      .is('delegate_id', null)
+    const renewalDelegateRows = await fetchPaginatedImportRecords<{
+      delegate_id: string | null
+    }>(
+      async (from, to) =>
+        await supabase
+          .from('certificates')
+          .select('delegate_id')
+          .eq('organisation_id', organisationId)
+          .neq('status', 'revoked')
+          .lte('expiry_date', day90)
+          .range(from, to)
+    )
+    const renewalDelegateIds = new Set(
+      renewalDelegateRows
+        .map((certificate) => certificate.delegate_id)
+        .filter(Boolean) as string[]
+    )
+    const affectedClients = new Set<string>()
+
+    if ((unlinkedCount || 0) > 0) {
+      affectedClients.add('no-client')
+    }
+
+    if (renewalDelegateIds.size === 0) return affectedClients.size
+
+    const delegateRows = await fetchPaginatedImportRecords<{
+      id: string
+      client_id: string | null
+    }>(
+      async (from, to) =>
+        await supabase
+          .from('delegates')
+          .select('id, client_id')
+          .eq('organisation_id', organisationId)
+          .range(from, to)
+    )
+
+    delegateRows.forEach((delegate) => {
+      if (!renewalDelegateIds.has(delegate.id)) return
+
+      affectedClients.add(delegate.client_id || 'no-client')
+    })
+
+    return affectedClients.size
+  }
+
+  const load = async (page = currentPage) => {
+    setLoading(true)
+
     const currentProfile = await getOrCreateAccount()
 
     setProfile(currentProfile)
@@ -69,12 +224,23 @@ export default function RenewalsPage() {
       .eq('id', currentProfile.organisation_id)
       .single()
 
-    const { data: certificatesData, error: certificatesError } = await supabase
+    const from = (page - 1) * RENEWALS_PAGE_SIZE
+    const to = from + RENEWALS_PAGE_SIZE - 1
+    let certificatesQuery = supabase
       .from('certificates')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('organisation_id', currentProfile.organisation_id)
       .neq('status', 'revoked')
       .order('expiry_date', { ascending: true })
+      .range(from, to)
+
+    certificatesQuery = applyRenewalFilters(certificatesQuery)
+
+    const {
+      data: certificatesData,
+      count: renewalCount,
+      error: certificatesError,
+    } = await certificatesQuery
 
     if (certificatesError) {
       alert(certificatesError.message)
@@ -82,58 +248,91 @@ export default function RenewalsPage() {
       return
     }
 
-    const { data: delegatesData } = await supabase
-      .from('delegates')
-      .select('*')
-      .eq('organisation_id', currentProfile.organisation_id)
-      .order('full_name', { ascending: true })
+    const delegateIds = Array.from(
+      new Set(
+        (certificatesData || [])
+          .map((certificate) => certificate.delegate_id)
+          .filter(Boolean) as string[]
+      )
+    )
+    let delegatesData: any[] = []
+    let clientsData: any[] = []
 
-    const { data: clientsData } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('organisation_id', currentProfile.organisation_id)
-      .order('company', { ascending: true })
+    if (delegateIds.length > 0) {
+      const { data: delegateResults } = await supabase
+        .from('delegates')
+        .select('*')
+        .eq('organisation_id', currentProfile.organisation_id)
+        .in('id', delegateIds)
+
+      delegatesData = delegateResults || []
+
+      const clientIds = Array.from(
+        new Set(
+          delegatesData
+            .map((delegate) => delegate.client_id)
+            .filter(Boolean) as string[]
+        )
+      )
+
+      if (clientIds.length > 0) {
+        const { data: clientResults } = await supabase
+          .from('clients')
+          .select('*')
+          .eq('organisation_id', currentProfile.organisation_id)
+          .in('id', clientIds)
+
+        clientsData = clientResults || []
+      }
+    }
+
+    const [expired, within30, within60, within90, totalRenewals, affectedClients] =
+      await Promise.all([
+        countRenewals(currentProfile.organisation_id, 'expired'),
+        countRenewals(currentProfile.organisation_id, '30'),
+        countRenewals(currentProfile.organisation_id, '60'),
+        countRenewals(currentProfile.organisation_id, '90'),
+        countRenewals(currentProfile.organisation_id, 'all'),
+        countAffectedClients(currentProfile.organisation_id),
+      ])
 
     setOrganisation(organisationData || null)
     setCertificates(certificatesData || [])
-    setDelegates(delegatesData || [])
-    setClients(clientsData || [])
+    setDelegates(delegatesData)
+    setClients(clientsData)
+    setMatchingRenewals(renewalCount || 0)
+    setSummary({
+      expired,
+      within30,
+      within60,
+      within90,
+      clientsAffected: affectedClients,
+      potentialRenewalDelegates: totalRenewals,
+    })
     setLoading(false)
   }
 
   useEffect(() => {
-    load()
+    load(1)
   }, [])
+
+  useEffect(() => {
+    if (!profile?.organisation_id) return
+
+    const timeout = window.setTimeout(() => {
+      setCurrentPage(1)
+      load(1)
+    }, 250)
+
+    return () => window.clearTimeout(timeout)
+  }, [windowFilter, reminderFilter, profile?.organisation_id])
 
   const opportunities = useMemo(
     () => buildRenewalOpportunities(certificates, delegates, clients),
     [certificates, delegates, clients]
   )
 
-  const filteredOpportunities = opportunities.filter((opportunity) => {
-    if (windowFilter !== 'all' && opportunity.window !== windowFilter) {
-      return false
-    }
-
-    if (
-      reminderFilter === 'sent' &&
-      !opportunity.certificate.expiry_reminder_sent_at
-    ) {
-      return false
-    }
-
-    if (
-      reminderFilter === 'not_sent' &&
-      opportunity.certificate.expiry_reminder_sent_at
-    ) {
-      return false
-    }
-
-    return true
-  })
-
-  const groupedOpportunities = groupRenewalOpportunitiesByClient(filteredOpportunities)
-  const summary = getRenewalSummary(opportunities)
+  const groupedOpportunities = groupRenewalOpportunitiesByClient(opportunities)
   const remindersEnabled = organisation?.send_certificate_expiry_reminders !== false
   const reminderDays = Number(organisation?.certificate_expiry_reminder_days || 60)
 
@@ -279,6 +478,17 @@ export default function RenewalsPage() {
     )
   }
 
+  const totalPages = Math.max(1, Math.ceil(matchingRenewals / RENEWALS_PAGE_SIZE))
+  const pageStart = matchingRenewals === 0 ? 0 : (currentPage - 1) * RENEWALS_PAGE_SIZE + 1
+  const pageEnd = Math.min(currentPage * RENEWALS_PAGE_SIZE, matchingRenewals)
+
+  const goToPage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), totalPages)
+
+    setCurrentPage(nextPage)
+    load(nextPage)
+  }
+
   const getEmptyStateMessage = () => {
     const windowText =
       windowFilter === 'expired'
@@ -372,6 +582,12 @@ export default function RenewalsPage() {
             <p className="mt-0.5 text-xs text-slate-500">
               {summary.potentialRenewalDelegates} potential renewal delegate{summary.potentialRenewalDelegates === 1 ? '' : 's'}.
               Reminder setting: {remindersEnabled ? `enabled at ${reminderDays} days` : 'disabled'}.
+            </p>
+
+            <p className="mt-1 text-xs text-slate-500">
+              {loading
+                ? 'Loading renewal records...'
+                : `Showing ${pageStart}-${pageEnd} of ${matchingRenewals} renewal records.`}
             </p>
           </div>
 
@@ -544,6 +760,32 @@ export default function RenewalsPage() {
             </div>
           )}
         </div>
+
+        {matchingRenewals > RENEWALS_PAGE_SIZE && (
+          <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">
+              Page {currentPage} of {totalPages}
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                className={buttonSecondary}
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage <= 1 || loading}
+              >
+                Previous
+              </button>
+
+              <button
+                className={buttonSecondary}
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage >= totalPages || loading}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
