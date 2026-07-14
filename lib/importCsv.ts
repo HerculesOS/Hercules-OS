@@ -38,6 +38,11 @@ export type ImportPreview<T> = {
   rows: ImportPreviewRow<T>[]
 }
 
+export type PaginatedFetchResult<T> = {
+  data: T[] | null
+  error?: { message?: string } | null
+}
+
 export type ClientImportData = {
   client_name: string
   primary_contact: string
@@ -82,6 +87,10 @@ export type MissingClientInsertRecord = {
   notes: string
 }
 
+export const IMPORT_BATCH_SIZE = 500
+export const IMPORT_LOOKUP_PAGE_SIZE = 1000
+export const IMPORT_PREVIEW_ROW_LIMIT = 100
+
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const normalizeHeader = (header: string) =>
@@ -110,6 +119,48 @@ const getValue = (
 const hasAnyHeader = (headers: string[], aliases: string[]) =>
   aliases.some((alias) => headers.includes(normalizeHeader(alias)))
 
+export const getPreviewRows = <T>(
+  rows: ImportPreviewRow<T>[],
+  limit = IMPORT_PREVIEW_ROW_LIMIT
+) => rows.slice(0, limit)
+
+export const splitIntoBatches = <T>(
+  records: T[],
+  batchSize = IMPORT_BATCH_SIZE
+) => {
+  const batches: T[][] = []
+
+  for (let index = 0; index < records.length; index += batchSize) {
+    batches.push(records.slice(index, index + batchSize))
+  }
+
+  return batches
+}
+
+export const fetchPaginatedImportRecords = async <T>(
+  fetchPage: (from: number, to: number) => Promise<PaginatedFetchResult<T>>,
+  pageSize = IMPORT_LOOKUP_PAGE_SIZE
+) => {
+  const records: T[] = []
+  let from = 0
+
+  while (true) {
+    const to = from + pageSize - 1
+    const { data, error } = await fetchPage(from, to)
+
+    if (error) throw new Error(error.message || 'Could not load import records')
+
+    const page = data || []
+    records.push(...page)
+
+    if (page.length < pageSize) break
+
+    from += pageSize
+  }
+
+  return records
+}
+
 const clientAliases = {
   clientName: [
     'client_name',
@@ -132,11 +183,52 @@ const clientAliases = {
     'contact',
     'contact name',
     'main contact',
+    'primary name',
+    'contact person',
   ],
-  email: ['email', 'email address', 'contact email', 'primary email'],
+  email: [
+    'email',
+    'email address',
+    'email_address',
+    'contact email',
+    'primary email',
+    'main email',
+  ],
   phone: ['phone', 'phone number', 'telephone', 'tel', 'mobile', 'contact number'],
-  address: ['address', 'full address', 'postal address', 'site address', 'location'],
-  notes: ['notes', 'note', 'comments', 'comment', 'additional notes'],
+  address: [
+    'address',
+    'full address',
+    'postal address',
+    'site address',
+    'location',
+    'venue address',
+  ],
+  notes: ['notes', 'note', 'comments', 'comment', 'additional notes', 'description'],
+}
+
+const clientAddressPartAliases = {
+  line1: [
+    'address line 1',
+    'address line1',
+    'address_line_1',
+    'address_line1',
+    'address 1',
+    'address1',
+    'street',
+    'street address',
+  ],
+  line2: [
+    'address line 2',
+    'address line2',
+    'address_line_2',
+    'address_line2',
+    'address 2',
+    'address2',
+  ],
+  townCity: ['town', 'city'],
+  countyRegion: ['county', 'region'],
+  postcode: ['postcode', 'post code', 'postal code', 'zip', 'zip code'],
+  country: ['country'],
 }
 
 const delegateAliases = {
@@ -162,6 +254,23 @@ const hasEmail = (email: string) => email.length > 0
 
 const isValidEmail = (email: string) =>
   !hasEmail(email) || emailPattern.test(email)
+
+const buildClientAddress = (row: Record<string, string>) => {
+  const fullAddress = getValue(row, clientAliases.address)
+
+  if (fullAddress) return fullAddress
+
+  return [
+    getValue(row, clientAddressPartAliases.line1),
+    getValue(row, clientAddressPartAliases.line2),
+    getValue(row, clientAddressPartAliases.townCity),
+    getValue(row, clientAddressPartAliases.countyRegion),
+    getValue(row, clientAddressPartAliases.postcode),
+    getValue(row, clientAddressPartAliases.country),
+  ]
+    .filter(Boolean)
+    .join(', ')
+}
 
 const parseCsvLine = (line: string) => {
   const values: string[] = []
@@ -313,7 +422,7 @@ export const buildClientImportPreview = (
       primary_contact: getValue(row, clientAliases.primaryContact),
       email: getValue(row, clientAliases.email),
       phone: getValue(row, clientAliases.phone),
-      address: getValue(row, clientAliases.address),
+      address: buildClientAddress(row),
       notes: getValue(row, clientAliases.notes),
     }
 

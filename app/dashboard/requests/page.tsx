@@ -6,11 +6,24 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate } from '@/lib/formatters'
 
+const REQUESTS_PAGE_SIZE = 50
+
+const cleanSearchTerm = (value: string) =>
+  value.trim().replace(/[%_,]/g, ' ')
+
 export default function RequestsPage() {
   const [requests, setRequests] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
+  const [organisationId, setOrganisationId] = useState('')
   const [loading, setLoading] = useState(true)
   const [convertingId, setConvertingId] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalRequests, setTotalRequests] = useState(0)
+  const [matchingRequests, setMatchingRequests] = useState(0)
+  const [newRequestsCount, setNewRequestsCount] = useState(0)
+  const [contactedRequestsCount, setContactedRequestsCount] = useState(0)
+  const [convertedRequestsCount, setConvertedRequestsCount] = useState(0)
+  const [closedRequestsCount, setClosedRequestsCount] = useState(0)
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -34,8 +47,45 @@ export default function RequestsPage() {
   const panelHeaderClass =
     'px-4 py-3 border-b border-slate-200'
 
-  const load = async () => {
+  const applyRequestFilters = (query: any, searchTerm: string) => {
+    const cleanTerm = cleanSearchTerm(searchTerm)
+
+    if (!cleanTerm) return query
+
+    const term = `%${cleanTerm}%`
+
+    return query.or(
+      [
+        `company_name.ilike.${term}`,
+        `contact_name.ilike.${term}`,
+        `email.ilike.${term}`,
+        `phone.ilike.${term}`,
+        `course_name.ilike.${term}`,
+        `location.ilike.${term}`,
+        `notes.ilike.${term}`,
+        `status.ilike.${term}`,
+      ].join(',')
+    )
+  }
+
+  const applyRequestTypeFilter = (query: any) => {
+    if (requestTypeFilter === 'public') {
+      return query.or('notes.ilike.%public%,notes.ilike.%open course%')
+    }
+
+    if (requestTypeFilter === 'private') {
+      return query.not('notes', 'ilike', '%public%').not('notes', 'ilike', '%open course%')
+    }
+
+    return query
+  }
+
+  const load = async (page = currentPage, searchTerm = search) => {
+    setLoading(true)
+
     const profile = await getOrCreateAccount()
+
+    setOrganisationId(profile.organisation_id)
 
     const { data: organisationData } = await supabase
       .from('organisations')
@@ -43,11 +93,38 @@ export default function RequestsPage() {
       .eq('id', profile.organisation_id)
       .single()
 
-    const { data, error } = await supabase
+    const from = (page - 1) * REQUESTS_PAGE_SIZE
+    const to = from + REQUESTS_PAGE_SIZE - 1
+    let requestQuery = supabase
       .from('training_requests')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('organisation_id', profile.organisation_id)
       .order('created_at', { ascending: false })
+      .range(from, to)
+
+    if (statusFilter !== 'all') {
+      requestQuery = requestQuery.eq('status', statusFilter)
+    }
+
+    requestQuery = applyRequestTypeFilter(requestQuery)
+    requestQuery = applyRequestFilters(requestQuery, searchTerm)
+
+    const { data, count, error } = await requestQuery
+
+    const { count: allCount } = await supabase
+      .from('training_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', profile.organisation_id)
+
+    const getStatusCount = async (status: string) => {
+      const { count: statusCount } = await supabase
+        .from('training_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('organisation_id', profile.organisation_id)
+        .eq('status', status)
+
+      return statusCount || 0
+    }
 
     if (error) {
       alert(error.message)
@@ -57,12 +134,29 @@ export default function RequestsPage() {
 
     setOrganisation(organisationData || null)
     setRequests(data || [])
+    setMatchingRequests(count || 0)
+    setTotalRequests(allCount || 0)
+    setNewRequestsCount(await getStatusCount('new'))
+    setContactedRequestsCount(await getStatusCount('contacted'))
+    setConvertedRequestsCount(await getStatusCount('converted'))
+    setClosedRequestsCount(await getStatusCount('closed'))
     setLoading(false)
   }
 
   useEffect(() => {
-    load()
+    load(1, '')
   }, [])
+
+  useEffect(() => {
+    if (!organisationId) return
+
+    const timeout = window.setTimeout(() => {
+      setCurrentPage(1)
+      load(1, search)
+    }, 250)
+
+    return () => window.clearTimeout(timeout)
+  }, [search, statusFilter, requestTypeFilter, organisationId])
 
   const getFormattedDate = (dateValue: string | null | undefined) => {
     if (!dateValue) return 'Not set'
@@ -130,7 +224,7 @@ export default function RequestsPage() {
       return
     }
 
-    load()
+    load(currentPage, search)
   }
 
   const deleteRequest = async (requestId: string) => {
@@ -150,7 +244,7 @@ export default function RequestsPage() {
       return
     }
 
-    load()
+    load(currentPage, search)
   }
 
   const convertRequest = async (request: any) => {
@@ -194,52 +288,22 @@ export default function RequestsPage() {
     setRequestTypeFilter('all')
   }
 
-  const filteredRequests = requests.filter((request) => {
-    const requestType = getRequestType(request)
-
-    const searchableText = `
-      ${request.company_name || ''}
-      ${request.contact_name || ''}
-      ${request.email || ''}
-      ${request.phone || ''}
-      ${request.course_name || ''}
-      ${request.location || ''}
-      ${request.notes || ''}
-      ${getRequestTypeLabel(request)}
-      ${request.preferred_date || ''}
-      ${getFormattedDate(request.preferred_date)}
-      ${request.created_at || ''}
-      ${getFormattedDate(request.created_at)}
-      ${request.status || ''}
-    `.toLowerCase()
-
-    const matchesSearch = searchableText.includes(search.toLowerCase())
-
-    const matchesStatus =
-      statusFilter === 'all' || request.status === statusFilter
-
-    const matchesRequestType =
-      requestTypeFilter === 'all' || requestType === requestTypeFilter
-
-    return matchesSearch && matchesStatus && matchesRequestType
-  })
-
-  const newRequests = requests.filter((request) => request.status === 'new')
-  const contactedRequests = requests.filter(
-    (request) => request.status === 'contacted'
-  )
-  const convertedRequests = requests.filter(
-    (request) => request.status === 'converted'
-  )
-  const closedRequests = requests.filter((request) => request.status === 'closed')
-
-  const privateRequests = requests.filter(
-    (request) => getRequestType(request) === 'private'
-  )
-
-  const publicRequests = requests.filter(
+  const publicRequestsCount = requests.filter(
     (request) => getRequestType(request) === 'public'
-  )
+  ).length
+  const privateRequestsCount = requests.filter(
+    (request) => getRequestType(request) === 'private'
+  ).length
+  const totalPages = Math.max(1, Math.ceil(matchingRequests / REQUESTS_PAGE_SIZE))
+  const pageStart = matchingRequests === 0 ? 0 : (currentPage - 1) * REQUESTS_PAGE_SIZE + 1
+  const pageEnd = Math.min(currentPage * REQUESTS_PAGE_SIZE, matchingRequests)
+
+  const goToPage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), totalPages)
+
+    setCurrentPage(nextPage)
+    load(nextPage, search)
+  }
 
   const getStatusStyle = (status: string) => {
     if (status === 'converted') {
@@ -298,43 +362,43 @@ export default function RequestsPage() {
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
         <StatCard
           label="Total"
-          value={requests.length}
+          value={totalRequests}
           detail="All submitted requests"
         />
 
         <StatCard
           label="New"
-          value={newRequests.length}
+          value={newRequestsCount}
           detail="Awaiting action"
         />
 
         <StatCard
           label="Private"
-          value={privateRequests.length}
-          detail="In-house enquiries"
+          value={privateRequestsCount}
+          detail="On this page"
         />
 
         <StatCard
           label="Public"
-          value={publicRequests.length}
-          detail="Open course enquiries"
+          value={publicRequestsCount}
+          detail="On this page"
         />
 
         <StatCard
           label="Converted"
-          value={convertedRequests.length}
+          value={convertedRequestsCount}
           detail="Client or booking created"
         />
       </div>
 
-      {(contactedRequests.length > 0 || closedRequests.length > 0) && (
+      {(contactedRequestsCount > 0 || closedRequestsCount > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-blue-800 text-sm">
-            Contacted requests: {contactedRequests.length}
+            Contacted requests: {contactedRequestsCount}
           </div>
 
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-slate-700 text-sm">
-            Closed requests: {closedRequests.length}
+            Closed requests: {closedRequestsCount}
           </div>
         </div>
       )}
@@ -390,7 +454,9 @@ export default function RequestsPage() {
           </div>
 
           <p className="text-xs text-slate-500 mt-3">
-            Showing {filteredRequests.length} of {requests.length} requests
+            {loading
+              ? 'Loading requests...'
+              : `Showing ${pageStart}-${pageEnd} of ${matchingRequests} matching requests. Total requests: ${totalRequests}.`}
           </p>
         </div>
       </div>
@@ -407,7 +473,7 @@ export default function RequestsPage() {
         </div>
 
         <div className="divide-y divide-slate-100">
-          {filteredRequests.map((request) => {
+          {requests.map((request) => {
             const cleanNotes = getCleanNotes(request)
 
             return (
@@ -582,7 +648,7 @@ export default function RequestsPage() {
             )
           })}
 
-          {filteredRequests.length === 0 && (
+          {requests.length === 0 && !loading && (
             <div className="p-6">
               <p className="text-sm font-semibold text-slate-950">
                 No training requests yet
@@ -622,6 +688,32 @@ export default function RequestsPage() {
             </div>
           )}
         </div>
+
+        {matchingRequests > REQUESTS_PAGE_SIZE && (
+          <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">
+              Page {currentPage} of {totalPages}
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                className={buttonSecondary}
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage <= 1 || loading}
+              >
+                Previous
+              </button>
+
+              <button
+                className={buttonSecondary}
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage >= totalPages || loading}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

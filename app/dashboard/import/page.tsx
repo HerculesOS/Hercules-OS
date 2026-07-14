@@ -11,7 +11,12 @@ import {
   buildMissingClientInsertRecords,
   clientCsvTemplate,
   delegateCsvTemplate,
+  fetchPaginatedImportRecords,
+  getPreviewRows,
+  IMPORT_BATCH_SIZE,
+  IMPORT_PREVIEW_ROW_LIMIT,
   resolveImportedDelegateClientId,
+  splitIntoBatches,
   type ClientImportData,
   type DelegateImportData,
   type ExistingClientForImport,
@@ -22,10 +27,15 @@ import {
 type ImportMode = 'clients' | 'delegates'
 
 type ImportResult = {
+  totalRows: number
+  rowsImported: number
   clientsCreated: number
   delegatesCreated: number
+  missingClientsCreated: number
+  rowsWithWarnings: number
   duplicatesSkipped: number
   errorRowsSkipped: number
+  failedBatches: number
 }
 
 const normalizeMatch = (value?: string | null) =>
@@ -42,6 +52,7 @@ export default function ImportPage() {
   const [csvText, setCsvText] = useState('')
   const [createMissingClients, setCreateMissingClients] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState('')
   const [result, setResult] = useState<ImportResult | null>(null)
 
   const inputClass =
@@ -66,26 +77,35 @@ export default function ImportPage() {
     setOrganisationId(profile.organisation_id)
     setUserId(userData.user?.id || null)
 
-    const { data: clientsData, error: clientsError } = await supabase
-      .from('clients')
-      .select('id, company, name, email')
-      .eq('organisation_id', profile.organisation_id)
-      .order('company', { ascending: true })
+    try {
+      const clientsData = await fetchPaginatedImportRecords<ExistingClientForImport>(
+        async (from, to) =>
+          await supabase
+            .from('clients')
+            .select('id, company, name, email')
+            .eq('organisation_id', profile.organisation_id)
+            .order('company', { ascending: true })
+            .range(from, to)
+      )
 
-    const { data: delegatesData, error: delegatesError } = await supabase
-      .from('delegates')
-      .select('id, full_name, email, client_id')
-      .eq('organisation_id', profile.organisation_id)
-      .order('full_name', { ascending: true })
+      const delegatesData = await fetchPaginatedImportRecords<ExistingDelegateForImport>(
+        async (from, to) =>
+          await supabase
+            .from('delegates')
+            .select('id, full_name, email, client_id')
+            .eq('organisation_id', profile.organisation_id)
+            .order('full_name', { ascending: true })
+            .range(from, to)
+      )
 
-    if (clientsError || delegatesError) {
-      alert(clientsError?.message || delegatesError?.message)
+      setClients(clientsData)
+      setDelegates(delegatesData)
+    } catch (error: any) {
+      alert(error.message || 'Could not load import data')
       setLoading(false)
       return
     }
 
-    setClients(clientsData || [])
-    setDelegates(delegatesData || [])
     setLoading(false)
   }
 
@@ -101,10 +121,16 @@ export default function ImportPage() {
       : buildDelegateImportPreview(csvText, clients, delegates, createMissingClients)
   }, [clients, createMissingClients, csvText, delegates, mode])
 
+  const previewRows = useMemo(
+    () => preview ? getPreviewRows(preview.rows as any[]) : [],
+    [preview]
+  )
+
   const resetUpload = () => {
     setCsvText('')
     setFileName('')
     setResult(null)
+    setImportProgress('')
   }
 
   const clearUpload = () => {
@@ -133,6 +159,7 @@ export default function ImportPage() {
     const file = event.target.files?.[0]
 
     setResult(null)
+    setImportProgress('')
 
     if (!file) return
 
@@ -148,21 +175,32 @@ export default function ImportPage() {
     )
 
     if (clientRecords.length === 0) {
-      return { clientsCreated: 0, delegatesCreated: 0 }
+      return { clientsCreated: 0, delegatesCreated: 0, failedBatches: 0 }
     }
 
-    const { error } = await supabase.from('clients').insert(clientRecords)
+    const batches = splitIntoBatches(clientRecords)
+    let clientsCreated = 0
 
-    if (error) throw new Error(error.message)
+    for (let index = 0; index < batches.length; index += 1) {
+      setImportProgress(`Importing client batch ${index + 1} of ${batches.length}`)
 
-    return { clientsCreated: clientRecords.length, delegatesCreated: 0 }
+      const { error } = await supabase.from('clients').insert(batches[index])
+
+      if (error) {
+        throw new Error(`Client import failed at batch ${index + 1} of ${batches.length}: ${error.message}`)
+      }
+
+      clientsCreated += batches[index].length
+    }
+
+    return { clientsCreated, delegatesCreated: 0, failedBatches: 0 }
   }
 
   const importDelegates = async (delegatePreview: ImportPreview<DelegateImportData>) => {
     const rowsToImport = delegatePreview.rows.filter((row) => row.willImport)
 
     if (rowsToImport.length === 0) {
-      return { clientsCreated: 0, delegatesCreated: 0 }
+      return { clientsCreated: 0, delegatesCreated: 0, failedBatches: 0 }
     }
 
     const createdClientIds = new Map<string, string>()
@@ -174,51 +212,68 @@ export default function ImportPage() {
     )
 
     if (missingClientRecords.length > 0) {
-      const { data, error } = await supabase
-        .from('clients')
-        .insert(missingClientRecords)
-        .select('id, company, name')
+      const missingClientBatches = splitIntoBatches(missingClientRecords)
 
-      if (error) throw new Error(error.message)
+      for (let index = 0; index < missingClientBatches.length; index += 1) {
+        setImportProgress(`Creating missing client batch ${index + 1} of ${missingClientBatches.length}`)
 
-      ;(data || []).forEach((client) => {
-        createdClientIds.set(normalizeMatch(client.company), client.id)
-        createdClientIds.set(normalizeMatch(client.name), client.id)
-        createdClientIdsForRollback.push(client.id)
-      })
+        const { data, error } = await supabase
+          .from('clients')
+          .insert(missingClientBatches[index])
+          .select('id, company, name')
+
+        if (error) {
+          throw new Error(`Missing client creation failed at batch ${index + 1} of ${missingClientBatches.length}: ${error.message}`)
+        }
+
+        ;(data || []).forEach((client) => {
+          createdClientIds.set(normalizeMatch(client.company), client.id)
+          createdClientIds.set(normalizeMatch(client.name), client.id)
+          createdClientIdsForRollback.push(client.id)
+        })
+      }
     }
 
-    const { error } = await supabase.from('delegates').insert(
-      rowsToImport.map((row) => {
-        const clientId = resolveImportedDelegateClientId(row.data, createdClientIds)
+    const delegateRecords = rowsToImport.map((row) => {
+      const clientId = resolveImportedDelegateClientId(row.data, createdClientIds)
 
-        return {
-          organisation_id: organisationId,
-          client_id: clientId,
-          booking_id: null,
-          full_name: row.data.full_name,
-          email: row.data.email || null,
-          phone: row.data.phone || null,
-          notes: row.data.notes || null,
+      return {
+        organisation_id: organisationId,
+        client_id: clientId,
+        booking_id: null,
+        full_name: row.data.full_name,
+        email: row.data.email || null,
+        phone: row.data.phone || null,
+        notes: row.data.notes || null,
+      }
+    })
+    const delegateBatches = splitIntoBatches(delegateRecords)
+    let delegatesCreated = 0
+
+    for (let index = 0; index < delegateBatches.length; index += 1) {
+      setImportProgress(`Importing delegate batch ${index + 1} of ${delegateBatches.length}`)
+
+      const { error } = await supabase.from('delegates').insert(delegateBatches[index])
+
+      if (error) {
+        if (createdClientIdsForRollback.length > 0) {
+          await supabase
+            .from('clients')
+            .delete()
+            .eq('organisation_id', organisationId)
+            .in('id', createdClientIdsForRollback)
         }
-      })
-    )
 
-    if (error) {
-      if (createdClientIdsForRollback.length > 0) {
-        await supabase
-          .from('clients')
-          .delete()
-          .eq('organisation_id', organisationId)
-          .in('id', createdClientIdsForRollback)
+        throw new Error(`Delegate import failed at batch ${index + 1} of ${delegateBatches.length}: ${error.message}`)
       }
 
-      throw new Error(error.message)
+      delegatesCreated += delegateBatches[index].length
     }
 
     return {
       clientsCreated: missingClientRecords.length,
-      delegatesCreated: rowsToImport.length,
+      delegatesCreated,
+      failedBatches: 0,
     }
   }
 
@@ -232,6 +287,7 @@ export default function ImportPage() {
     if (!confirmed) return
 
     setImporting(true)
+    setImportProgress('Preparing import...')
 
     try {
       const importCounts =
@@ -240,7 +296,11 @@ export default function ImportPage() {
           : await importDelegates(preview as ImportPreview<DelegateImportData>)
 
       setResult({
+        totalRows: preview.totalRows,
+        rowsImported: mode === 'clients' ? importCounts.clientsCreated : importCounts.delegatesCreated,
         ...importCounts,
+        missingClientsCreated: mode === 'delegates' ? importCounts.clientsCreated : 0,
+        rowsWithWarnings: preview.warningRows,
         duplicatesSkipped: preview.rows.filter(
           (row) =>
             !row.willImport &&
@@ -255,9 +315,21 @@ export default function ImportPage() {
       await load()
       clearUpload()
     } catch (error: any) {
+      setResult({
+        totalRows: preview.totalRows,
+        rowsImported: 0,
+        clientsCreated: 0,
+        delegatesCreated: 0,
+        missingClientsCreated: 0,
+        rowsWithWarnings: preview.warningRows,
+        duplicatesSkipped: preview.rows.filter((row) => !row.willImport).length,
+        errorRowsSkipped: preview.errorRows,
+        failedBatches: 1,
+      })
       alert(error.message || 'Import failed')
     } finally {
       setImporting(false)
+      setImportProgress('')
     }
   }
 
@@ -388,6 +460,10 @@ export default function ImportPage() {
               <p className="mt-2">
                 {clients.length} clients and {delegates.length} delegates will be checked for duplicates before import.
               </p>
+
+              <p className="mt-2">
+                Large CSV files are imported in batches of {IMPORT_BATCH_SIZE}. You do not need to split files manually.
+              </p>
             </div>
           </div>
         </div>
@@ -400,7 +476,7 @@ export default function ImportPage() {
               </p>
 
               <p className="mt-2">
-                Clients created: {result.clientsCreated} · Delegates created: {result.delegatesCreated} · Duplicates skipped: {result.duplicatesSkipped} · Error rows skipped: {result.errorRowsSkipped}
+                Total rows: {result.totalRows} - Rows imported: {result.rowsImported} - Clients created: {result.clientsCreated} - Delegates created: {result.delegatesCreated} - Missing clients created: {result.missingClientsCreated} - Warnings: {result.rowsWithWarnings} - Duplicates skipped: {result.duplicatesSkipped} - Error rows skipped: {result.errorRowsSkipped} - Failed batches: {result.failedBatches}
               </p>
             </div>
           )}
@@ -426,6 +502,12 @@ export default function ImportPage() {
               </button>
             </div>
 
+            {importProgress && (
+              <div className="mx-5 mt-5 rounded-xl border border-sky-100 bg-sky-50 p-4 text-sm text-sky-800">
+                {importProgress}
+              </div>
+            )}
+
             {!preview ? (
               <div className="p-8 text-center">
                 <p className="text-sm font-semibold text-slate-950">
@@ -445,6 +527,12 @@ export default function ImportPage() {
                   <SummaryPill label="Errors" value={preview.errorRows} tone="red" />
                   <SummaryPill label="Skipped" value={preview.skippedRows} />
                 </div>
+
+                {preview.totalRows > IMPORT_PREVIEW_ROW_LIMIT && (
+                  <div className="mx-5 mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                    Showing first {IMPORT_PREVIEW_ROW_LIMIT} rows of {preview.totalRows} detected. All valid rows will be imported when confirmed.
+                  </div>
+                )}
 
                 {preview.missingHeaders.length > 0 && (
                   <div className="mx-5 mt-5 rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
@@ -471,7 +559,7 @@ export default function ImportPage() {
                     </thead>
 
                     <tbody className="divide-y divide-slate-100">
-                      {preview.rows.map((row) => {
+                      {previewRows.map((row) => {
                         const data: any = row.data
                         const recordName =
                           mode === 'clients'
@@ -479,8 +567,11 @@ export default function ImportPage() {
                             : data.full_name || 'Unnamed delegate'
                         const contact =
                           mode === 'clients'
-                            ? data.email || data.primary_contact || 'No contact detail'
+                            ? [data.primary_contact, data.email, data.phone].filter(Boolean).join(' - ') || 'No contact detail'
                             : data.email || data.clientPreview || 'No contact detail'
+                        const clientDetail = mode === 'clients'
+                          ? [data.address && `Address: ${data.address}`, data.notes && `Notes: ${data.notes}`].filter(Boolean)
+                          : []
 
                         return (
                           <tr key={row.rowNumber} className="align-top">
@@ -497,6 +588,16 @@ export default function ImportPage() {
                                 <p className="mt-1 text-xs text-slate-500">
                                   {data.clientPreview}
                                 </p>
+                              )}
+
+                              {mode === 'clients' && clientDetail.length > 0 && (
+                                <div className="mt-2 grid gap-1 text-xs leading-5 text-slate-500">
+                                  {clientDetail.map((detail: string) => (
+                                    <p key={detail}>
+                                      {detail}
+                                    </p>
+                                  ))}
+                                </div>
                               )}
                             </td>
 

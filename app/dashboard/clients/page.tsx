@@ -5,9 +5,20 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 
+const CLIENTS_PAGE_SIZE = 50
+
+const cleanSearchTerm = (value: string) =>
+  value.trim().replace(/[%_,]/g, ' ')
+
 export default function ClientsPage() {
   const [clients, setClients] = useState<any[]>([])
   const [organisationId, setOrganisationId] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalClients, setTotalClients] = useState(0)
+  const [matchingClients, setMatchingClients] = useState(0)
+  const [clientsWithEmailCount, setClientsWithEmailCount] = useState(0)
+  const [clientsWithPhoneCount, setClientsWithPhoneCount] = useState(0)
 
   const [company, setCompany] = useState('')
   const [name, setName] = useState('')
@@ -32,24 +43,91 @@ export default function ClientsPage() {
   const panelHeaderClass =
     'px-4 py-3 border-b border-slate-200'
 
-  const load = async () => {
+  const applyClientSearch = (query: any, searchTerm: string) => {
+    const cleanTerm = cleanSearchTerm(searchTerm)
+
+    if (!cleanTerm) return query
+
+    const term = `%${cleanTerm}%`
+
+    return query.or(
+      [
+        `company.ilike.${term}`,
+        `name.ilike.${term}`,
+        `email.ilike.${term}`,
+        `phone.ilike.${term}`,
+        `address.ilike.${term}`,
+        `notes.ilike.${term}`,
+      ].join(',')
+    )
+  }
+
+  const load = async (page = currentPage, searchTerm = search) => {
+    setLoading(true)
+
     const profile = await getOrCreateAccount()
 
     setOrganisationId(profile.organisation_id)
 
-    const { data } = await supabase
+    const from = (page - 1) * CLIENTS_PAGE_SIZE
+    const to = from + CLIENTS_PAGE_SIZE - 1
+    const baseQuery = supabase
       .from('clients')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('organisation_id', profile.organisation_id)
       .order('company', { ascending: true })
       .order('name', { ascending: true })
+      .range(from, to)
+
+    const { data, count, error } = await applyClientSearch(baseQuery, searchTerm)
+
+    const { count: allCount } = await supabase
+      .from('clients')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', profile.organisation_id)
+
+    const { count: emailCount } = await supabase
+      .from('clients')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', profile.organisation_id)
+      .not('email', 'is', null)
+      .neq('email', '')
+
+    const { count: phoneCount } = await supabase
+      .from('clients')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', profile.organisation_id)
+      .not('phone', 'is', null)
+      .neq('phone', '')
+
+    if (error) {
+      alert(error.message)
+      setLoading(false)
+      return
+    }
 
     setClients(data || [])
+    setMatchingClients(count || 0)
+    setTotalClients(allCount || 0)
+    setClientsWithEmailCount(emailCount || 0)
+    setClientsWithPhoneCount(phoneCount || 0)
+    setLoading(false)
   }
 
   useEffect(() => {
-    load()
+    load(1, '')
   }, [])
+
+  useEffect(() => {
+    if (!organisationId) return
+
+    const timeout = window.setTimeout(() => {
+      setCurrentPage(1)
+      load(1, search)
+    }, 250)
+
+    return () => window.clearTimeout(timeout)
+  }, [search, organisationId])
 
   const addClient = async () => {
     if (!company || !name) {
@@ -82,28 +160,24 @@ export default function ClientsPage() {
     setAddress('')
     setNotes('')
 
-    load()
+    setCurrentPage(1)
+    load(1, search)
   }
 
   const clearSearch = () => {
     setSearch('')
   }
 
-  const filteredClients = clients.filter((client) =>
-    `
-      ${client.company || ''}
-      ${client.name || ''}
-      ${client.email || ''}
-      ${client.phone || ''}
-      ${client.address || ''}
-      ${client.notes || ''}
-    `
-      .toLowerCase()
-      .includes(search.toLowerCase())
-  )
+  const totalPages = Math.max(1, Math.ceil(matchingClients / CLIENTS_PAGE_SIZE))
+  const pageStart = matchingClients === 0 ? 0 : (currentPage - 1) * CLIENTS_PAGE_SIZE + 1
+  const pageEnd = Math.min(currentPage * CLIENTS_PAGE_SIZE, matchingClients)
 
-  const clientsWithEmail = clients.filter((client) => client.email)
-  const clientsWithPhone = clients.filter((client) => client.phone)
+  const goToPage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), totalPages)
+
+    setCurrentPage(nextPage)
+    load(nextPage, search)
+  }
 
   const StatCard = ({
     label,
@@ -136,25 +210,25 @@ export default function ClientsPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
         <StatCard
           label="Total clients"
-          value={clients.length}
+          value={totalClients}
           detail="All client records"
         />
 
         <StatCard
           label="With email"
-          value={clientsWithEmail.length}
+          value={clientsWithEmailCount}
           detail="Can receive booking emails"
         />
 
         <StatCard
           label="With phone"
-          value={clientsWithPhone.length}
+          value={clientsWithPhoneCount}
           detail="Phone number saved"
         />
 
         <StatCard
           label="Search results"
-          value={filteredClients.length}
+          value={matchingClients}
           detail="Matching current filter"
         />
       </div>
@@ -253,7 +327,9 @@ export default function ClientsPage() {
               </div>
 
               <p className="text-xs text-slate-500 mt-3">
-                Showing {filteredClients.length} of {clients.length} clients
+                {loading
+                  ? 'Loading clients...'
+                  : `Showing ${pageStart}-${pageEnd} of ${matchingClients} matching clients. Total clients: ${totalClients}.`}
               </p>
             </div>
           </div>
@@ -272,7 +348,7 @@ export default function ClientsPage() {
             </div>
 
             <div className="divide-y divide-slate-100">
-              {filteredClients.map((client) => (
+              {clients.map((client) => (
                 <div
                   key={client.id}
                   className="p-3"
@@ -338,14 +414,16 @@ export default function ClientsPage() {
                 </div>
               ))}
 
-              {filteredClients.length === 0 && (
+              {clients.length === 0 && !loading && (
                 <div className="p-6">
                   <p className="text-sm font-semibold text-slate-950">
-                    No clients yet
+                    {search ? 'No matching clients' : 'No clients yet'}
                   </p>
 
                   <p className="text-sm text-slate-500 mt-1">
-                    Add your first client to start managing bookings, delegates and invoices.
+                    {search
+                      ? 'Try a different search term or clear the filter.'
+                      : 'Add your first client to start managing bookings, delegates and invoices.'}
                   </p>
 
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -366,6 +444,32 @@ export default function ClientsPage() {
                 </div>
               )}
             </div>
+
+            {matchingClients > CLIENTS_PAGE_SIZE && (
+              <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-slate-500">
+                  Page {currentPage} of {totalPages}
+                </p>
+
+                <div className="flex gap-2">
+                  <button
+                    className={buttonSecondary}
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage <= 1 || loading}
+                  >
+                    Previous
+                  </button>
+
+                  <button
+                    className={buttonSecondary}
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage >= totalPages || loading}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

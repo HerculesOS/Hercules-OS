@@ -4,12 +4,24 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
+import { fetchPaginatedImportRecords } from '@/lib/importCsv'
+
+const DELEGATES_PAGE_SIZE = 50
+
+const cleanSearchTerm = (value: string) =>
+  value.trim().replace(/[%_,]/g, ' ')
 
 export default function DelegatesPage() {
   const [delegates, setDelegates] = useState<any[]>([])
   const [clients, setClients] = useState<any[]>([])
   const [organisationId, setOrganisationId] = useState('')
   const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalDelegates, setTotalDelegates] = useState(0)
+  const [matchingDelegates, setMatchingDelegates] = useState(0)
+  const [delegatesWithEmailCount, setDelegatesWithEmailCount] = useState(0)
+  const [delegatesWithPhoneCount, setDelegatesWithPhoneCount] = useState(0)
+  const [delegatesWithClientCount, setDelegatesWithClientCount] = useState(0)
 
   const [clientId, setClientId] = useState('')
   const [fullName, setFullName] = useState('')
@@ -44,22 +56,104 @@ export default function DelegatesPage() {
   const panelHeaderClass =
     'px-4 py-3 border-b border-slate-200'
 
-  const load = async () => {
+  const getMatchingClientIds = async (organisationIdValue: string, searchTerm: string) => {
+    const cleanTerm = cleanSearchTerm(searchTerm)
+
+    if (!cleanTerm) return []
+
+    const term = `%${cleanTerm}%`
+
+    return fetchPaginatedImportRecords<any>(
+      async (from, to) =>
+        await supabase
+          .from('clients')
+          .select('id')
+          .eq('organisation_id', organisationIdValue)
+          .or(`company.ilike.${term},name.ilike.${term}`)
+          .order('company', { ascending: true })
+          .range(from, to)
+    )
+  }
+
+  const applyDelegateSearch = (query: any, searchTerm: string, matchingClientIds: string[]) => {
+    const cleanTerm = cleanSearchTerm(searchTerm)
+
+    if (!cleanTerm) return query
+
+    const term = `%${cleanTerm}%`
+    const filters = [
+      `full_name.ilike.${term}`,
+      `email.ilike.${term}`,
+      `phone.ilike.${term}`,
+      `notes.ilike.${term}`,
+    ]
+
+    if (matchingClientIds.length > 0) {
+      filters.push(`client_id.in.(${matchingClientIds.join(',')})`)
+    }
+
+    return query.or(filters.join(','))
+  }
+
+  const load = async (page = currentPage, searchTerm = search) => {
+    setLoading(true)
+
     const profile = await getOrCreateAccount()
 
     setOrganisationId(profile.organisation_id)
 
-    const { data: clientsData } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
-      .order('company', { ascending: true })
+    const clientsData = await fetchPaginatedImportRecords<any>(
+      async (from, to) =>
+        await supabase
+          .from('clients')
+          .select('*')
+          .eq('organisation_id', profile.organisation_id)
+          .order('company', { ascending: true })
+          .range(from, to)
+    )
 
-    const { data: delegatesData, error } = await supabase
+    const matchingClientRows = await getMatchingClientIds(profile.organisation_id, searchTerm)
+    const matchingClientIds = matchingClientRows.map((client) => client.id)
+    const from = (page - 1) * DELEGATES_PAGE_SIZE
+    const to = from + DELEGATES_PAGE_SIZE - 1
+
+    const delegateQuery = supabase
       .from('delegates')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('organisation_id', profile.organisation_id)
       .order('full_name', { ascending: true })
+      .range(from, to)
+
+    const { data: delegatesData, count, error } = await applyDelegateSearch(
+      delegateQuery,
+      searchTerm,
+      matchingClientIds
+    )
+
+    const { count: allCount } = await supabase
+      .from('delegates')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', profile.organisation_id)
+
+    const { count: emailCount } = await supabase
+      .from('delegates')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', profile.organisation_id)
+      .not('email', 'is', null)
+      .neq('email', '')
+
+    const { count: phoneCount } = await supabase
+      .from('delegates')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', profile.organisation_id)
+      .not('phone', 'is', null)
+      .neq('phone', '')
+
+    const { count: linkedCount } = await supabase
+      .from('delegates')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', profile.organisation_id)
+      .not('client_id', 'is', null)
 
     if (error) {
       alert(error.message)
@@ -69,12 +163,28 @@ export default function DelegatesPage() {
 
     setClients(clientsData || [])
     setDelegates(delegatesData || [])
+    setMatchingDelegates(count || 0)
+    setTotalDelegates(allCount || 0)
+    setDelegatesWithEmailCount(emailCount || 0)
+    setDelegatesWithPhoneCount(phoneCount || 0)
+    setDelegatesWithClientCount(linkedCount || 0)
     setLoading(false)
   }
 
   useEffect(() => {
-    load()
+    load(1, '')
   }, [])
+
+  useEffect(() => {
+    if (!organisationId) return
+
+    const timeout = window.setTimeout(() => {
+      setCurrentPage(1)
+      load(1, search)
+    }, 250)
+
+    return () => window.clearTimeout(timeout)
+  }, [search, organisationId])
 
   const getClientForDelegate = (delegate: any) => {
     return clients.find((client) => client.id === delegate.client_id)
@@ -107,7 +217,8 @@ export default function DelegatesPage() {
     setPhone('')
     setNotes('')
 
-    load()
+    setCurrentPage(1)
+    load(1, search)
   }
 
   const startEditing = (delegate: any) => {
@@ -151,7 +262,7 @@ export default function DelegatesPage() {
     }
 
     cancelEditing()
-    load()
+    load(currentPage, search)
   }
 
   const deleteDelegate = async (delegateId: string) => {
@@ -171,31 +282,23 @@ export default function DelegatesPage() {
       return
     }
 
-    load()
+    load(currentPage, search)
   }
 
   const clearSearch = () => {
     setSearch('')
   }
 
-  const filteredDelegates = delegates.filter((delegate) => {
-    const client = getClientForDelegate(delegate)
+  const totalPages = Math.max(1, Math.ceil(matchingDelegates / DELEGATES_PAGE_SIZE))
+  const pageStart = matchingDelegates === 0 ? 0 : (currentPage - 1) * DELEGATES_PAGE_SIZE + 1
+  const pageEnd = Math.min(currentPage * DELEGATES_PAGE_SIZE, matchingDelegates)
 
-    const searchableText = `
-      ${delegate.full_name || ''}
-      ${delegate.email || ''}
-      ${delegate.phone || ''}
-      ${delegate.notes || ''}
-      ${client?.company || ''}
-      ${client?.name || ''}
-    `.toLowerCase()
+  const goToPage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), totalPages)
 
-    return searchableText.includes(search.toLowerCase())
-  })
-
-  const delegatesWithEmail = delegates.filter((delegate) => delegate.email)
-  const delegatesWithPhone = delegates.filter((delegate) => delegate.phone)
-  const delegatesWithClient = delegates.filter((delegate) => delegate.client_id)
+    setCurrentPage(nextPage)
+    load(nextPage, search)
+  }
 
   const StatCard = ({
     label,
@@ -238,25 +341,25 @@ export default function DelegatesPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
         <StatCard
           label="Total delegates"
-          value={delegates.length}
+          value={totalDelegates}
           detail="All learner profiles"
         />
 
         <StatCard
           label="With email"
-          value={delegatesWithEmail.length}
+          value={delegatesWithEmailCount}
           detail="Can receive certificates"
         />
 
         <StatCard
           label="With phone"
-          value={delegatesWithPhone.length}
+          value={delegatesWithPhoneCount}
           detail="Phone number saved"
         />
 
         <StatCard
           label="Search results"
-          value={filteredDelegates.length}
+          value={matchingDelegates}
           detail="Matching current filter"
         />
       </div>
@@ -355,7 +458,9 @@ export default function DelegatesPage() {
               </div>
 
               <p className="text-xs text-slate-500 mt-3">
-                Showing {filteredDelegates.length} of {delegates.length} delegates · {delegatesWithClient.length} linked to clients
+                {loading
+                  ? 'Loading delegates...'
+                  : `Showing ${pageStart}-${pageEnd} of ${matchingDelegates} matching delegates. Total delegates: ${totalDelegates}. ${delegatesWithClientCount} linked to clients.`}
               </p>
             </div>
           </div>
@@ -374,7 +479,7 @@ export default function DelegatesPage() {
             </div>
 
             <div className="divide-y divide-slate-100">
-              {filteredDelegates.map((delegate) => {
+              {delegates.map((delegate) => {
                 const client = getClientForDelegate(delegate)
                 const isEditing = editingId === delegate.id
 
@@ -551,14 +656,16 @@ export default function DelegatesPage() {
                 )
               })}
 
-              {filteredDelegates.length === 0 && (
+              {delegates.length === 0 && !loading && (
                 <div className="p-6">
                   <p className="text-sm font-semibold text-slate-950">
-                    No delegates yet
+                    {search ? 'No matching delegates' : 'No delegates yet'}
                   </p>
 
                   <p className="text-sm text-slate-500 mt-1">
-                    Add delegates directly or attach them while creating bookings.
+                    {search
+                      ? 'Try a different search term or clear the filter.'
+                      : 'Add delegates directly or attach them while creating bookings.'}
                   </p>
 
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -579,6 +686,32 @@ export default function DelegatesPage() {
                 </div>
               )}
             </div>
+
+            {matchingDelegates > DELEGATES_PAGE_SIZE && (
+              <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-slate-500">
+                  Page {currentPage} of {totalPages}
+                </p>
+
+                <div className="flex gap-2">
+                  <button
+                    className={buttonSecondary}
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage <= 1 || loading}
+                  >
+                    Previous
+                  </button>
+
+                  <button
+                    className={buttonSecondary}
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage >= totalPages || loading}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
