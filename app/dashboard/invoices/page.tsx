@@ -7,7 +7,13 @@ import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate } from '@/lib/formatters'
 import { getNextInvoiceNumber, isDuplicateInvoiceNumberError } from '@/lib/invoiceNumbers'
 import { parseOptionalNonNegativeNumber, parseRequiredPositiveNumber } from '@/lib/numberValidation'
+import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import jsPDF from 'jspdf'
+
+const INVOICES_PAGE_SIZE = 50
+
+const cleanSearchTerm = (value: string) =>
+  value.trim().replace(/[%_,]/g, ' ')
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<any[]>([])
@@ -17,6 +23,12 @@ export default function InvoicesPage() {
   const [bookingDelegateLinks, setBookingDelegateLinks] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
   const [organisationId, setOrganisationId] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalInvoices, setTotalInvoices] = useState(0)
+  const [matchingInvoices, setMatchingInvoices] = useState(0)
+  const [outstandingInvoicesCount, setOutstandingInvoicesCount] = useState(0)
+  const [securedInvoicesCount, setSecuredInvoicesCount] = useState(0)
 
   const [bookingId, setBookingId] = useState('')
   const [invoiceTargetType, setInvoiceTargetType] = useState('booking_client')
@@ -84,7 +96,123 @@ export default function InvoicesPage() {
     }
   }
 
-  const load = async () => {
+  const getMatchingRelatedIds = (
+    searchTerm: string,
+    localClients: any[],
+    localDelegates: any[],
+    localBookings: any[]
+  ) => {
+    const cleanTerm = cleanSearchTerm(searchTerm).toLowerCase()
+
+    if (!cleanTerm) {
+      return {
+        bookingIds: [] as string[],
+        clientIds: [] as string[],
+        delegateIds: [] as string[],
+      }
+    }
+
+    const clientIds = localClients
+      .filter((client) =>
+        `
+          ${client.company || ''}
+          ${client.name || ''}
+          ${client.email || ''}
+          ${client.phone || ''}
+        `
+          .toLowerCase()
+          .includes(cleanTerm)
+      )
+      .map((client) => client.id)
+
+    const delegateIds = localDelegates
+      .filter((delegate) =>
+        `
+          ${delegate.full_name || ''}
+          ${delegate.email || ''}
+          ${delegate.phone || ''}
+        `
+          .toLowerCase()
+          .includes(cleanTerm)
+      )
+      .map((delegate) => delegate.id)
+
+    const bookingIds = localBookings
+      .filter((booking) =>
+        `
+          ${booking.course_name || ''}
+          ${booking.client_name || ''}
+          ${booking.location || ''}
+          ${booking.course_delivery_type || ''}
+          ${booking.status || ''}
+        `
+          .toLowerCase()
+          .includes(cleanTerm)
+      )
+      .map((booking) => booking.id)
+
+    return { bookingIds, clientIds, delegateIds }
+  }
+
+  const applyInvoiceFilters = (
+    query: any,
+    searchTerm: string,
+    relatedIds: {
+      bookingIds: string[]
+      clientIds: string[]
+      delegateIds: string[]
+    }
+  ) => {
+    let nextQuery = query
+
+    if (statusFilter !== 'all') {
+      nextQuery = nextQuery.eq('status', statusFilter)
+    }
+
+    if (securedFilter === 'secured') {
+      nextQuery = nextQuery.not('secured_at', 'is', null)
+    }
+
+    if (securedFilter === 'unsecured') {
+      nextQuery = nextQuery.is('secured_at', null)
+    }
+
+    if (unpaidOnly) {
+      nextQuery = nextQuery.neq('status', 'paid')
+    }
+
+    const cleanTerm = cleanSearchTerm(searchTerm)
+
+    if (!cleanTerm) return nextQuery
+
+    const term = `%${cleanTerm}%`
+    const filters = [
+      `invoice_number.ilike.${term}`,
+      `client_name.ilike.${term}`,
+      `recipient_name.ilike.${term}`,
+      `recipient_email.ilike.${term}`,
+      `status.ilike.${term}`,
+      `invoice_target_type.ilike.${term}`,
+    ]
+
+    if (relatedIds.bookingIds.length > 0) {
+      filters.push(`booking_id.in.(${relatedIds.bookingIds.join(',')})`)
+    }
+
+    if (relatedIds.clientIds.length > 0) {
+      filters.push(`client_id.in.(${relatedIds.clientIds.join(',')})`)
+    }
+
+    if (relatedIds.delegateIds.length > 0) {
+      filters.push(`delegate_id.in.(${relatedIds.delegateIds.join(',')})`)
+    }
+
+    return nextQuery.or(filters.join(','))
+  }
+
+  const load = async (page = currentPage, searchTerm = search) => {
+    setLoading(true)
+
     const profile = await getOrCreateAccount()
 
     setOrganisationId(profile.organisation_id)
@@ -95,34 +223,96 @@ export default function InvoicesPage() {
       .eq('id', profile.organisation_id)
       .single()
 
-    const { data: clientsData } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
-      .order('company', { ascending: true })
+    const clientsData = await fetchPaginatedImportRecords<any>(
+      async (from, to) =>
+        await supabase
+          .from('clients')
+          .select('*')
+          .eq('organisation_id', profile.organisation_id)
+          .order('company', { ascending: true })
+          .range(from, to)
+    )
 
-    const { data: delegatesData } = await supabase
-      .from('delegates')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
-      .order('full_name', { ascending: true })
+    const delegatesData = await fetchPaginatedImportRecords<any>(
+      async (from, to) =>
+        await supabase
+          .from('delegates')
+          .select('*')
+          .eq('organisation_id', profile.organisation_id)
+          .order('full_name', { ascending: true })
+          .range(from, to)
+    )
 
-    const { data: bookingDelegateLinksData } = await supabase
-      .from('booking_delegates')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
+    const bookingDelegateLinksData = await fetchPaginatedImportRecords<any>(
+      async (from, to) =>
+        await supabase
+          .from('booking_delegates')
+          .select('*')
+          .eq('organisation_id', profile.organisation_id)
+          .range(from, to)
+    )
 
-    const { data: bookingsData } = await supabase
-      .from('bookings')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
-      .order('date', { ascending: false })
+    const bookingsData = await fetchPaginatedImportRecords<any>(
+      async (from, to) =>
+        await supabase
+          .from('bookings')
+          .select('*')
+          .eq('organisation_id', profile.organisation_id)
+          .order('date', { ascending: false })
+          .range(from, to)
+    )
 
-    const { data: invoicesData } = await supabase
+    const relatedIds = getMatchingRelatedIds(
+      searchTerm,
+      clientsData,
+      delegatesData,
+      bookingsData
+    )
+    const from = (page - 1) * INVOICES_PAGE_SIZE
+    const to = from + INVOICES_PAGE_SIZE - 1
+    let invoicesQuery = supabase
       .from('invoices')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('organisation_id', profile.organisation_id)
-      .order('created_at', { ascending: false })
+      .range(from, to)
+
+    invoicesQuery = applyInvoiceFilters(invoicesQuery, searchTerm, relatedIds)
+
+    if (sortBy === 'oldest') {
+      invoicesQuery = invoicesQuery.order('created_at', { ascending: true })
+    } else if (sortBy === 'highest') {
+      invoicesQuery = invoicesQuery.order('total_amount', { ascending: false })
+    } else if (sortBy === 'lowest') {
+      invoicesQuery = invoicesQuery.order('total_amount', { ascending: true })
+    } else {
+      invoicesQuery = invoicesQuery.order('created_at', { ascending: false })
+    }
+
+    const { data: invoicesData, count: invoicesCount, error: invoicesError } =
+      await invoicesQuery
+
+    if (invoicesError) {
+      alert(invoicesError.message)
+      setLoading(false)
+      return
+    }
+
+    const { count: allCount } = await supabase
+      .from('invoices')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', profile.organisation_id)
+
+    const { count: outstandingCount } = await supabase
+      .from('invoices')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', profile.organisation_id)
+      .neq('status', 'paid')
+
+    const { count: securedCount } = await supabase
+      .from('invoices')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', profile.organisation_id)
+      .not('secured_at', 'is', null)
 
     setOrganisation(organisationData || null)
     setClients(clientsData || [])
@@ -130,6 +320,10 @@ export default function InvoicesPage() {
     setBookingDelegateLinks(bookingDelegateLinksData || [])
     setBookings(bookingsData || [])
     setInvoices(invoicesData || [])
+    setMatchingInvoices(invoicesCount || 0)
+    setTotalInvoices(allCount || 0)
+    setOutstandingInvoicesCount(outstandingCount || 0)
+    setSecuredInvoicesCount(securedCount || 0)
 
     const requestedBookingId = new URLSearchParams(window.location.search).get('bookingId')
     const requestedSearch = new URLSearchParams(window.location.search).get('search')
@@ -141,11 +335,24 @@ export default function InvoicesPage() {
     if (requestedSearch) {
       setSearch(requestedSearch)
     }
+
+    setLoading(false)
   }
 
   useEffect(() => {
-    load()
+    load(1, '')
   }, [])
+
+  useEffect(() => {
+    if (!organisationId) return
+
+    const timeout = window.setTimeout(() => {
+      setCurrentPage(1)
+      load(1, search)
+    }, 250)
+
+    return () => window.clearTimeout(timeout)
+  }, [search, statusFilter, securedFilter, unpaidOnly, sortBy, organisationId])
 
   const getFormattedDate = (dateValue: string | null | undefined) => {
     if (!dateValue) return 'Not set'
@@ -317,16 +524,20 @@ export default function InvoicesPage() {
   }
 
   const loadExistingInvoiceNumbers = async () => {
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('invoice_number')
-      .eq('organisation_id', organisationId)
+    try {
+      const data = await fetchPaginatedImportRecords<{ invoice_number: string | null }>(
+        async (from, to) =>
+          await supabase
+            .from('invoices')
+            .select('invoice_number')
+            .eq('organisation_id', organisationId)
+            .range(from, to)
+      )
 
-    if (error) {
+      return data.map((invoice) => invoice.invoice_number)
+    } catch {
       return invoices.map((invoice) => invoice.invoice_number)
     }
-
-    return (data || []).map((invoice) => invoice.invoice_number)
   }
 
   const createInvoice = async () => {
@@ -395,7 +606,8 @@ export default function InvoicesPage() {
     }
 
     resetCreateForm()
-    load()
+    setCurrentPage(1)
+    load(1, search)
   }
 
   const startEditing = (invoice: any) => {
@@ -462,12 +674,12 @@ export default function InvoicesPage() {
     }
 
     cancelEditing()
-    load()
+    load(currentPage, search)
   }
 
   const secureInvoice = async (invoiceId: string) => {
     const confirmSecure = confirm(
-      'Are you sure you want to secure this invoice? Once secured, it cannot be edited.'
+      'Secure and lock this invoice? Once secured, invoice details can no longer be edited before sending.'
     )
 
     if (!confirmSecure) return
@@ -484,7 +696,7 @@ export default function InvoicesPage() {
       return
     }
 
-    load()
+    load(currentPage, search)
   }
 
   const markAsPaid = async (invoiceId: string) => {
@@ -502,10 +714,17 @@ export default function InvoicesPage() {
       return
     }
 
-    load()
+    load(currentPage, search)
   }
 
   const markAsSent = async (invoiceId: string) => {
+    const invoiceToUpdate = invoices.find((invoice) => invoice.id === invoiceId)
+
+    if (!invoiceToUpdate?.secured_at) {
+      alert('Secure this invoice before sending so it cannot be changed after it has been sent.')
+      return
+    }
+
     const { error } = await supabase
       .from('invoices')
       .update({
@@ -519,7 +738,7 @@ export default function InvoicesPage() {
       return
     }
 
-    load()
+    load(currentPage, search)
   }
 
   const markAsDraft = async (invoiceId: string) => {
@@ -544,7 +763,7 @@ export default function InvoicesPage() {
       return
     }
 
-    load()
+    load(currentPage, search)
   }
 
   const getInvoiceRecipientName = (invoice: any) => {
@@ -734,6 +953,11 @@ export default function InvoicesPage() {
   }
 
   const sendInvoiceEmail = async (invoice: any) => {
+    if (!invoice.secured_at) {
+      alert('Secure this invoice before sending so it cannot be changed after it has been sent.')
+      return
+    }
+
     const recipientEmail =
       recipientEmails[invoice.id] || getInvoiceRecipientEmail(invoice)
 
@@ -795,105 +1019,25 @@ export default function InvoicesPage() {
     setSortBy('newest')
   }
 
-  const totalRevenue = invoices.reduce(
+  const pageInvoiceValue = invoices.reduce(
     (sum, invoice) => sum + Number(invoice.total_amount || invoice.amount || 0),
     0
   )
 
-  const unpaidInvoices = invoices.filter(
-    (invoice) => invoice.status !== 'paid'
-  )
-
-  const securedInvoices = invoices.filter(
-    (invoice) => invoice.secured_at
-  )
-
-  const publicInvoices = invoices.filter((invoice) => {
+  const visiblePublicInvoicesCount = invoices.filter((invoice) => {
     const booking = getBookingById(invoice.booking_id)
     return getBookingDeliveryType(booking) === 'public'
-  })
+  }).length
+  const totalPages = Math.max(1, Math.ceil(matchingInvoices / INVOICES_PAGE_SIZE))
+  const pageStart = matchingInvoices === 0 ? 0 : (currentPage - 1) * INVOICES_PAGE_SIZE + 1
+  const pageEnd = Math.min(currentPage * INVOICES_PAGE_SIZE, matchingInvoices)
 
-  const filteredInvoices = invoices
-    .filter((invoice) => {
-      const booking = getBookingById(invoice.booking_id)
+  const goToPage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), totalPages)
 
-      const invoiceClient = invoice.client_id
-        ? getClientById(invoice.client_id)
-        : null
-
-      const bookingClient = booking?.client_id
-        ? getClientById(booking.client_id)
-        : null
-
-      const delegate = invoice.delegate_id
-        ? getDelegateById(invoice.delegate_id)
-        : null
-
-      const delegateClient = delegate?.client_id
-        ? getClientById(delegate.client_id)
-        : null
-
-      const searchableText = `
-        ${invoice.id || ''}
-        ${invoice.invoice_number || ''}
-        ${invoice.client_name || ''}
-        ${invoice.recipient_name || ''}
-        ${invoice.recipient_email || ''}
-        ${invoiceClient?.company || ''}
-        ${invoiceClient?.name || ''}
-        ${invoiceClient?.email || ''}
-        ${bookingClient?.company || ''}
-        ${bookingClient?.name || ''}
-        ${bookingClient?.email || ''}
-        ${delegateClient?.company || ''}
-        ${delegateClient?.name || ''}
-        ${delegateClient?.email || ''}
-        ${delegate?.full_name || ''}
-        ${delegate?.email || ''}
-        ${booking?.course_name || ''}
-        ${booking?.date || ''}
-        ${booking ? getFormattedDate(booking.date) : ''}
-        ${invoice.due_date || ''}
-        ${getFormattedDate(invoice.due_date)}
-        ${booking?.client_name || ''}
-        ${booking?.course_delivery_type || ''}
-        ${invoice.status || ''}
-        ${invoice.invoice_target_type || ''}
-      `.toLowerCase()
-
-      const matchesSearch = searchableText.includes(search.toLowerCase())
-
-      const matchesStatus =
-        statusFilter === 'all' || invoice.status === statusFilter
-
-      const matchesSecured =
-        securedFilter === 'all' ||
-        (securedFilter === 'secured' && invoice.secured_at) ||
-        (securedFilter === 'unsecured' && !invoice.secured_at)
-
-      const matchesUnpaid =
-        !unpaidOnly || invoice.status !== 'paid'
-
-      return matchesSearch && matchesStatus && matchesSecured && matchesUnpaid
-    })
-    .sort((a, b) => {
-      const totalA = Number(a.total_amount || a.amount || 0)
-      const totalB = Number(b.total_amount || b.amount || 0)
-
-      const createdA = new Date(a.created_at).getTime()
-      const createdB = new Date(b.created_at).getTime()
-
-      if (sortBy === 'oldest') return createdA - createdB
-      if (sortBy === 'highest') return totalB - totalA
-      if (sortBy === 'lowest') return totalA - totalB
-
-      return createdB - createdA
-    })
-
-  const filteredTotalValue = filteredInvoices.reduce(
-    (sum, invoice) => sum + Number(invoice.total_amount || invoice.amount || 0),
-    0
-  )
+    setCurrentPage(nextPage)
+    load(nextPage, search)
+  }
 
   const getStatusStyle = (status: string) => {
     if (status === 'paid') {
@@ -906,6 +1050,11 @@ export default function InvoicesPage() {
 
     return 'bg-amber-50 text-amber-700 border-amber-100'
   }
+
+  const getLockStatusStyle = (isLocked: boolean) =>
+    isLocked
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+      : 'bg-amber-50 text-amber-700 border-amber-100'
 
   const getDeliveryTypeStyle = (type: string) => {
     if (type === 'public') {
@@ -945,32 +1094,32 @@ export default function InvoicesPage() {
     <div>
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
         <StatCard
-          label="Total value"
-          value={`£${totalRevenue.toFixed(2)}`}
-          detail="All invoice value"
+          label="Visible value"
+          value={`£${pageInvoiceValue.toFixed(2)}`}
+          detail="Current page"
         />
 
         <StatCard
           label="Invoices"
-          value={invoices.length}
+          value={totalInvoices}
           detail="Total records"
         />
 
         <StatCard
           label="Outstanding"
-          value={unpaidInvoices.length}
+          value={outstandingInvoicesCount}
           detail="Not marked paid"
         />
 
         <StatCard
           label="Public invoices"
-          value={publicInvoices.length}
-          detail="From public courses"
+          value={visiblePublicInvoicesCount}
+          detail="Visible page"
         />
 
         <StatCard
           label="Secured"
-          value={securedInvoices.length}
+          value={securedInvoicesCount}
           detail="Locked invoices"
         />
       </div>
@@ -1037,7 +1186,9 @@ export default function InvoicesPage() {
 
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-4">
             <p className="text-xs text-slate-500">
-              Showing {filteredInvoices.length} of {invoices.length} invoices · Filtered value £{filteredTotalValue.toFixed(2)}
+              {loading
+                ? 'Loading invoices...'
+                : `Showing ${pageStart}-${pageEnd} of ${matchingInvoices} matching invoices. Total invoices: ${totalInvoices}. Visible value £${pageInvoiceValue.toFixed(2)}.`}
             </p>
 
             <button
@@ -1201,12 +1352,18 @@ export default function InvoicesPage() {
               onChange={(e) => setVatRate(e.target.value)}
             />
 
-            <input
-              className={inputClass}
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+              Due date
+              <input
+                className={inputClass}
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
+              <span className="font-normal text-slate-500">
+                The date payment is due.
+              </span>
+            </label>
 
             <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600">
               <p>
@@ -1244,13 +1401,14 @@ export default function InvoicesPage() {
           </div>
 
           <div className="divide-y divide-slate-100">
-            {filteredInvoices.map((invoice) => {
+            {invoices.map((invoice) => {
               const netAmount = Number(invoice.amount || 0)
               const vatAmount = Number(invoice.vat_amount || 0)
               const totalAmount = Number(invoice.total_amount || invoice.amount || 0)
               const savedRecipientEmail = getInvoiceRecipientEmail(invoice)
               const isEditing = editingId === invoice.id
-              const isLocked = Boolean(invoice.secured_at) || invoice.status === 'paid'
+              const isSecured = Boolean(invoice.secured_at)
+              const isLocked = isSecured || invoice.status === 'paid'
               const booking = getBookingById(invoice.booking_id)
               const deliveryType = getBookingDeliveryType(booking)
 
@@ -1280,11 +1438,9 @@ export default function InvoicesPage() {
                               {getInvoiceTargetLabel(invoice)}
                             </span>
 
-                            {invoice.secured_at && (
-                              <span className="border border-slate-200 bg-slate-50 text-slate-700 px-2.5 py-1 rounded-md text-xs font-medium">
-                                Secured
-                              </span>
-                            )}
+                            <span className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getLockStatusStyle(isLocked)}`}>
+                              {isSecured ? 'Secured' : isLocked ? 'Locked' : 'Draft invoice'}
+                            </span>
                           </div>
 
                           <p className="text-sm text-slate-600 mt-1">
@@ -1294,6 +1450,16 @@ export default function InvoicesPage() {
                           <p className="text-xs text-slate-500 mt-1">
                             {getInvoiceCourseName(invoice)}
                           </p>
+
+                          <p className="text-xs text-slate-500 mt-1">
+                            Due {getFormattedDate(invoice.due_date)}
+                          </p>
+
+                          {!isSecured && invoice.status !== 'paid' && (
+                            <p className="text-xs font-medium text-amber-700 mt-2">
+                              Secure before sending. Once secured, invoice details can no longer be edited.
+                            </p>
+                          )}
                         </div>
 
                         <p className="text-xl font-semibold text-slate-950">
@@ -1301,127 +1467,152 @@ export default function InvoicesPage() {
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-4 text-xs text-slate-600">
-                        <div>
-                          <p className="text-slate-400">Net</p>
-                          <p className="font-medium text-slate-800 mt-1">
-                            £{netAmount.toFixed(2)}
+                      <details className="group mt-4 rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                        <summary className="cursor-pointer list-none text-xs font-semibold text-slate-700 transition hover:text-slate-950">
+                          Invoice details and actions
+                        </summary>
+
+                        <div className="mt-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-xs text-slate-600">
+                            <div>
+                              <p className="text-slate-400">Net</p>
+                              <p className="font-medium text-slate-800 mt-1">
+                                £{netAmount.toFixed(2)}
+                              </p>
+                            </div>
+
+                            <div>
+                              <p className="text-slate-400">VAT</p>
+                              <p className="font-medium text-slate-800 mt-1">
+                                £{vatAmount.toFixed(2)}
+                              </p>
+                            </div>
+
+                            <div>
+                              <p className="text-slate-400">Issue date</p>
+                              <p className="font-medium text-slate-800 mt-1">
+                                {getFormattedDate(invoice.created_at)}
+                              </p>
+                            </div>
+
+                            <div>
+                              <p className="text-slate-400">Recipient email</p>
+                              <p className="font-medium text-slate-800 mt-1 break-all">
+                                {savedRecipientEmail || 'Not set'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <p className="text-xs text-slate-500 mt-3">
+                            Booking: {getInvoiceBookingLabel(invoice)}
                           </p>
+
+                          <div className="mt-4">
+                            <input
+                              className={`${inputClass} w-full`}
+                              placeholder={savedRecipientEmail || 'Recipient email'}
+                              value={recipientEmails[invoice.id] || ''}
+                              onChange={(e) =>
+                                setRecipientEmails((previous) => ({
+                                  ...previous,
+                                  [invoice.id]: e.target.value,
+                                }))
+                              }
+                            />
+
+                            {savedRecipientEmail && (
+                              <p className="text-xs text-slate-500 mt-2">
+                                Leave blank to send to saved recipient email.
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 mt-4">
+                            <button
+                              className={buttonPrimary}
+                              onClick={() => generateInvoicePDF(invoice)}
+                            >
+                              Download PDF
+                            </button>
+
+                            <button
+                              className={buttonSecondary}
+                              onClick={() => sendInvoiceEmail(invoice)}
+                              disabled={!isSecured || sendingId === invoice.id}
+                              title={
+                                isSecured
+                                  ? 'Send invoice email'
+                                  : 'Secure this invoice before sending.'
+                              }
+                            >
+                              {sendingId === invoice.id ? 'Sending...' : 'Send email'}
+                            </button>
+
+                            {!isLocked && (
+                              <button
+                                className={buttonSecondary}
+                                onClick={() => startEditing(invoice)}
+                              >
+                                Edit
+                              </button>
+                            )}
+
+                            {!isSecured && invoice.status !== 'paid' && (
+                              <button
+                                className={buttonPrimary}
+                                onClick={() => secureInvoice(invoice.id)}
+                              >
+                                Secure invoice
+                              </button>
+                            )}
+
+                            {invoice.status !== 'draft' && !invoice.secured_at && invoice.status !== 'paid' && (
+                              <button
+                                className={buttonSecondary}
+                                onClick={() => markAsDraft(invoice.id)}
+                              >
+                                Mark draft
+                              </button>
+                            )}
+
+                            {invoice.status === 'draft' && (
+                              <button
+                                className={buttonSecondary}
+                                onClick={() => markAsSent(invoice.id)}
+                                disabled={!isSecured}
+                                title={
+                                  isSecured
+                                    ? 'Mark invoice as sent'
+                                    : 'Secure this invoice before marking it as sent.'
+                                }
+                              >
+                                Mark sent
+                              </button>
+                            )}
+
+                            {invoice.status !== 'paid' && (
+                              <button
+                                className={buttonSecondary}
+                                onClick={() => markAsPaid(invoice.id)}
+                              >
+                                Mark paid
+                              </button>
+                            )}
+                          </div>
+
+                          {isLocked && (
+                            <p className="text-xs text-slate-500 mt-3">
+                              This invoice is locked because it is secured or paid.
+                            </p>
+                          )}
+
+                          {!isSecured && invoice.status !== 'paid' && (
+                            <p className="text-xs text-amber-700 mt-3">
+                              Secure this invoice before sending so it cannot be changed after it has been sent.
+                            </p>
+                          )}
                         </div>
-
-                        <div>
-                          <p className="text-slate-400">VAT</p>
-                          <p className="font-medium text-slate-800 mt-1">
-                            £{vatAmount.toFixed(2)}
-                          </p>
-                        </div>
-
-                        <div>
-                          <p className="text-slate-400">Due date</p>
-                          <p className="font-medium text-slate-800 mt-1">
-                            {getFormattedDate(invoice.due_date)}
-                          </p>
-                        </div>
-
-                        <div>
-                          <p className="text-slate-400">Recipient email</p>
-                          <p className="font-medium text-slate-800 mt-1 break-all">
-                            {savedRecipientEmail || 'Not set'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <p className="text-xs text-slate-500 mt-3">
-                        Booking: {getInvoiceBookingLabel(invoice)}
-                      </p>
-
-                      <div className="mt-4">
-                        <input
-                          className={`${inputClass} w-full`}
-                          placeholder={savedRecipientEmail || 'Recipient email'}
-                          value={recipientEmails[invoice.id] || ''}
-                          onChange={(e) =>
-                            setRecipientEmails((previous) => ({
-                              ...previous,
-                              [invoice.id]: e.target.value,
-                            }))
-                          }
-                        />
-
-                        {savedRecipientEmail && (
-                          <p className="text-xs text-slate-500 mt-2">
-                            Leave blank to send to saved recipient email.
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 mt-4">
-                        <button
-                          className={buttonPrimary}
-                          onClick={() => generateInvoicePDF(invoice)}
-                        >
-                          Download PDF
-                        </button>
-
-                        <button
-                          className={buttonSecondary}
-                          onClick={() => sendInvoiceEmail(invoice)}
-                          disabled={sendingId === invoice.id}
-                        >
-                          {sendingId === invoice.id ? 'Sending...' : 'Send email'}
-                        </button>
-
-                        {!isLocked && (
-                          <button
-                            className={buttonSecondary}
-                            onClick={() => startEditing(invoice)}
-                          >
-                            Edit
-                          </button>
-                        )}
-
-                        {!invoice.secured_at && invoice.status !== 'paid' && (
-                          <button
-                            className={buttonSecondary}
-                            onClick={() => secureInvoice(invoice.id)}
-                          >
-                            Secure invoice
-                          </button>
-                        )}
-
-                        {invoice.status !== 'draft' && !invoice.secured_at && invoice.status !== 'paid' && (
-                          <button
-                            className={buttonSecondary}
-                            onClick={() => markAsDraft(invoice.id)}
-                          >
-                            Mark draft
-                          </button>
-                        )}
-
-                        {invoice.status === 'draft' && (
-                          <button
-                            className={buttonSecondary}
-                            onClick={() => markAsSent(invoice.id)}
-                          >
-                            Mark sent
-                          </button>
-                        )}
-
-                        {invoice.status !== 'paid' && (
-                          <button
-                            className={buttonSecondary}
-                            onClick={() => markAsPaid(invoice.id)}
-                          >
-                            Mark paid
-                          </button>
-                        )}
-                      </div>
-
-                      {isLocked && (
-                        <p className="text-xs text-slate-500 mt-3">
-                          This invoice is locked because it is secured or paid.
-                        </p>
-                      )}
+                      </details>
                     </>
                   ) : (
                     <>
@@ -1465,12 +1656,18 @@ export default function InvoicesPage() {
                           onChange={(e) => setEditVatRate(e.target.value)}
                         />
 
-                        <input
-                          className={`${inputClass} md:col-span-2`}
-                          type="date"
-                          value={editDueDate}
-                          onChange={(e) => setEditDueDate(e.target.value)}
-                        />
+                        <label className="md:col-span-2 flex flex-col gap-1 text-xs font-medium text-slate-600">
+                          Due date
+                          <input
+                            className={inputClass}
+                            type="date"
+                            value={editDueDate}
+                            onChange={(e) => setEditDueDate(e.target.value)}
+                          />
+                          <span className="font-normal text-slate-500">
+                            The date payment is due.
+                          </span>
+                        </label>
                       </div>
 
                       <div className="bg-slate-50 border border-slate-200 rounded-md p-3 mt-4 text-xs text-slate-600">
@@ -1511,7 +1708,7 @@ export default function InvoicesPage() {
               )
             })}
 
-            {filteredInvoices.length === 0 && (
+            {invoices.length === 0 && !loading && (
               <div className="p-6">
                 <p className="text-sm font-semibold text-slate-950">
                   No invoices to show
@@ -1539,6 +1736,32 @@ export default function InvoicesPage() {
                 </div>
               )}
           </div>
+
+          {matchingInvoices > INVOICES_PAGE_SIZE && (
+            <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-slate-500">
+                Page {currentPage} of {totalPages}
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage <= 1 || loading}
+                >
+                  Previous
+                </button>
+
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage >= totalPages || loading}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
