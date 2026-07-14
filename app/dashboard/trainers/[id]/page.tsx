@@ -1,17 +1,26 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
+import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import {
-  getBookingsForTrainer,
   getTrainerRegisterStatus,
   getTrainerWorkloadStats,
-  splitTrainerBookings,
 } from '@/lib/trainerSchedule'
+
+const TRAINER_BOOKINGS_PAGE_SIZE = 20
+
+const toLocalDateInputValue = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
 
 const registerStatusCopy: Record<string, string> = {
   not_started: 'Not started',
@@ -32,9 +41,16 @@ export default function TrainerDetailPage() {
   const [trainer, setTrainer] = useState<any>(null)
   const [organisation, setOrganisation] = useState<any>(null)
   const [clients, setClients] = useState<any[]>([])
-  const [bookings, setBookings] = useState<any[]>([])
+  const [upcomingBookings, setUpcomingBookings] = useState<any[]>([])
+  const [recentBookings, setRecentBookings] = useState<any[]>([])
   const [bookingDelegateLinks, setBookingDelegateLinks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [upcomingPage, setUpcomingPage] = useState(1)
+  const [recentPage, setRecentPage] = useState(1)
+  const [upcomingCount, setUpcomingCount] = useState(0)
+  const [recentCount, setRecentCount] = useState(0)
+  const [completeRegisters, setCompleteRegisters] = useState(0)
+  const [incompleteRegisters, setIncompleteRegisters] = useState(0)
 
   const buttonPrimary =
     'bg-slate-950 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-slate-800 disabled:bg-slate-400'
@@ -48,7 +64,64 @@ export default function TrainerDetailPage() {
   const panelHeaderClass =
     'px-4 py-3 border-b border-slate-200'
 
-  const load = async () => {
+  const getPageRange = (page: number) => {
+    const from = (page - 1) * TRAINER_BOOKINGS_PAGE_SIZE
+    const to = from + TRAINER_BOOKINGS_PAGE_SIZE - 1
+
+    return { from, to }
+  }
+
+  const getToday = () => {
+    const today = new Date()
+
+    return toLocalDateInputValue(today)
+  }
+
+  const applyUpcomingFilter = (query: any) => {
+    const today = getToday()
+
+    return query
+      .neq('status', 'completed')
+      .neq('status', 'cancelled')
+      .or(`end_date.gte.${today},date.gte.${today}`)
+  }
+
+  const applyRecentFilter = (query: any) => {
+    const today = getToday()
+
+    return query.or(
+      `status.eq.completed,end_date.lt.${today},and(end_date.is.null,date.lt.${today})`
+    )
+  }
+
+  const fetchLinksForBookingIds = async (
+    organisationId: string,
+    bookingIds: string[]
+  ) => {
+    const links: any[] = []
+    const batchSize = 100
+
+    for (let index = 0; index < bookingIds.length; index += batchSize) {
+      const batchIds = bookingIds.slice(index, index + batchSize)
+
+      const { data } = await supabase
+        .from('booking_delegates')
+        .select('*')
+        .eq('organisation_id', organisationId)
+        .in('booking_id', batchIds)
+
+      links.push(...(data || []))
+    }
+
+    return links
+  }
+
+  const load = async ({
+    nextUpcomingPage = upcomingPage,
+    nextRecentPage = recentPage,
+  } = {}) => {
+    setLoading(true)
+
     const profile = await getOrCreateAccount()
 
     const { data: organisationData } = await supabase
@@ -70,36 +143,92 @@ export default function TrainerDetailPage() {
       return
     }
 
-    const { data: clientsData } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
+    const { from: upcomingFrom, to: upcomingTo } = getPageRange(nextUpcomingPage)
+    const { from: recentFrom, to: recentTo } = getPageRange(nextRecentPage)
 
-    const { data: bookingsData } = await supabase
+    let upcomingQuery = supabase
       .from('bookings')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('trainer_id', trainerId)
       .eq('organisation_id', profile.organisation_id)
       .order('date', { ascending: true })
+      .range(upcomingFrom, upcomingTo)
 
-    const bookingIds = (bookingsData || []).map((booking) => booking.id)
-    let linksData: any[] = []
+    upcomingQuery = applyUpcomingFilter(upcomingQuery)
 
-    if (bookingIds.length > 0) {
+    let recentQuery = supabase
+      .from('bookings')
+      .select('*', { count: 'exact' })
+      .eq('trainer_id', trainerId)
+      .eq('organisation_id', profile.organisation_id)
+      .order('date', { ascending: false })
+      .range(recentFrom, recentTo)
+
+    recentQuery = applyRecentFilter(recentQuery)
+
+    const [
+      { data: upcomingData, count: upcomingTotal },
+      { data: recentData, count: recentTotal },
+    ] = await Promise.all([upcomingQuery, recentQuery])
+
+    const pageBookings = [...(upcomingData || []), ...(recentData || [])]
+    const pageBookingIds = pageBookings.map((booking) => booking.id)
+    const pageClientIds = Array.from(
+      new Set(
+        pageBookings
+          .map((booking) => booking.client_id)
+          .filter(Boolean) as string[]
+      )
+    )
+    const linksData = pageBookingIds.length > 0
+      ? await fetchLinksForBookingIds(profile.organisation_id, pageBookingIds)
+      : []
+    let clientsData: any[] = []
+
+    if (pageClientIds.length > 0) {
       const { data } = await supabase
-        .from('booking_delegates')
+        .from('clients')
         .select('*')
         .eq('organisation_id', profile.organisation_id)
-        .in('booking_id', bookingIds)
+        .in('id', pageClientIds)
 
-      linksData = data || []
+      clientsData = data || []
     }
+
+    const allAssignedBookings = await fetchPaginatedImportRecords<{
+      id: string
+    }>(
+      async (from, to) =>
+        await supabase
+          .from('bookings')
+          .select('id')
+          .eq('trainer_id', trainerId)
+          .eq('organisation_id', profile.organisation_id)
+          .range(from, to)
+    )
+    const allAssignedBookingIds = allAssignedBookings.map((booking) => booking.id)
+    const allRegisterLinks = allAssignedBookingIds.length > 0
+      ? await fetchLinksForBookingIds(profile.organisation_id, allAssignedBookingIds)
+      : []
+    const registerStatuses = allAssignedBookingIds.map((bookingId) =>
+      getTrainerRegisterStatus(bookingId, allRegisterLinks)
+    )
+    const stats = getTrainerWorkloadStats(
+      upcomingTotal || 0,
+      recentTotal || 0,
+      registerStatuses
+    )
 
     setOrganisation(organisationData || null)
     setTrainer(trainerData)
-    setClients(clientsData || [])
-    setBookings(bookingsData || [])
+    setClients(clientsData)
+    setUpcomingBookings(upcomingData || [])
+    setRecentBookings(recentData || [])
     setBookingDelegateLinks(linksData)
+    setUpcomingCount(upcomingTotal || 0)
+    setRecentCount(recentTotal || 0)
+    setCompleteRegisters(stats.completeRegisters)
+    setIncompleteRegisters(stats.incompleteRegisters)
     setLoading(false)
   }
 
@@ -107,22 +236,31 @@ export default function TrainerDetailPage() {
     load()
   }, [])
 
-  const trainerBookings = useMemo(
-    () => getBookingsForTrainer(bookings, trainerId),
-    [bookings, trainerId]
-  )
-  const { upcoming, recent } = useMemo(
-    () => splitTrainerBookings(trainerBookings),
-    [trainerBookings]
-  )
-  const registerStatuses = trainerBookings.map((booking) =>
-    getTrainerRegisterStatus(booking.id, bookingDelegateLinks)
-  )
-  const stats = getTrainerWorkloadStats(
-    upcoming.length,
-    recent.length,
-    registerStatuses
-  )
+  const getTotalPages = (count: number) =>
+    Math.max(1, Math.ceil(count / TRAINER_BOOKINGS_PAGE_SIZE))
+
+  const getRangeText = (page: number, count: number, label: string) => {
+    if (count === 0) return `Showing 0 of 0 ${label}`
+
+    const start = (page - 1) * TRAINER_BOOKINGS_PAGE_SIZE + 1
+    const end = Math.min(page * TRAINER_BOOKINGS_PAGE_SIZE, count)
+
+    return `Showing ${start}-${end} of ${count} ${label}`
+  }
+
+  const goToUpcomingPage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), getTotalPages(upcomingCount))
+
+    setUpcomingPage(nextPage)
+    load({ nextUpcomingPage: nextPage })
+  }
+
+  const goToRecentPage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), getTotalPages(recentCount))
+
+    setRecentPage(nextPage)
+    load({ nextRecentPage: nextPage })
+  }
 
   const getFormattedDate = (dateValue: string | null | undefined) =>
     formatAppDate(dateValue, organisation)
@@ -260,10 +398,10 @@ export default function TrainerDetailPage() {
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-4">
         {[
-          ['Upcoming', stats.upcomingCount, 'Assigned upcoming courses'],
-          ['Recent', stats.recentCount, 'Past or completed courses'],
-          ['Registers complete', stats.completeRegisters, 'Completed registers'],
-          ['Registers to finish', stats.incompleteRegisters, 'Need attention'],
+          ['Upcoming', upcomingCount, 'Assigned upcoming courses'],
+          ['Recent', recentCount, 'Past or completed courses'],
+          ['Registers complete', completeRegisters, 'Completed registers'],
+          ['Registers to finish', incompleteRegisters, 'Need attention'],
         ].map(([label, value, detail]) => (
           <div
             key={label}
@@ -297,14 +435,38 @@ export default function TrainerDetailPage() {
           </div>
 
           <div className="grid gap-3 p-4">
-            {upcoming.map((booking) => (
+            <p className="text-xs text-slate-500">
+              {getRangeText(upcomingPage, upcomingCount, 'upcoming bookings')}
+            </p>
+
+            {upcomingBookings.map((booking) => (
               <BookingCard key={booking.id} booking={booking} />
             ))}
 
-            {upcoming.length === 0 && (
+            {upcomingBookings.length === 0 && (
               <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
                 No upcoming courses assigned.
               </p>
+            )}
+
+            {upcomingCount > TRAINER_BOOKINGS_PAGE_SIZE && (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToUpcomingPage(upcomingPage - 1)}
+                  disabled={upcomingPage <= 1}
+                >
+                  Previous
+                </button>
+
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToUpcomingPage(upcomingPage + 1)}
+                  disabled={upcomingPage >= getTotalPages(upcomingCount)}
+                >
+                  Next
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -321,14 +483,38 @@ export default function TrainerDetailPage() {
           </div>
 
           <div className="grid gap-3 p-4">
-            {recent.slice(0, 10).map((booking) => (
+            <p className="text-xs text-slate-500">
+              {getRangeText(recentPage, recentCount, 'recent bookings')}
+            </p>
+
+            {recentBookings.map((booking) => (
               <BookingCard key={booking.id} booking={booking} />
             ))}
 
-            {recent.length === 0 && (
+            {recentBookings.length === 0 && (
               <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
                 No recent courses yet.
               </p>
+            )}
+
+            {recentCount > TRAINER_BOOKINGS_PAGE_SIZE && (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToRecentPage(recentPage - 1)}
+                  disabled={recentPage <= 1}
+                >
+                  Previous
+                </button>
+
+                <button
+                  className={buttonSecondary}
+                  onClick={() => goToRecentPage(recentPage + 1)}
+                  disabled={recentPage >= getTotalPages(recentCount)}
+                >
+                  Next
+                </button>
+              </div>
             )}
           </div>
         </div>
