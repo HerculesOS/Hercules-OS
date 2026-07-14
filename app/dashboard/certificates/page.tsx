@@ -8,7 +8,20 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate } from '@/lib/formatters'
 import { createCertificateVerificationId } from '@/lib/certificateVerification'
-import { isLocalDateWithinNextDays } from '@/lib/dateRanges'
+import { fetchPaginatedImportRecords } from '@/lib/importCsv'
+
+const CERTIFICATES_PAGE_SIZE = 50
+
+const cleanSearchTerm = (value: string) =>
+  value.trim().replace(/[%_,]/g, ' ')
+
+const toLocalDateInputValue = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
 
 export default function CertificatesPage() {
   const [profile, setProfile] = useState<any>(null)
@@ -18,6 +31,14 @@ export default function CertificatesPage() {
   const [delegates, setDelegates] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalCertificates, setTotalCertificates] = useState(0)
+  const [matchingCertificates, setMatchingCertificates] = useState(0)
+  const [validCertificatesCount, setValidCertificatesCount] = useState(0)
+  const [expiredCertificatesCount, setExpiredCertificatesCount] = useState(0)
+  const [revokedCertificatesCount, setRevokedCertificatesCount] = useState(0)
+  const [linkedCertificatesCount, setLinkedCertificatesCount] = useState(0)
+  const [expiringSoonCertificatesCount, setExpiringSoonCertificatesCount] = useState(0)
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -41,7 +62,139 @@ export default function CertificatesPage() {
   const panelHeaderClass =
     'px-4 py-3 border-b border-slate-200'
 
-  const load = async () => {
+  const getExpiryWindow = () => {
+    const today = new Date()
+    const endDate = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate() + 90
+    )
+
+    return {
+      today: toLocalDateInputValue(today),
+      endDate: toLocalDateInputValue(endDate),
+    }
+  }
+
+  const getMatchingRelatedIds = (
+    searchTerm: string,
+    localClients: any[],
+    localDelegates: any[],
+    localBookings: any[]
+  ) => {
+    const cleanTerm = cleanSearchTerm(searchTerm).toLowerCase()
+
+    if (!cleanTerm) {
+      return {
+        bookingIds: [] as string[],
+        clientIds: [] as string[],
+        delegateIds: [] as string[],
+      }
+    }
+
+    const clientIds = localClients
+      .filter((client) =>
+        `
+          ${client.company || ''}
+          ${client.name || ''}
+          ${client.email || ''}
+          ${client.phone || ''}
+        `
+          .toLowerCase()
+          .includes(cleanTerm)
+      )
+      .map((client) => client.id)
+
+    const delegateIds = localDelegates
+      .filter((delegate) => {
+        const matchesDelegate = `
+          ${delegate.full_name || ''}
+          ${delegate.email || ''}
+          ${delegate.phone || ''}
+        `
+          .toLowerCase()
+          .includes(cleanTerm)
+
+        return matchesDelegate || clientIds.includes(delegate.client_id)
+      })
+      .map((delegate) => delegate.id)
+
+    const bookingIds = localBookings
+      .filter((booking) => {
+        const matchesBooking = `
+          ${booking.course_name || ''}
+          ${booking.client_name || ''}
+          ${booking.location || ''}
+          ${booking.status || ''}
+        `
+          .toLowerCase()
+          .includes(cleanTerm)
+
+        return matchesBooking || clientIds.includes(booking.client_id)
+      })
+      .map((booking) => booking.id)
+
+    return { bookingIds, clientIds, delegateIds }
+  }
+
+  const applyCertificateFilters = (
+    query: any,
+    searchTerm: string,
+    relatedIds: {
+      bookingIds: string[]
+      clientIds: string[]
+      delegateIds: string[]
+    }
+  ) => {
+    let nextQuery = query
+
+    if (statusFilter === 'expiring_soon') {
+      const { today, endDate } = getExpiryWindow()
+
+      nextQuery = nextQuery
+        .eq('status', 'valid')
+        .gte('expiry_date', today)
+        .lte('expiry_date', endDate)
+    } else if (statusFilter !== 'all') {
+      nextQuery = nextQuery.eq('status', statusFilter)
+    }
+
+    if (linkFilter === 'linked') {
+      nextQuery = nextQuery.not('delegate_id', 'is', null)
+    }
+
+    if (linkFilter === 'manual') {
+      nextQuery = nextQuery.is('delegate_id', null)
+    }
+
+    const cleanTerm = cleanSearchTerm(searchTerm)
+
+    if (!cleanTerm) return nextQuery
+
+    const term = `%${cleanTerm}%`
+    const filters = [
+      `learner_name.ilike.${term}`,
+      `course_name.ilike.${term}`,
+      `certificate_number.ilike.${term}`,
+      `verification_id.ilike.${term}`,
+      `status.ilike.${term}`,
+      `certificate_title.ilike.${term}`,
+    ]
+
+    if (relatedIds.bookingIds.length > 0) {
+      filters.push(`booking_id.in.(${relatedIds.bookingIds.join(',')})`)
+    }
+
+    if (relatedIds.delegateIds.length > 0) {
+      filters.push(`delegate_id.in.(${relatedIds.delegateIds.join(',')})`)
+    }
+
+    return nextQuery.or(filters.join(','))
+  }
+
+  const load = async (page = currentPage, searchTerm = search) => {
+    setLoading(true)
+
     const currentProfile = await getOrCreateAccount()
 
     setProfile(currentProfile)
@@ -52,11 +205,62 @@ export default function CertificatesPage() {
       .eq('id', currentProfile.organisation_id)
       .single()
 
-    const { data: certificatesData, error: certificatesError } = await supabase
+    const bookingsData = await fetchPaginatedImportRecords<any>(
+      async (from, to) =>
+        await supabase
+          .from('bookings')
+          .select('*')
+          .eq('organisation_id', currentProfile.organisation_id)
+          .order('date', { ascending: false })
+          .range(from, to)
+    )
+
+    const clientsData = await fetchPaginatedImportRecords<any>(
+      async (from, to) =>
+        await supabase
+          .from('clients')
+          .select('*')
+          .eq('organisation_id', currentProfile.organisation_id)
+          .order('company', { ascending: true })
+          .range(from, to)
+    )
+
+    const delegatesData = await fetchPaginatedImportRecords<any>(
+      async (from, to) =>
+        await supabase
+          .from('delegates')
+          .select('*')
+          .eq('organisation_id', currentProfile.organisation_id)
+          .order('full_name', { ascending: true })
+          .range(from, to)
+    )
+
+    const relatedIds = getMatchingRelatedIds(
+      searchTerm,
+      clientsData,
+      delegatesData,
+      bookingsData
+    )
+    const from = (page - 1) * CERTIFICATES_PAGE_SIZE
+    const to = from + CERTIFICATES_PAGE_SIZE - 1
+    let certificatesQuery = supabase
       .from('certificates')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('organisation_id', currentProfile.organisation_id)
       .order('created_at', { ascending: false })
+      .range(from, to)
+
+    certificatesQuery = applyCertificateFilters(
+      certificatesQuery,
+      searchTerm,
+      relatedIds
+    )
+
+    const {
+      data: certificatesData,
+      count: certificatesCount,
+      error: certificatesError,
+    } = await certificatesQuery
 
     if (certificatesError) {
       alert(certificatesError.message)
@@ -64,29 +268,57 @@ export default function CertificatesPage() {
       return
     }
 
-    const { data: bookingsData } = await supabase
-      .from('bookings')
-      .select('*')
-      .eq('organisation_id', currentProfile.organisation_id)
-      .order('date', { ascending: false })
+    const { today, endDate } = getExpiryWindow()
 
-    const { data: clientsData } = await supabase
-      .from('clients')
-      .select('*')
+    const { count: allCount } = await supabase
+      .from('certificates')
+      .select('id', { count: 'exact', head: true })
       .eq('organisation_id', currentProfile.organisation_id)
-      .order('company', { ascending: true })
 
-    const { data: delegatesData } = await supabase
-      .from('delegates')
-      .select('*')
+    const { count: validCount } = await supabase
+      .from('certificates')
+      .select('id', { count: 'exact', head: true })
       .eq('organisation_id', currentProfile.organisation_id)
-      .order('full_name', { ascending: true })
+      .eq('status', 'valid')
+
+    const { count: expiredCount } = await supabase
+      .from('certificates')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', currentProfile.organisation_id)
+      .eq('status', 'expired')
+
+    const { count: revokedCount } = await supabase
+      .from('certificates')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', currentProfile.organisation_id)
+      .eq('status', 'revoked')
+
+    const { count: linkedCount } = await supabase
+      .from('certificates')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', currentProfile.organisation_id)
+      .not('delegate_id', 'is', null)
+
+    const { count: expiringSoonCount } = await supabase
+      .from('certificates')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', currentProfile.organisation_id)
+      .eq('status', 'valid')
+      .gte('expiry_date', today)
+      .lte('expiry_date', endDate)
 
     setOrganisation(organisationData || null)
     setCertificates(certificatesData || [])
     setBookings(bookingsData || [])
     setClients(clientsData || [])
     setDelegates(delegatesData || [])
+    setMatchingCertificates(certificatesCount || 0)
+    setTotalCertificates(allCount || 0)
+    setValidCertificatesCount(validCount || 0)
+    setExpiredCertificatesCount(expiredCount || 0)
+    setRevokedCertificatesCount(revokedCount || 0)
+    setLinkedCertificatesCount(linkedCount || 0)
+    setExpiringSoonCertificatesCount(expiringSoonCount || 0)
     setLoading(false)
   }
 
@@ -97,8 +329,19 @@ export default function CertificatesPage() {
       setSearch(requestedSearch)
     }
 
-    load()
+    load(1, requestedSearch || '')
   }, [])
+
+  useEffect(() => {
+    if (!profile?.organisation_id) return
+
+    const timeout = window.setTimeout(() => {
+      setCurrentPage(1)
+      load(1, search)
+    }, 250)
+
+    return () => window.clearTimeout(timeout)
+  }, [search, statusFilter, linkFilter, profile?.organisation_id])
 
   const getFormattedDate = (dateValue: string | null | undefined) => {
     if (!dateValue) return 'Not set'
@@ -150,7 +393,7 @@ export default function CertificatesPage() {
       return
     }
 
-    load()
+    load(currentPage, search)
   }
 
   const deleteCertificate = async (certificateId: string) => {
@@ -170,7 +413,7 @@ export default function CertificatesPage() {
       return
     }
 
-    load()
+    load(currentPage, search)
   }
 
   const ensureCertificateVerificationId = async (certificate: any) => {
@@ -469,72 +712,16 @@ export default function CertificatesPage() {
     setLinkFilter('all')
   }
 
-  const isCertificateExpiringSoon = (certificate: any) => {
-    if (!certificate.expiry_date || certificate.status !== 'valid') return false
+  const totalPages = Math.max(1, Math.ceil(matchingCertificates / CERTIFICATES_PAGE_SIZE))
+  const pageStart = matchingCertificates === 0 ? 0 : (currentPage - 1) * CERTIFICATES_PAGE_SIZE + 1
+  const pageEnd = Math.min(currentPage * CERTIFICATES_PAGE_SIZE, matchingCertificates)
 
-    return isLocalDateWithinNextDays(certificate.expiry_date, 90)
+  const goToPage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), totalPages)
+
+    setCurrentPage(nextPage)
+    load(nextPage, search)
   }
-
-  const filteredCertificates = certificates.filter((certificate) => {
-    const delegate = getDelegateForCertificate(certificate)
-    const booking = getBookingForCertificate(certificate)
-    const client = getClientForCertificate(certificate)
-
-    const searchableText = `
-      ${certificate.learner_name || ''}
-      ${certificate.course_name || ''}
-      ${certificate.certificate_number || ''}
-      ${certificate.status || ''}
-      ${certificate.certificate_title || ''}
-      ${certificate.certificate_body || ''}
-      ${certificate.issue_date || ''}
-      ${certificate.expiry_date || ''}
-      ${getFormattedDate(certificate.issue_date)}
-      ${getFormattedDate(certificate.expiry_date)}
-      ${delegate?.full_name || ''}
-      ${delegate?.email || ''}
-      ${client?.company || ''}
-      ${client?.name || ''}
-      ${booking?.course_name || ''}
-      ${booking?.date || ''}
-      ${booking ? getFormattedDate(booking.date) : ''}
-      ${booking?.location || ''}
-    `.toLowerCase()
-
-    const matchesSearch = searchableText.includes(search.toLowerCase())
-
-    const matchesStatus =
-      statusFilter === 'all' ||
-      certificate.status === statusFilter ||
-      (statusFilter === 'expiring_soon' && isCertificateExpiringSoon(certificate))
-
-    const matchesLink =
-      linkFilter === 'all' ||
-      (linkFilter === 'linked' && certificate.delegate_id) ||
-      (linkFilter === 'manual' && !certificate.delegate_id)
-
-    return matchesSearch && matchesStatus && matchesLink
-  })
-
-  const validCertificates = certificates.filter(
-    (certificate) => certificate.status === 'valid'
-  )
-
-  const expiredCertificates = certificates.filter(
-    (certificate) => certificate.status === 'expired'
-  )
-
-  const revokedCertificates = certificates.filter(
-    (certificate) => certificate.status === 'revoked'
-  )
-
-  const linkedCertificates = certificates.filter(
-    (certificate) => certificate.delegate_id
-  )
-
-  const expiringSoonCertificates = certificates.filter((certificate) => {
-    return isCertificateExpiringSoon(certificate)
-  })
 
   const getStatusStyle = (status: string) => {
     if (status === 'revoked') return 'bg-red-50 text-red-700 border-red-100'
@@ -591,39 +778,39 @@ export default function CertificatesPage() {
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
         <StatCard
           label="Total"
-          value={certificates.length}
+          value={totalCertificates}
           detail="All certificates"
         />
 
         <StatCard
           label="Valid"
-          value={validCertificates.length}
+          value={validCertificatesCount}
           detail="Current certificates"
         />
 
         <StatCard
           label="Expiring soon"
-          value={expiringSoonCertificates.length}
+          value={expiringSoonCertificatesCount}
           detail="Within 90 days"
         />
 
         <StatCard
           label="Expired"
-          value={expiredCertificates.length}
+          value={expiredCertificatesCount}
           detail="Marked expired"
         />
 
         <StatCard
           label="Linked"
-          value={linkedCertificates.length}
+          value={linkedCertificatesCount}
           detail="Connected to delegates"
         />
       </div>
 
-      {revokedCertificates.length > 0 && (
+      {revokedCertificatesCount > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 text-sm text-red-800">
-          You have {revokedCertificates.length} revoked certificate
-          {revokedCertificates.length === 1 ? '' : 's'}.
+          You have {revokedCertificatesCount} revoked certificate
+          {revokedCertificatesCount === 1 ? '' : 's'}.
         </div>
       )}
 
@@ -668,7 +855,9 @@ export default function CertificatesPage() {
           </div>
 
           <p className="text-xs text-slate-500 mt-3">
-            Showing {filteredCertificates.length} of {certificates.length} certificates
+            {loading
+              ? 'Loading certificates...'
+              : `Showing ${pageStart}-${pageEnd} of ${matchingCertificates} matching certificates. Total certificates: ${totalCertificates}.`}
           </p>
         </div>
       </div>
@@ -685,7 +874,7 @@ export default function CertificatesPage() {
         </div>
 
         <div className="divide-y divide-slate-100">
-          {filteredCertificates.map((certificate) => {
+          {certificates.map((certificate) => {
             const delegate = getDelegateForCertificate(certificate)
             const booking = getBookingForCertificate(certificate)
             const client = getClientForCertificate(certificate)
@@ -726,6 +915,10 @@ export default function CertificatesPage() {
                     <p className="text-xs text-slate-500 mt-1">
                       Certificate No: {certificate.certificate_number || 'Not set'}
                     </p>
+
+                    <p className="text-xs text-slate-500 mt-1">
+                      Expires {getFormattedDate(certificate.expiry_date)}
+                    </p>
                   </div>
 
                   <button
@@ -736,206 +929,214 @@ export default function CertificatesPage() {
                   </button>
                 </div>
 
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mt-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-2">
-                    Certificate wording
-                  </p>
+                <details className="group mt-4 rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                  <summary className="cursor-pointer list-none text-xs font-semibold text-slate-700 transition hover:text-slate-950">
+                    Certificate details and actions
+                  </summary>
 
-                  <h4 className="text-sm font-semibold text-slate-950">
-                    {certificate.certificate_title || 'Certificate of Completion'}
-                  </h4>
-
-                  <p className="text-xs text-slate-700 mt-2 whitespace-pre-line leading-5">
-                    {certificate.certificate_body ||
-                      `This is to certify that ${certificate.learner_name || 'the learner'} has successfully completed ${certificate.course_name || 'the course'}.`}
-                  </p>
-
-                  {certificate.certificate_footer && (
-                    <p className="text-xs text-slate-500 mt-3">
-                      {certificate.certificate_footer}
-                    </p>
-                  )}
-
-                  {(certificate.signature_name || certificate.signature_title) && (
-                    <p className="text-xs text-slate-600 mt-3">
-                      Signature: {certificate.signature_name || 'Not set'}
-                      {certificate.signature_title ? `, ${certificate.signature_title}` : ''}
-                    </p>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-4 text-xs text-slate-600">
-                  <div>
-                    <p className="text-slate-400">Delegate</p>
-
-                    {delegate ? (
-                      <Link
-                        href={`/dashboard/delegates/${delegate.id}`}
-                        className="font-medium text-slate-800 mt-1 inline-block hover:underline"
-                      >
-                        {delegate.full_name}
-                      </Link>
-                    ) : (
-                      <p className="font-medium text-slate-800 mt-1">
-                        Not linked
+                  <div className="mt-3">
+                    <div className="bg-white border border-slate-200 rounded-lg p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-2">
+                        Certificate wording
                       </p>
-                    )}
-                  </div>
 
-                  <div>
-                    <p className="text-slate-400">Client</p>
+                      <h4 className="text-sm font-semibold text-slate-950">
+                        {certificate.certificate_title || 'Certificate of Completion'}
+                      </h4>
 
-                    {client ? (
-                      <Link
-                        href={`/dashboard/clients/${client.id}`}
-                        className="font-medium text-slate-800 mt-1 inline-block hover:underline"
-                      >
-                        {client.company}
-                      </Link>
-                    ) : (
-                      <p className="font-medium text-slate-800 mt-1">
-                        Not linked
+                      <p className="text-xs text-slate-700 mt-2 whitespace-pre-line leading-5">
+                        {certificate.certificate_body ||
+                          `This is to certify that ${certificate.learner_name || 'the learner'} has successfully completed ${certificate.course_name || 'the course'}.`}
                       </p>
-                    )}
-                  </div>
 
-                  <div>
-                    <p className="text-slate-400">Booking</p>
+                      {certificate.certificate_footer && (
+                        <p className="text-xs text-slate-500 mt-3">
+                          {certificate.certificate_footer}
+                        </p>
+                      )}
 
-                    {booking ? (
-                      <Link
-                        href={`/dashboard/bookings/${booking.id}`}
-                        className="font-medium text-slate-800 mt-1 inline-block hover:underline"
+                      {(certificate.signature_name || certificate.signature_title) && (
+                        <p className="text-xs text-slate-600 mt-3">
+                          Signature: {certificate.signature_name || 'Not set'}
+                          {certificate.signature_title ? `, ${certificate.signature_title}` : ''}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-4 text-xs text-slate-600">
+                      <div>
+                        <p className="text-slate-400">Delegate</p>
+
+                        {delegate ? (
+                          <Link
+                            href={`/dashboard/delegates/${delegate.id}`}
+                            className="font-medium text-slate-800 mt-1 inline-block hover:underline"
+                          >
+                            {delegate.full_name}
+                          </Link>
+                        ) : (
+                          <p className="font-medium text-slate-800 mt-1">
+                            Not linked
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="text-slate-400">Client</p>
+
+                        {client ? (
+                          <Link
+                            href={`/dashboard/clients/${client.id}`}
+                            className="font-medium text-slate-800 mt-1 inline-block hover:underline"
+                          >
+                            {client.company}
+                          </Link>
+                        ) : (
+                          <p className="font-medium text-slate-800 mt-1">
+                            Not linked
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="text-slate-400">Booking</p>
+
+                        {booking ? (
+                          <Link
+                            href={`/dashboard/bookings/${booking.id}`}
+                            className="font-medium text-slate-800 mt-1 inline-block hover:underline"
+                          >
+                            {getFormattedDate(booking.date)} - {booking.course_name}
+                          </Link>
+                        ) : (
+                          <p className="font-medium text-slate-800 mt-1">
+                            Not linked
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="text-slate-400">Delegate email</p>
+                        <p className="font-medium text-slate-800 mt-1 break-all">
+                          {delegate?.email || 'Not set'}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-slate-400">Issue date</p>
+                        <p className="font-medium text-slate-800 mt-1">
+                          {getFormattedDate(certificate.issue_date)}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-slate-400">Expiry date</p>
+                        <p className="font-medium text-slate-800 mt-1">
+                          {getFormattedDate(certificate.expiry_date)}
+                        </p>
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <p className="text-slate-400">Verification ID</p>
+                        <p className="font-medium text-slate-800 mt-1 break-all">
+                          {certificate.verification_id || 'Not set'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      {delegate && (
+                        <Link
+                          href={`/dashboard/delegates/${delegate.id}`}
+                          className={buttonSecondary}
+                        >
+                          View delegate
+                        </Link>
+                      )}
+
+                      {booking && (
+                        <Link
+                          href={`/dashboard/bookings/${booking.id}`}
+                          className={buttonSecondary}
+                        >
+                          View booking
+                        </Link>
+                      )}
+
+                      {client && (
+                        <Link
+                          href={`/dashboard/clients/${client.id}`}
+                          className={buttonSecondary}
+                        >
+                          View client
+                        </Link>
+                      )}
+
+                      {delegate?.email && (
+                        <button
+                          className={buttonSecondary}
+                          onClick={() => sendCertificate(certificate)}
+                        >
+                          Send certificate
+                        </button>
+                      )}
+
+                      {delegate?.email && (
+                        <button
+                          className={buttonSecondary}
+                          onClick={() => sendExpiryReminder(certificate)}
+                        >
+                          Send expiry reminder
+                        </button>
+                      )}
+
+                      {certificate.status !== 'valid' && (
+                        <button
+                          className={buttonSecondary}
+                          onClick={() =>
+                            updateCertificateStatus(certificate.id, 'valid')
+                          }
+                        >
+                          Mark valid
+                        </button>
+                      )}
+
+                      {certificate.status !== 'expired' && (
+                        <button
+                          className={buttonSecondary}
+                          onClick={() =>
+                            updateCertificateStatus(certificate.id, 'expired')
+                          }
+                        >
+                          Mark expired
+                        </button>
+                      )}
+
+                      {certificate.status !== 'revoked' && (
+                        <button
+                          className={buttonSecondary}
+                          onClick={() =>
+                            updateCertificateStatus(certificate.id, 'revoked')
+                          }
+                        >
+                          Revoke
+                        </button>
+                      )}
+
+                      <button
+                        className={buttonDanger}
+                        onClick={() => deleteCertificate(certificate.id)}
                       >
-                        {getFormattedDate(booking.date)} - {booking.course_name}
-                      </Link>
-                    ) : (
-                      <p className="font-medium text-slate-800 mt-1">
-                        Not linked
-                      </p>
-                    )}
+                        Delete
+                      </button>
+                    </div>
                   </div>
-
-                  <div>
-                    <p className="text-slate-400">Delegate email</p>
-                    <p className="font-medium text-slate-800 mt-1 break-all">
-                      {delegate?.email || 'Not set'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-slate-400">Issue date</p>
-                    <p className="font-medium text-slate-800 mt-1">
-                      {getFormattedDate(certificate.issue_date)}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-slate-400">Expiry date</p>
-                    <p className="font-medium text-slate-800 mt-1">
-                      {getFormattedDate(certificate.expiry_date)}
-                    </p>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <p className="text-slate-400">Verification ID</p>
-                    <p className="font-medium text-slate-800 mt-1 break-all">
-                      {certificate.verification_id || 'Not set'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2 mt-4">
-                  {delegate && (
-                    <Link
-                      href={`/dashboard/delegates/${delegate.id}`}
-                      className={buttonSecondary}
-                    >
-                      View delegate
-                    </Link>
-                  )}
-
-                  {booking && (
-                    <Link
-                      href={`/dashboard/bookings/${booking.id}`}
-                      className={buttonSecondary}
-                    >
-                      View booking
-                    </Link>
-                  )}
-
-                  {client && (
-                    <Link
-                      href={`/dashboard/clients/${client.id}`}
-                      className={buttonSecondary}
-                    >
-                      View client
-                    </Link>
-                  )}
-
-                  {delegate?.email && (
-                    <button
-                      className={buttonSecondary}
-                      onClick={() => sendCertificate(certificate)}
-                    >
-                      Send certificate
-                    </button>
-                  )}
-
-                  {delegate?.email && (
-                    <button
-                      className={buttonSecondary}
-                      onClick={() => sendExpiryReminder(certificate)}
-                    >
-                      Send expiry reminder
-                    </button>
-                  )}
-
-                  {certificate.status !== 'valid' && (
-                    <button
-                      className={buttonSecondary}
-                      onClick={() =>
-                        updateCertificateStatus(certificate.id, 'valid')
-                      }
-                    >
-                      Mark valid
-                    </button>
-                  )}
-
-                  {certificate.status !== 'expired' && (
-                    <button
-                      className={buttonSecondary}
-                      onClick={() =>
-                        updateCertificateStatus(certificate.id, 'expired')
-                      }
-                    >
-                      Mark expired
-                    </button>
-                  )}
-
-                  {certificate.status !== 'revoked' && (
-                    <button
-                      className={buttonSecondary}
-                      onClick={() =>
-                        updateCertificateStatus(certificate.id, 'revoked')
-                      }
-                    >
-                      Revoke
-                    </button>
-                  )}
-
-                  <button
-                    className={buttonDanger}
-                    onClick={() => deleteCertificate(certificate.id)}
-                  >
-                    Delete
-                  </button>
-                </div>
+                </details>
               </div>
             )
           })}
 
-          {filteredCertificates.length === 0 && (
+          {certificates.length === 0 && !loading && (
             <div className="p-6">
               <p className="text-sm font-semibold text-slate-950">
                 No certificates yet
@@ -963,6 +1164,32 @@ export default function CertificatesPage() {
             </div>
           )}
         </div>
+
+        {matchingCertificates > CERTIFICATES_PAGE_SIZE && (
+          <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">
+              Page {currentPage} of {totalPages}
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                className={buttonSecondary}
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage <= 1 || loading}
+              >
+                Previous
+              </button>
+
+              <button
+                className={buttonSecondary}
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage >= totalPages || loading}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
