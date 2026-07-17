@@ -8,6 +8,8 @@ import { formatAppDate, formatAppTime, formatAppTimeRange } from '@/lib/formatte
 import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
 import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
 import { getComputedBookingStatus } from '@/lib/bookingStatus'
+import { fetchPaginatedImportRecords } from '@/lib/importCsv'
+import ClientPicker from '../bookings/ClientPicker'
 
 export default function CalendarPage() {
   const [bookings, setBookings] = useState<any[]>([])
@@ -33,6 +35,7 @@ export default function CalendarPage() {
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
   const [location, setLocation] = useState('')
+  const [autoFilledLocation, setAutoFilledLocation] = useState('')
   const [price, setPrice] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -66,11 +69,15 @@ export default function CalendarPage() {
       .eq('id', profile.organisation_id)
       .single()
 
-    const { data: clientsData } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
-      .order('company', { ascending: true })
+    const clientsData = await fetchPaginatedImportRecords<any>(
+      async (from, to) =>
+        await supabase
+          .from('clients')
+          .select('*')
+          .eq('organisation_id', profile.organisation_id)
+          .order('company', { ascending: true })
+          .range(from, to)
+    )
 
     const { data: trainersData } = await supabase
       .from('trainers')
@@ -192,12 +199,31 @@ export default function CalendarPage() {
   }
 
   const setClientAndMaybeLocation = (selectedClientId: string) => {
+    const previousAutoFill = autoFilledLocation
+
+    if (!selectedClientId) {
+      setClientId('')
+
+      if (previousAutoFill && location === previousAutoFill) {
+        setLocation('')
+      }
+
+      setAutoFilledLocation('')
+      return
+    }
+
     setClientId(selectedClientId)
 
     const selectedClient = clients.find((client) => client.id === selectedClientId)
+    const selectedAddress = selectedClient?.address || ''
 
-    if (courseDeliveryType === 'private' && !location.trim() && selectedClient?.address) {
-      setLocation(selectedClient.address)
+    if (
+      selectedAddress &&
+      (courseDeliveryType === 'private' || courseDeliveryType === 'public') &&
+      (!location.trim() || (previousAutoFill && location === previousAutoFill))
+    ) {
+      setLocation(selectedAddress)
+      setAutoFilledLocation(selectedAddress)
     }
   }
 
@@ -235,6 +261,7 @@ export default function CalendarPage() {
     setStartTime('')
     setEndTime('')
     setLocation('')
+    setAutoFilledLocation('')
     setPrice('')
     setNotes('')
   }
@@ -875,7 +902,7 @@ export default function CalendarPage() {
                     setCourseDeliveryType(selectedType)
 
                     if (selectedType === 'public') {
-                      setClientId('')
+                      setClientAndMaybeLocation('')
                     }
                   }}
                 >
@@ -883,23 +910,17 @@ export default function CalendarPage() {
                   <option value="public">Public course</option>
                 </select>
 
-                <select
-                  className={inputClass}
+                <ClientPicker
+                  clients={clients}
                   value={clientId}
-                  onChange={(e) => setClientAndMaybeLocation(e.target.value)}
-                >
-                  <option value="">
-                    {courseDeliveryType === 'public'
-                      ? 'Optional main client'
-                      : 'Select client'}
-                  </option>
-
-                  {clients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.company} - {client.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setClientAndMaybeLocation}
+                  inputClass={inputClass}
+                  placeholder={
+                    courseDeliveryType === 'public'
+                      ? 'Search optional main client...'
+                      : 'Search clients...'
+                  }
+                />
 
                 <select
                   className={inputClass}
@@ -986,7 +1007,13 @@ export default function CalendarPage() {
                   placeholder="Location"
                   list="calendar-location-suggestions"
                   value={location}
-                  onChange={(e) => setLocation(e.target.value)}
+                  onChange={(e) => {
+                    setLocation(e.target.value)
+
+                    if (autoFilledLocation && e.target.value !== autoFilledLocation) {
+                      setAutoFilledLocation('')
+                    }
+                  }}
                 />
 
                 <datalist id="calendar-location-suggestions">
