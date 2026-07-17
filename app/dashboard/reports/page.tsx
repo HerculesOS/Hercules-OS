@@ -10,6 +10,7 @@ import {
   getComputedCertificateStatus,
   isCertificateExpiringSoon,
 } from '@/lib/certificateStatus'
+import { getComputedInvoiceStatus } from '@/lib/invoiceStatus'
 
 type ReportType =
   | 'delegates'
@@ -407,7 +408,7 @@ export default function ReportsPage() {
         net_amount: Number(item.amount || 0),
         vat_amount: Number(item.vat_amount || 0),
         total_amount: Number(item.total_amount || item.amount || 0),
-        status: getComputedCertificateStatus(item),
+        status: getComputedInvoiceStatus(item),
         invoice_target_type: item.invoice_target_type || 'booking_client',
       }
 
@@ -422,7 +423,7 @@ export default function ReportsPage() {
         certificate_number: item.certificate_number || '',
         issue_date: getFormattedDate(item.issue_date),
         expiry_date: getFormattedDate(item.expiry_date),
-        status: item.status || '',
+        status: getComputedCertificateStatus(item),
         verification_id: item.verification_id || '',
       }
 
@@ -526,7 +527,11 @@ export default function ReportsPage() {
     )
 
   const outstandingRevenue = filteredInvoicesForStats
-    .filter((invoice) => invoice.status !== 'paid')
+    .filter((invoice) => {
+      const status = getComputedInvoiceStatus(invoice)
+
+      return status !== 'paid' && status !== 'cancelled' && status !== 'canceled' && status !== 'void'
+    })
     .reduce(
       (sum, invoice) => sum + Number(invoice.total_amount || invoice.amount || 0),
       0

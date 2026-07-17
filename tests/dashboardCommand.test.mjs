@@ -32,6 +32,8 @@ describe('dashboard command helpers', () => {
       { id: 'overdue', due_date: '2026-06-20', status: 'sent' },
       { id: 'paid', due_date: '2026-06-20', status: 'paid' },
       { id: 'future', due_date: '2026-06-22', status: 'sent' },
+      { id: 'void', due_date: '2026-06-20', status: 'void' },
+      { id: 'cancelled', due_date: '2026-06-20', status: 'cancelled' },
     ]
 
     assert.deepEqual(
@@ -72,6 +74,20 @@ describe('dashboard command helpers', () => {
     assert.equal(snapshot.paidThisMonth, 100)
     assert.equal(snapshot.outstandingAmount, 125)
     assert.equal(snapshot.overdueCount, 1)
+  })
+
+  it('keeps cancelled and void invoices out of outstanding totals', () => {
+    const snapshot = getMoneySnapshot(
+      [
+        { id: 'sent', total_amount: 100, status: 'sent' },
+        { id: 'cancelled', total_amount: 75, status: 'cancelled' },
+        { id: 'void', total_amount: 50, status: 'void' },
+      ],
+      today
+    )
+
+    assert.equal(snapshot.outstandingAmount, 100)
+    assert.equal(snapshot.outstandingCount, 1)
   })
 
   it('calculates training snapshot values', () => {

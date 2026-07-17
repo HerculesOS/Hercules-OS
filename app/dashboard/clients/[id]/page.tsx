@@ -8,6 +8,7 @@ import { getOrCreateAccount } from '@/lib/account'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import { getComputedBookingStatus } from '@/lib/bookingStatus'
 import { getComputedCertificateStatus } from '@/lib/certificateStatus'
+import { getComputedInvoiceStatus } from '@/lib/invoiceStatus'
 
 const RELATED_PAGE_SIZE = 20
 
@@ -294,7 +295,7 @@ export default function ClientDetailPage() {
       async (from, to) => {
         let summaryQuery = supabase
           .from('invoices')
-          .select('amount,total_amount,status')
+          .select('amount,total_amount,status,due_date')
           .eq('organisation_id', currentProfile.organisation_id)
           .range(from, to)
 
@@ -337,7 +338,13 @@ export default function ClientDetailPage() {
     setUpcomingBookingCount(upcomingTotal || 0)
     setCompletedBookingCount(completedTotal || 0)
     setInvoiceCount(invoicesTotal || 0)
-    setUnpaidInvoiceCount(invoiceSummary.filter((invoice) => invoice.status !== 'paid').length)
+    setUnpaidInvoiceCount(
+      invoiceSummary.filter((invoice) => {
+        const status = getComputedInvoiceStatus(invoice)
+
+        return status !== 'paid' && status !== 'cancelled' && status !== 'canceled' && status !== 'void'
+      }).length
+    )
     setTotalInvoiceValue(
       invoiceSummary.reduce(
         (sum, invoice) => sum + Number(invoice.total_amount || invoice.amount || 0),
@@ -589,7 +596,9 @@ export default function ClientDetailPage() {
 
   const getInvoiceStatusStyle = (status: string) => {
     if (status === 'paid') return 'bg-emerald-50 text-emerald-700 border-emerald-100'
+    if (status === 'overdue') return 'bg-red-50 text-red-700 border-red-100'
     if (status === 'sent') return 'bg-blue-50 text-blue-700 border-blue-100'
+    if (status === 'cancelled' || status === 'canceled' || status === 'void') return 'bg-slate-100 text-slate-700 border-slate-200'
     return 'bg-amber-50 text-amber-700 border-amber-100'
   }
 
@@ -1240,6 +1249,7 @@ export default function ClientDetailPage() {
           <div className="divide-y divide-slate-100">
             {invoices.map((invoice) => {
               const booking = getBookingForInvoice(invoice)
+              const displayStatus = getComputedInvoiceStatus(invoice)
 
               return (
                 <div
@@ -1266,8 +1276,8 @@ export default function ClientDetailPage() {
                     Due: {invoice.due_date || 'Not set'}
                   </p>
 
-                  <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getInvoiceStatusStyle(invoice.status)}`}>
-                    {invoice.status}
+                  <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getInvoiceStatusStyle(displayStatus)}`}>
+                    {displayStatus}
                   </span>
                 </div>
               )

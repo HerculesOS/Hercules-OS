@@ -8,6 +8,7 @@ import { formatAppDate } from '@/lib/formatters'
 import { getNextInvoiceNumber, isDuplicateInvoiceNumberError } from '@/lib/invoiceNumbers'
 import { parseOptionalNonNegativeNumber, parseRequiredPositiveNumber } from '@/lib/numberValidation'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
+import { getComputedInvoiceStatus } from '@/lib/invoiceStatus'
 import jsPDF from 'jspdf'
 
 const INVOICES_PAGE_SIZE = 50
@@ -28,6 +29,7 @@ export default function InvoicesPage() {
   const [totalInvoices, setTotalInvoices] = useState(0)
   const [matchingInvoices, setMatchingInvoices] = useState(0)
   const [outstandingInvoicesCount, setOutstandingInvoicesCount] = useState(0)
+  const [overdueInvoicesCount, setOverdueInvoicesCount] = useState(0)
   const [securedInvoicesCount, setSecuredInvoicesCount] = useState(0)
 
   const [bookingId, setBookingId] = useState('')
@@ -165,7 +167,18 @@ export default function InvoicesPage() {
   ) => {
     let nextQuery = query
 
-    if (statusFilter !== 'all') {
+    const today = new Date().toISOString().split('T')[0]
+
+    if (statusFilter === 'overdue') {
+      nextQuery = nextQuery
+        .not('due_date', 'is', null)
+        .lt('due_date', today)
+        .not('status', 'in', '(paid,cancelled,canceled,void)')
+    } else if (statusFilter === 'draft' || statusFilter === 'sent') {
+      nextQuery = nextQuery
+        .eq('status', statusFilter)
+        .or(`due_date.is.null,due_date.gte.${today}`)
+    } else if (statusFilter !== 'all') {
       nextQuery = nextQuery.eq('status', statusFilter)
     }
 
@@ -178,7 +191,7 @@ export default function InvoicesPage() {
     }
 
     if (unpaidOnly) {
-      nextQuery = nextQuery.neq('status', 'paid')
+      nextQuery = nextQuery.not('status', 'in', '(paid,cancelled,canceled,void)')
     }
 
     const cleanTerm = cleanSearchTerm(searchTerm)
@@ -306,7 +319,16 @@ export default function InvoicesPage() {
       .from('invoices')
       .select('id', { count: 'exact', head: true })
       .eq('organisation_id', profile.organisation_id)
-      .neq('status', 'paid')
+      .not('status', 'in', '(paid,cancelled,canceled,void)')
+
+    const todayString = new Date().toISOString().split('T')[0]
+    const { count: overdueCount } = await supabase
+      .from('invoices')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', profile.organisation_id)
+      .not('due_date', 'is', null)
+      .lt('due_date', todayString)
+      .not('status', 'in', '(paid,cancelled,canceled,void)')
 
     const { count: securedCount } = await supabase
       .from('invoices')
@@ -323,10 +345,13 @@ export default function InvoicesPage() {
     setMatchingInvoices(invoicesCount || 0)
     setTotalInvoices(allCount || 0)
     setOutstandingInvoicesCount(outstandingCount || 0)
+    setOverdueInvoicesCount(overdueCount || 0)
     setSecuredInvoicesCount(securedCount || 0)
 
     const requestedBookingId = new URLSearchParams(window.location.search).get('bookingId')
     const requestedSearch = new URLSearchParams(window.location.search).get('search')
+    const requestedStatus = new URLSearchParams(window.location.search).get('status')
+    const allowedStatuses = ['all', 'draft', 'sent', 'overdue', 'paid']
 
     if (requestedBookingId) {
       selectBookingForCreate(requestedBookingId, bookingsData || [])
@@ -334,6 +359,10 @@ export default function InvoicesPage() {
 
     if (requestedSearch) {
       setSearch(requestedSearch)
+    }
+
+    if (requestedStatus && allowedStatuses.includes(requestedStatus)) {
+      setStatusFilter(requestedStatus)
     }
 
     setLoading(false)
@@ -863,7 +892,7 @@ export default function InvoicesPage() {
     doc.text(`Invoice No: ${invoice.invoice_number || invoice.id}`, 28, 78)
     doc.text(`Date: ${invoiceDate}`, 28, 85)
     doc.text(`Due Date: ${getFormattedDate(invoice.due_date)}`, 28, 92)
-    doc.text(`Status: ${invoice.status || 'draft'}`, 28, 99)
+    doc.text(`Status: ${getComputedInvoiceStatus(invoice)}`, 28, 99)
 
     doc.setFillColor(249, 250, 251)
     doc.setDrawColor(229, 231, 235)
@@ -983,7 +1012,7 @@ export default function InvoicesPage() {
         vatAmount: invoice.vat_amount,
         totalAmount: invoice.total_amount || invoice.amount,
         dueDate: getFormattedDate(invoice.due_date),
-        status: invoice.status,
+        status: getComputedInvoiceStatus(invoice),
         businessName: organisation?.name || 'Hercules OS',
         businessEmail: organisation?.email || '',
         businessPhone: organisation?.phone || '',
@@ -1024,10 +1053,6 @@ export default function InvoicesPage() {
     0
   )
 
-  const visiblePublicInvoicesCount = invoices.filter((invoice) => {
-    const booking = getBookingById(invoice.booking_id)
-    return getBookingDeliveryType(booking) === 'public'
-  }).length
   const totalPages = Math.max(1, Math.ceil(matchingInvoices / INVOICES_PAGE_SIZE))
   const pageStart = matchingInvoices === 0 ? 0 : (currentPage - 1) * INVOICES_PAGE_SIZE + 1
   const pageEnd = Math.min(currentPage * INVOICES_PAGE_SIZE, matchingInvoices)
@@ -1044,8 +1069,16 @@ export default function InvoicesPage() {
       return 'bg-emerald-50 text-emerald-700 border-emerald-100'
     }
 
+    if (status === 'overdue') {
+      return 'bg-red-50 text-red-700 border-red-100'
+    }
+
     if (status === 'sent') {
       return 'bg-blue-50 text-blue-700 border-blue-100'
+    }
+
+    if (status === 'cancelled' || status === 'canceled' || status === 'void') {
+      return 'bg-slate-100 text-slate-700 border-slate-200'
     }
 
     return 'bg-amber-50 text-amber-700 border-amber-100'
@@ -1112,9 +1145,9 @@ export default function InvoicesPage() {
         />
 
         <StatCard
-          label="Public invoices"
-          value={visiblePublicInvoicesCount}
-          detail="Visible page"
+          label="Overdue"
+          value={overdueInvoicesCount}
+          detail="Past due and unpaid"
         />
 
         <StatCard
@@ -1152,6 +1185,7 @@ export default function InvoicesPage() {
               <option value="all">All statuses</option>
               <option value="draft">Draft</option>
               <option value="sent">Sent</option>
+              <option value="overdue">Overdue</option>
               <option value="paid">Paid</option>
             </select>
 
@@ -1398,6 +1432,10 @@ export default function InvoicesPage() {
             <p className="text-xs text-slate-500 mt-0.5">
               Manage invoice records, payments and client communication.
             </p>
+
+            <p className="text-xs text-slate-500 mt-1">
+              Invoices automatically show as overdue after the due date if unpaid.
+            </p>
           </div>
 
           <div className="divide-y divide-slate-100">
@@ -1409,6 +1447,7 @@ export default function InvoicesPage() {
               const isEditing = editingId === invoice.id
               const isSecured = Boolean(invoice.secured_at)
               const isLocked = isSecured || invoice.status === 'paid'
+              const displayStatus = getComputedInvoiceStatus(invoice)
               const booking = getBookingById(invoice.booking_id)
               const deliveryType = getBookingDeliveryType(booking)
 
@@ -1426,8 +1465,8 @@ export default function InvoicesPage() {
                               {invoice.invoice_number || 'Invoice'}
                             </h3>
 
-                            <span className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(invoice.status)}`}>
-                              {invoice.status}
+                            <span className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(displayStatus)}`}>
+                              {displayStatus}
                             </span>
 
                             <span className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getDeliveryTypeStyle(deliveryType)}`}>

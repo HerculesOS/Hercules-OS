@@ -78,6 +78,35 @@ const getComputedCertificateStatus = (
   return certificate.status || 'valid'
 }
 
+const inactiveInvoiceStatuses = new Set(['cancelled', 'canceled', 'void'])
+
+const getComputedInvoiceStatus = (
+  invoice: DashboardInvoice,
+  today = new Date()
+) => {
+  if (invoice.status === 'paid') return 'paid'
+  if (invoice.status && inactiveInvoiceStatuses.has(invoice.status)) {
+    return invoice.status
+  }
+
+  const dueTime = getDateOnlyTime(invoice.due_date)
+
+  if (dueTime !== null && dueTime < startOfToday(today)) {
+    return 'overdue'
+  }
+
+  return invoice.status || 'draft'
+}
+
+const isInvoiceOutstanding = (
+  invoice: DashboardInvoice,
+  today = new Date()
+) => {
+  const status = getComputedInvoiceStatus(invoice, today)
+
+  return status !== 'paid' && !inactiveInvoiceStatuses.has(status)
+}
+
 const startOfToday = (today: Date) =>
   new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
 
@@ -211,7 +240,10 @@ export const getOverdueInvoices = (
   const todayTime = startOfToday(today)
 
   return invoices.filter((invoice) => {
-    if (invoice.status === 'paid') return false
+    const computedStatus = getComputedInvoiceStatus(invoice, today)
+
+    if (computedStatus === 'paid') return false
+    if (inactiveInvoiceStatuses.has(computedStatus)) return false
 
     const dueTime = getDateOnlyTime(invoice.due_date)
 
@@ -254,7 +286,7 @@ export const getMoneySnapshot = (
   )
 
   const outstandingInvoices = invoices.filter(
-    (invoice) => invoice.status !== 'paid'
+    (invoice) => isInvoiceOutstanding(invoice, today)
   )
 
   return {

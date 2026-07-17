@@ -319,7 +319,7 @@ export default function Dashboard() {
       label: 'Overdue invoices',
       count: actionCounts.overdueInvoices,
       detail: 'Invoices past due and unpaid',
-      href: '/dashboard/invoices',
+      href: '/dashboard/invoices?status=overdue',
       action: 'Chase invoices',
     },
     {
