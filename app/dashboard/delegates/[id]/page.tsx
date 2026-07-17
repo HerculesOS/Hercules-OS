@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { getComputedBookingStatus } from '@/lib/bookingStatus'
+import { getComputedCertificateStatus } from '@/lib/certificateStatus'
 
 export default function DelegateProfilePage() {
   const params = useParams()
@@ -659,8 +660,8 @@ export default function DelegateProfilePage() {
                     </p>
                   </div>
 
-                  <span className={`border px-2.5 py-1 rounded-md text-xs font-medium w-fit ${getCertificateStatusStyle(certificate.status)}`}>
-                    {certificate.status}
+                  <span className={`border px-2.5 py-1 rounded-md text-xs font-medium w-fit ${getCertificateStatusStyle(getComputedCertificateStatus(certificate))}`}>
+                    {getComputedCertificateStatus(certificate)}
                   </span>
                 </div>
               </div>

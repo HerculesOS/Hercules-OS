@@ -9,6 +9,7 @@ import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate } from '@/lib/formatters'
 import { createCertificateVerificationId } from '@/lib/certificateVerification'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
+import { getComputedCertificateStatus } from '@/lib/certificateStatus'
 
 const CERTIFICATES_PAGE_SIZE = 50
 
@@ -155,6 +156,18 @@ export default function CertificatesPage() {
         .eq('status', 'valid')
         .gte('expiry_date', today)
         .lte('expiry_date', endDate)
+    } else if (statusFilter === 'valid') {
+      const { today } = getExpiryWindow()
+
+      nextQuery = nextQuery
+        .eq('status', 'valid')
+        .or(`expiry_date.is.null,expiry_date.gte.${today}`)
+    } else if (statusFilter === 'expired') {
+      const { today } = getExpiryWindow()
+
+      nextQuery = nextQuery.or(
+        `status.eq.expired,and(status.neq.revoked,expiry_date.lt.${today})`
+      )
     } else if (statusFilter !== 'all') {
       nextQuery = nextQuery.eq('status', statusFilter)
     }
@@ -280,12 +293,13 @@ export default function CertificatesPage() {
       .select('id', { count: 'exact', head: true })
       .eq('organisation_id', currentProfile.organisation_id)
       .eq('status', 'valid')
+      .or(`expiry_date.is.null,expiry_date.gte.${today}`)
 
     const { count: expiredCount } = await supabase
       .from('certificates')
       .select('id', { count: 'exact', head: true })
       .eq('organisation_id', currentProfile.organisation_id)
-      .eq('status', 'expired')
+      .or(`status.eq.expired,and(status.neq.revoked,expiry_date.lt.${today})`)
 
     const { count: revokedCount } = await supabase
       .from('certificates')
@@ -323,10 +337,17 @@ export default function CertificatesPage() {
   }
 
   useEffect(() => {
-    const requestedSearch = new URLSearchParams(window.location.search).get('search')
+    const params = new URLSearchParams(window.location.search)
+    const requestedSearch = params.get('search')
+    const requestedStatus = params.get('status')
+    const allowedStatuses = ['all', 'valid', 'expiring_soon', 'expired', 'revoked']
 
     if (requestedSearch) {
       setSearch(requestedSearch)
+    }
+
+    if (requestedStatus && allowedStatuses.includes(requestedStatus)) {
+      setStatusFilter(requestedStatus)
     }
 
     load(1, requestedSearch || '')
@@ -797,7 +818,7 @@ export default function CertificatesPage() {
         <StatCard
           label="Expired"
           value={expiredCertificatesCount}
-          detail="Marked expired"
+          detail="Past expiry date"
         />
 
         <StatCard
@@ -878,6 +899,7 @@ export default function CertificatesPage() {
             const delegate = getDelegateForCertificate(certificate)
             const booking = getBookingForCertificate(certificate)
             const client = getClientForCertificate(certificate)
+            const displayStatus = getComputedCertificateStatus(certificate)
 
             return (
               <div
@@ -893,10 +915,10 @@ export default function CertificatesPage() {
 
                       <span
                         className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(
-                          certificate.status
+                          displayStatus
                         )}`}
                       >
-                        {certificate.status || 'valid'}
+                        {displayStatus}
                       </span>
 
                       <span
@@ -1101,7 +1123,7 @@ export default function CertificatesPage() {
                         </button>
                       )}
 
-                      {certificate.status !== 'expired' && (
+                      {displayStatus !== 'expired' && (
                         <button
                           className={buttonSecondary}
                           onClick={() =>

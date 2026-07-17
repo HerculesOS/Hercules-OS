@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import { getComputedBookingStatus } from '@/lib/bookingStatus'
+import { getComputedCertificateStatus } from '@/lib/certificateStatus'
 
 const RELATED_PAGE_SIZE = 20
 
@@ -312,12 +313,14 @@ export default function ClientDetailPage() {
     let validCertificateTotal = 0
 
     if (delegateIds.length > 0) {
+      const todayString = today.toISOString().split('T')[0]
       const { count } = await supabase
         .from('certificates')
         .select('id', { count: 'exact', head: true })
         .in('delegate_id', delegateIds)
         .eq('organisation_id', currentProfile.organisation_id)
         .eq('status', 'valid')
+        .or(`expiry_date.is.null,expiry_date.gte.${todayString}`)
 
       validCertificateTotal = count || 0
     }
@@ -1009,10 +1012,10 @@ export default function ClientDetailPage() {
                             <span
                               key={certificate.id}
                               className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getCertificateStatusStyle(
-                                certificate.status
+                                getComputedCertificateStatus(certificate)
                               )}`}
                             >
-                              Certificate: {certificate.status}
+                              Certificate: {getComputedCertificateStatus(certificate)}
                             </span>
                           ))
                         ) : (
@@ -1345,8 +1348,8 @@ export default function ClientDetailPage() {
                     Expires: {certificate.expiry_date}
                   </p>
 
-                  <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getCertificateStatusStyle(certificate.status)}`}>
-                    {certificate.status}
+                  <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getCertificateStatusStyle(getComputedCertificateStatus(certificate))}`}>
+                    {getComputedCertificateStatus(certificate)}
                   </span>
                 </div>
               )

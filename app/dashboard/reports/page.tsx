@@ -5,8 +5,11 @@ import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
-import { isLocalDateWithinNextDays } from '@/lib/dateRanges'
 import { getComputedBookingStatus } from '@/lib/bookingStatus'
+import {
+  getComputedCertificateStatus,
+  isCertificateExpiringSoon,
+} from '@/lib/certificateStatus'
 
 type ReportType =
   | 'delegates'
@@ -404,7 +407,7 @@ export default function ReportsPage() {
         net_amount: Number(item.amount || 0),
         vat_amount: Number(item.vat_amount || 0),
         total_amount: Number(item.total_amount || item.amount || 0),
-        status: item.status || '',
+        status: getComputedCertificateStatus(item),
         invoice_target_type: item.invoice_target_type || 'booking_client',
       }
 
@@ -538,14 +541,12 @@ export default function ReportsPage() {
   )
 
   const validCertificates = filteredCertificatesForStats.filter(
-    (certificate) => certificate.status === 'valid'
+    (certificate) => getComputedCertificateStatus(certificate) === 'valid'
   )
 
-  const expiringCertificates = filteredCertificatesForStats.filter((certificate) => {
-    if (!certificate.expiry_date || certificate.status !== 'valid') return false
-
-    return isLocalDateWithinNextDays(certificate.expiry_date, 90)
-  })
+  const expiringCertificates = filteredCertificatesForStats.filter((certificate) =>
+    isCertificateExpiringSoon(certificate)
+  )
 
   const monthlyRevenue = useMemo(() => {
     const months: Record<string, number> = {}

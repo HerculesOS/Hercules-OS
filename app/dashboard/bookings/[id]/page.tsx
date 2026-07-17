@@ -13,6 +13,7 @@ import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/booki
 import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import { getComputedBookingStatus } from '@/lib/bookingStatus'
+import { getComputedCertificateStatus } from '@/lib/certificateStatus'
 import {
   getBulkCertificateEmailSummary,
   getBulkCertificateGenerationSummary,
@@ -2718,8 +2719,8 @@ export default function BookingDetailPage() {
                   Expires: {getFormattedDate(certificate.expiry_date)}
                 </p>
 
-                <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getCertificateStatusStyle(certificate.status)}`}>
-                  {certificate.status}
+                <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getCertificateStatusStyle(getComputedCertificateStatus(certificate))}`}>
+                  {getComputedCertificateStatus(certificate)}
                 </span>
 
                 <div className="flex flex-wrap gap-2 mt-3">

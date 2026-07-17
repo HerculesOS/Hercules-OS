@@ -4,6 +4,7 @@ export type RenewalCertificate = {
   id: string
   expiry_date?: string | null
   expiry_reminder_sent_at?: string | null
+  status?: string | null
 }
 
 export type RenewalDelegate = {
@@ -98,6 +99,7 @@ export const buildRenewalOpportunities = <
   today = new Date()
 ) => {
   return certificates
+    .filter((certificate) => certificate.status !== 'revoked')
     .map((certificate) => {
       const { window, daysUntilExpiry } = getRenewalWindow(
         certificate.expiry_date,

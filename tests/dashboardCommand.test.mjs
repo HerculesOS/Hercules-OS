@@ -95,6 +95,28 @@ describe('dashboard command helpers', () => {
     assert.equal(snapshot.expiringSoonCount, 1)
   })
 
+  it('does not count already expired certificates as expiring soon', () => {
+    const snapshot = getTrainingSnapshot(
+      [],
+      [],
+      [
+        {
+          id: 'expired-but-stored-valid',
+          expiry_date: '2026-06-20',
+          status: 'valid',
+        },
+        {
+          id: 'expires-today',
+          expiry_date: '2026-06-21',
+          status: 'valid',
+        },
+      ],
+      today
+    )
+
+    assert.equal(snapshot.expiringSoonCount, 1)
+  })
+
   it('detects incomplete booking registers', () => {
     const incomplete = getBookingsWithIncompleteRegisters(
       [

@@ -63,6 +63,21 @@ const getDaysUntilDate = (value?: string | null, today = new Date()) => {
   return Math.ceil((dateTime - startOfToday(today)) / millisecondsPerDay)
 }
 
+const getComputedCertificateStatus = (
+  certificate: DashboardCertificate,
+  today = new Date()
+) => {
+  if (certificate.status === 'revoked') return 'revoked'
+
+  const expiryTime = getDateOnlyTime(certificate.expiry_date)
+
+  if (expiryTime !== null && expiryTime < startOfToday(today)) {
+    return 'expired'
+  }
+
+  return certificate.status || 'valid'
+}
+
 const startOfToday = (today: Date) =>
   new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
 
@@ -277,7 +292,7 @@ export const getTrainingSnapshot = (
       isWithinCurrentMonth(certificate.issue_date, today)
     ).length,
     expiringSoonCount: certificates.filter((certificate) => {
-      if (certificate.status !== 'valid') return false
+      if (getComputedCertificateStatus(certificate, today) !== 'valid') return false
 
       const days = getDaysUntilDate(certificate.expiry_date, today)
 
@@ -314,7 +329,10 @@ export const getDashboardActionCounts = ({
   )
 
   const renewalOpportunities = certificates
-    .filter((certificate) => certificate.status !== 'revoked')
+    .filter(
+      (certificate) =>
+        getComputedCertificateStatus(certificate, today) !== 'revoked'
+    )
     .map((certificate) => {
       const daysUntilExpiry = getDaysUntilDate(certificate.expiry_date, today)
 

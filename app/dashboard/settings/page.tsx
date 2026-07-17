@@ -416,7 +416,7 @@ export default function SettingsPage() {
                   </p>
 
                   <p className="text-xs text-slate-500 mt-1 leading-5">
-                    When a certificate expiry date has passed, Hercules OS will automatically change its status to expired during the daily expiry check.
+                    Certificates automatically show as expired after their expiry date unless they have been revoked.
                   </p>
                 </div>
               </label>

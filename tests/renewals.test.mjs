@@ -83,6 +83,33 @@ describe('renewal helpers', () => {
     })
   })
 
+  it('does not create renewal opportunities for revoked certificates', () => {
+    const opportunities = buildRenewalOpportunities(
+      [
+        {
+          id: 'revoked',
+          delegate_id: 'delegate-1',
+          expiry_date: '2026-07-01',
+          status: 'revoked',
+        },
+        {
+          id: 'valid',
+          delegate_id: 'delegate-1',
+          expiry_date: '2026-07-01',
+          status: 'valid',
+        },
+      ],
+      [{ id: 'delegate-1', client_id: 'client-1' }],
+      [{ id: 'client-1', company: 'Blackleaf' }],
+      today
+    )
+
+    assert.deepEqual(
+      opportunities.map((opportunity) => opportunity.certificate.id),
+      ['valid']
+    )
+  })
+
   it('checks reminder eligibility and skip reasons', () => {
     assert.equal(
       canSendRenewalReminder(
