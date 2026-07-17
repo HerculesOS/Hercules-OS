@@ -8,12 +8,24 @@ import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
 import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
 import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
+import { getComputedBookingStatus } from '@/lib/bookingStatus'
 import ClientPicker from './ClientPicker'
 
 const BOOKINGS_PAGE_SIZE = 50
 
 const cleanSearchTerm = (value: string) =>
   value.trim().replace(/[%_,]/g, ' ')
+
+const getLocalDateValue = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+const getLocalTimeValue = (date: Date) =>
+  `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<any[]>([])
@@ -123,7 +135,23 @@ export default function BookingsPage() {
       nextQuery = nextQuery.eq('course_delivery_type', deliveryTypeFilter)
     }
 
-    if (statusFilter !== 'all') {
+    if (statusFilter === 'completed') {
+      const now = new Date()
+      const today = getLocalDateValue(now)
+      const currentTime = getLocalTimeValue(now)
+
+      nextQuery = nextQuery
+        .neq('status', 'cancelled')
+        .or(
+          [
+            'status.eq.completed',
+            `end_date.lt.${today}`,
+            `and(end_date.is.null,date.lt.${today})`,
+            `and(end_date.eq.${today},end_time.lt.${currentTime})`,
+            `and(end_date.is.null,date.eq.${today},end_time.lt.${currentTime})`,
+          ].join(',')
+        )
+    } else if (statusFilter !== 'all') {
       nextQuery = nextQuery.eq('status', statusFilter)
     }
 
@@ -1229,6 +1257,7 @@ export default function BookingsPage() {
               const isEditing = editingId === booking.id
               const certificateTemplate = getCertificateTemplateForBooking(booking)
               const bookingDeliveryType = booking.course_delivery_type || 'private'
+              const displayStatus = getComputedBookingStatus(booking)
 
               return (
                 <div
@@ -1246,10 +1275,10 @@ export default function BookingsPage() {
 
                             <span
                               className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(
-                                booking.status
+                                displayStatus
                               )}`}
                             >
-                              {booking.status}
+                              {displayStatus}
                             </span>
 
                             <span
@@ -1391,7 +1420,7 @@ export default function BookingsPage() {
                             Edit
                           </button>
 
-                          {booking.status !== 'scheduled' && (
+                          {displayStatus !== 'scheduled' && (
                             <button
                               className={buttonSecondary}
                               onClick={() =>
@@ -1405,7 +1434,7 @@ export default function BookingsPage() {
                             </button>
                           )}
 
-                          {booking.status !== 'completed' && (
+                          {displayStatus !== 'completed' && (
                             <button
                               className={buttonSecondary}
                               onClick={() =>
@@ -1419,7 +1448,7 @@ export default function BookingsPage() {
                             </button>
                           )}
 
-                          {booking.status !== 'cancelled' && (
+                          {displayStatus !== 'cancelled' && (
                             <button
                               className={buttonSecondary}
                               onClick={() =>

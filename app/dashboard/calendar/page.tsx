@@ -7,6 +7,7 @@ import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTime, formatAppTimeRange } from '@/lib/formatters'
 import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
 import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
+import { getComputedBookingStatus } from '@/lib/bookingStatus'
 
 export default function CalendarPage() {
   const [bookings, setBookings] = useState<any[]>([])
@@ -386,16 +387,17 @@ export default function CalendarPage() {
 
   const upcomingBookings = bookings.filter((booking) => {
     const bookingEnd = booking.end_date || booking.date
+    const displayStatus = getComputedBookingStatus(booking)
 
-    return bookingEnd >= todayString && booking.status !== 'cancelled'
+    return bookingEnd >= todayString && displayStatus !== 'cancelled' && displayStatus !== 'completed'
   })
 
   const completedBookings = bookings.filter(
-    (booking) => booking.status === 'completed'
+    (booking) => getComputedBookingStatus(booking) === 'completed'
   )
 
   const cancelledBookings = bookings.filter(
-    (booking) => booking.status === 'cancelled'
+    (booking) => getComputedBookingStatus(booking) === 'cancelled'
   )
 
   const publicBookings = bookings.filter(
@@ -444,12 +446,13 @@ export default function CalendarPage() {
 
   const getBookingAccent = (booking: any) => {
     const deliveryType = getBookingDeliveryType(booking)
+    const displayStatus = getComputedBookingStatus(booking)
 
-    if (booking.status === 'completed') {
+    if (displayStatus === 'completed') {
       return 'border-l-emerald-500 bg-emerald-50 hover:bg-emerald-100'
     }
 
-    if (booking.status === 'cancelled') {
+    if (displayStatus === 'cancelled') {
       return 'border-l-red-500 bg-red-50 hover:bg-red-100'
     }
 
@@ -791,6 +794,7 @@ export default function CalendarPage() {
                 <div className="flex flex-col gap-3">
                   {(selectedDate ? selectedDateBookings : upcomingBookings.slice(0, 10)).map((booking) => {
                     const deliveryType = getBookingDeliveryType(booking)
+                    const displayStatus = getComputedBookingStatus(booking)
 
                     return (
                       <Link
@@ -814,8 +818,8 @@ export default function CalendarPage() {
                               {deliveryType === 'public' ? 'Public' : 'Private'}
                             </span>
 
-                            <span className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(booking.status)}`}>
-                              {booking.status}
+                            <span className={`border px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(displayStatus)}`}>
+                              {displayStatus}
                             </span>
                           </div>
                         </div>

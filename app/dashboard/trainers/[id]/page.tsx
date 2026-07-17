@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
+import { getComputedBookingStatus } from '@/lib/bookingStatus'
 import {
   getTrainerRegisterStatus,
   getTrainerWorkloadStats,
@@ -287,6 +288,7 @@ export default function TrainerDetailPage() {
       booking.id,
       bookingDelegateLinks
     )
+    const displayStatus = getComputedBookingStatus(booking)
 
     return (
       <div className="rounded-lg border border-slate-200 bg-white p-4 transition hover:border-slate-300 hover:shadow-sm">
@@ -299,6 +301,10 @@ export default function TrainerDetailPage() {
 
               <span className={`rounded-md border px-2.5 py-1 text-xs font-medium ${registerStatusClass[registerStatus]}`}>
                 {registerStatusCopy[registerStatus]}
+              </span>
+
+              <span className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                {displayStatus}
               </span>
             </div>
 

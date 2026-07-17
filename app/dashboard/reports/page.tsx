@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
 import { isLocalDateWithinNextDays } from '@/lib/dateRanges'
+import { getComputedBookingStatus } from '@/lib/bookingStatus'
 
 type ReportType =
   | 'delegates'
@@ -383,7 +384,7 @@ export default function ReportsPage() {
         trainer: trainer?.name || 'Unassigned',
         location: item.location || '',
         price: Number(item.price || 0),
-        status: item.status || '',
+        status: getComputedBookingStatus(item),
         notes: item.notes || '',
       }
 

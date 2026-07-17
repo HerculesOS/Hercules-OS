@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
+import { getComputedBookingStatus } from '@/lib/bookingStatus'
 
 export default function DelegateProfilePage() {
   const params = useParams()
@@ -591,8 +592,8 @@ export default function DelegateProfilePage() {
                     </p>
                   </div>
 
-                  <span className={`border px-2.5 py-1 rounded-md text-xs font-medium w-fit ${getBookingStatusStyle(booking.status)}`}>
-                    {booking.status}
+                  <span className={`border px-2.5 py-1 rounded-md text-xs font-medium w-fit ${getBookingStatusStyle(getComputedBookingStatus(booking))}`}>
+                    {getComputedBookingStatus(booking)}
                   </span>
                 </div>
 

@@ -4,6 +4,7 @@ export type DashboardBooking = {
   id: string
   date?: string | null
   end_date?: string | null
+  end_time?: string | null
   status?: string | null
   course_name?: string | null
   created_at?: string | null
@@ -74,6 +75,44 @@ const startOfMonth = (today: Date) =>
 const endOfMonth = (today: Date) =>
   new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999).getTime()
 
+const getBookingEndTime = (booking: DashboardBooking) => {
+  const dateOnly = String(booking.end_date || booking.date || '').split('T')[0]
+  const [yearText, monthText, dayText] = dateOnly.split('-')
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const day = Number(dayText)
+
+  if (!year || !month || !day) return null
+
+  if (!booking.end_time) {
+    return new Date(year, month - 1, day, 23, 59, 59, 999).getTime()
+  }
+
+  const [hoursText, minutesText] = String(booking.end_time).split(':')
+  const hours = Number(hoursText)
+  const minutes = Number(minutesText || 0)
+
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return new Date(year, month - 1, day, 23, 59, 59, 999).getTime()
+  }
+
+  return new Date(year, month - 1, day, hours, minutes).getTime()
+}
+
+const getComputedBookingStatus = (
+  booking: DashboardBooking,
+  today = new Date()
+) => {
+  if (booking.status === 'cancelled') return 'cancelled'
+  if (booking.status === 'completed') return 'completed'
+
+  const endTime = getBookingEndTime(booking)
+
+  return endTime !== null && today.getTime() > endTime
+    ? 'completed'
+    : booking.status || 'scheduled'
+}
+
 export const getInvoiceAmount = (invoice: DashboardInvoice) =>
   Number(invoice.total_amount || invoice.amount || 0)
 
@@ -100,7 +139,10 @@ export const getUpcomingBookings = (
 
   return bookings
     .filter((booking) => {
-      if (booking.status === 'cancelled') return false
+      const computedStatus = getComputedBookingStatus(booking, today)
+
+      if (computedStatus === 'cancelled') return false
+      if (computedStatus === 'completed') return false
 
       const startTime = getDateOnlyTime(booking.date)
       const endTime = getDateOnlyTime(booking.end_date || booking.date)
@@ -130,7 +172,10 @@ export const getTodaysBookings = (
   const todayEnd = endOfToday(today)
 
   return bookings.filter((booking) => {
-    if (booking.status === 'cancelled') return false
+    const computedStatus = getComputedBookingStatus(booking, today)
+
+    if (computedStatus === 'cancelled') return false
+    if (computedStatus === 'completed') return false
 
     const startTime = getDateOnlyTime(booking.date)
     const endTime = getDateOnlyTime(booking.end_date || booking.date)
@@ -164,7 +209,7 @@ export const getBookingsWithIncompleteRegisters = (
   links: DashboardRegisterLink[]
 ) => {
   return bookings.filter((booking) => {
-    if (booking.status === 'cancelled') return false
+    if (getComputedBookingStatus(booking) === 'cancelled') return false
 
     const bookingLinks = links.filter((link) => link.booking_id === booking.id)
 

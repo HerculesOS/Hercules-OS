@@ -12,6 +12,7 @@ import { createCertificateVerificationId } from '@/lib/certificateVerification'
 import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
 import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
+import { getComputedBookingStatus } from '@/lib/bookingStatus'
 import {
   getBulkCertificateEmailSummary,
   getBulkCertificateGenerationSummary,
@@ -1483,6 +1484,7 @@ export default function BookingDetailPage() {
 
   const trainer = getTrainer()
   const selectedTemplate = getCertificateTemplateForBooking()
+  const displayStatus = getComputedBookingStatus(booking)
 
   const selectedDelegates = delegates.filter((delegate) =>
     selectedDelegateIds.includes(delegate.id)
@@ -1562,8 +1564,8 @@ export default function BookingDetailPage() {
               {booking.course_delivery_type === 'public' ? 'Public course' : 'Private course'}
             </span>
 
-            <span className={`border px-2.5 py-2 rounded-md text-xs font-medium ${getStatusStyle(booking.status)}`}>
-              {booking.status}
+            <span className={`border px-2.5 py-2 rounded-md text-xs font-medium ${getStatusStyle(displayStatus)}`}>
+              {displayStatus}
             </span>
           </div>
         </div>
@@ -1879,7 +1881,7 @@ export default function BookingDetailPage() {
             </button>
 
             <div className="border-t border-slate-100 pt-3 grid gap-2">
-              {booking.status !== 'scheduled' && (
+              {displayStatus !== 'scheduled' && (
                 <button
                   className={buttonSecondary}
                   onClick={() => updateStatus('scheduled')}
@@ -1888,7 +1890,7 @@ export default function BookingDetailPage() {
                 </button>
               )}
 
-              {booking.status !== 'completed' && (
+              {displayStatus !== 'completed' && (
                 <button
                   className={buttonSecondary}
                   onClick={() => updateStatus('completed')}
@@ -1897,7 +1899,7 @@ export default function BookingDetailPage() {
                 </button>
               )}
 
-              {booking.status !== 'cancelled' && (
+              {displayStatus !== 'cancelled' && (
                 <button
                   className={buttonSecondary}
                   onClick={() => updateStatus('cancelled')}

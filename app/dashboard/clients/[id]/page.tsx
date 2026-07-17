@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
+import { getComputedBookingStatus } from '@/lib/bookingStatus'
 
 const RELATED_PAGE_SIZE = 20
 
@@ -1173,8 +1174,8 @@ export default function ClientDetailPage() {
                   {booking.location || 'No location set'}
                 </p>
 
-                <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getBookingStatusStyle(booking.status)}`}>
-                  {booking.status}
+                <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getBookingStatusStyle(getComputedBookingStatus(booking))}`}>
+                  {getComputedBookingStatus(booking)}
                 </span>
               </Link>
             ))}

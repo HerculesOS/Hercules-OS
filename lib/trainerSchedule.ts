@@ -3,6 +3,7 @@ export type TrainerScheduleBooking = {
   trainer_id?: string | null
   date?: string | null
   end_date?: string | null
+  end_time?: string | null
   status?: string | null
 }
 
@@ -31,6 +32,44 @@ const getDateOnlyTime = (value?: string | null) => {
 const startOfToday = (today: Date) =>
   new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
 
+const getBookingEndDateTime = (booking: TrainerScheduleBooking) => {
+  const dateOnly = String(booking.end_date || booking.date || '').split('T')[0]
+  const [yearText, monthText, dayText] = dateOnly.split('-')
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const day = Number(dayText)
+
+  if (!year || !month || !day) return null
+
+  if (!booking.end_time) {
+    return new Date(year, month - 1, day, 23, 59, 59, 999)
+  }
+
+  const [hoursText, minutesText] = String(booking.end_time).split(':')
+  const hours = Number(hoursText)
+  const minutes = Number(minutesText || 0)
+
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return new Date(year, month - 1, day, 23, 59, 59, 999)
+  }
+
+  return new Date(year, month - 1, day, hours, minutes)
+}
+
+const getComputedBookingStatus = (
+  booking: TrainerScheduleBooking,
+  today = new Date()
+) => {
+  if (booking.status === 'cancelled') return 'cancelled'
+  if (booking.status === 'completed') return 'completed'
+
+  const endDateTime = getBookingEndDateTime(booking)
+
+  return endDateTime && today.getTime() > endDateTime.getTime()
+    ? 'completed'
+    : booking.status || 'scheduled'
+}
+
 export const getBookingsForTrainer = <T extends TrainerScheduleBooking>(
   bookings: T[],
   trainerId: string
@@ -44,8 +83,10 @@ export const splitTrainerBookings = <T extends TrainerScheduleBooking>(
 
   const upcoming = bookings
     .filter((booking) => {
-      if (booking.status === 'cancelled') return false
-      if (booking.status === 'completed') return false
+      const computedStatus = getComputedBookingStatus(booking, today)
+
+      if (computedStatus === 'cancelled') return false
+      if (computedStatus === 'completed') return false
 
       const endTime = getDateOnlyTime(booking.end_date || booking.date)
 
@@ -61,9 +102,10 @@ export const splitTrainerBookings = <T extends TrainerScheduleBooking>(
   const recent = bookings
     .filter((booking) => {
       const endTime = getDateOnlyTime(booking.end_date || booking.date)
+      const computedStatus = getComputedBookingStatus(booking, today)
 
       return (
-        booking.status === 'completed' ||
+        computedStatus === 'completed' ||
         (endTime !== null && endTime < todayTime)
       )
     })
