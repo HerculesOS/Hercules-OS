@@ -528,6 +528,31 @@ export default function SettingsPage() {
           </Link>
 
           <Link
+            href="/dashboard/settings/joining-instructions"
+            className={`${panelClass} block hover:border-slate-300 transition`}
+          >
+            <div className={panelHeaderClass}>
+              <h2 className="text-sm font-semibold text-slate-950">
+                Joining instruction templates
+              </h2>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                Delegate pre-course emails
+              </p>
+            </div>
+
+            <div className="p-4">
+              <p className="text-sm text-slate-600 leading-6">
+                Create reusable instructions for venues, arrival times, what to bring and access details.
+              </p>
+
+              <p className="text-xs font-medium text-slate-500 mt-4">
+                Open joining instructions {'>'}
+              </p>
+            </div>
+          </Link>
+
+          <Link
             href="/dashboard/settings/certificate-templates"
             className={`${panelClass} block hover:border-slate-300 transition`}
           >

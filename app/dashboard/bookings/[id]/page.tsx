@@ -14,6 +14,7 @@ import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import { getComputedBookingStatus } from '@/lib/bookingStatus'
 import { getComputedCertificateStatus } from '@/lib/certificateStatus'
+import { getJoiningInstructionDraft } from '@/lib/joiningInstructions'
 import {
   getBulkCertificateEmailSummary,
   getBulkCertificateGenerationSummary,
@@ -35,6 +36,7 @@ export default function BookingDetailPage() {
   const [trainers, setTrainers] = useState<any[]>([])
   const [courseTemplates, setCourseTemplates] = useState<any[]>([])
   const [certificateTemplates, setCertificateTemplates] = useState<any[]>([])
+  const [joiningInstructionTemplates, setJoiningInstructionTemplates] = useState<any[]>([])
   const [organisation, setOrganisation] = useState<any>(null)
   const [invoices, setInvoices] = useState<any[]>([])
   const [certificates, setCertificates] = useState<any[]>([])
@@ -48,6 +50,9 @@ export default function BookingDetailPage() {
   const [savingCertificateTemplate, setSavingCertificateTemplate] = useState(false)
   const [sendingConfirmation, setSendingConfirmation] = useState(false)
   const [sendingReminder, setSendingReminder] = useState(false)
+  const [savingJoiningInstructions, setSavingJoiningInstructions] = useState(false)
+  const [sendingJoiningInstructions, setSendingJoiningInstructions] = useState(false)
+  const [joiningInstructionMessage, setJoiningInstructionMessage] = useState('')
 
   const [editTrainerId, setEditTrainerId] = useState('')
   const [editCourseTemplateId, setEditCourseTemplateId] = useState('')
@@ -60,6 +65,9 @@ export default function BookingDetailPage() {
   const [editLocation, setEditLocation] = useState('')
   const [editPrice, setEditPrice] = useState('')
   const [editNotes, setEditNotes] = useState('')
+  const [joiningInstructionTemplateId, setJoiningInstructionTemplateId] = useState('')
+  const [joiningInstructionSubject, setJoiningInstructionSubject] = useState('')
+  const [joiningInstructionBody, setJoiningInstructionBody] = useState('')
 
   const [recipientEmail, setRecipientEmail] = useState('')
 
@@ -271,6 +279,14 @@ export default function BookingDetailPage() {
       .order('is_default', { ascending: false })
       .order('name', { ascending: true })
 
+    const { data: joiningInstructionTemplatesData } = await supabase
+      .from('joining_instruction_templates')
+      .select('*')
+      .eq('organisation_id', currentProfile.organisation_id)
+      .is('archived_at', null)
+      .order('is_default', { ascending: false })
+      .order('name', { ascending: true })
+
     const { data: invoicesData } = await supabase
       .from('invoices')
       .select('*')
@@ -366,6 +382,7 @@ export default function BookingDetailPage() {
     setTrainers(trainersData || [])
     setCourseTemplates(courseTemplatesData || [])
     setCertificateTemplates(certificateTemplatesData || [])
+    setJoiningInstructionTemplates(joiningInstructionTemplatesData || [])
     setInvoices(invoicesData || [])
     setCertificates(certificatesData || [])
     setBookingLocations(
@@ -391,6 +408,9 @@ export default function BookingDetailPage() {
     setEditLocation(bookingData.location || '')
     setEditPrice(bookingData.price ? String(bookingData.price) : '')
     setEditNotes(bookingData.notes || '')
+    setJoiningInstructionTemplateId(bookingData.joining_instruction_template_id || '')
+    setJoiningInstructionSubject(bookingData.joining_instruction_subject || '')
+    setJoiningInstructionBody(bookingData.joining_instruction_body || '')
     setRecipientEmail(clientData?.email || '')
     setDelegateClientId(
       bookingData.course_delivery_type === 'public'
@@ -741,6 +761,108 @@ export default function BookingDetailPage() {
     }
 
     alert('Booking reminder sent')
+  }
+
+  const applyJoiningInstructionTemplate = (templateId: string) => {
+    setJoiningInstructionTemplateId(templateId)
+
+    if (!templateId) {
+      setJoiningInstructionSubject('')
+      setJoiningInstructionBody('')
+      return
+    }
+
+    const template = joiningInstructionTemplates.find(
+      (item) => item.id === templateId
+    )
+
+    if (!template) return
+
+    setJoiningInstructionSubject(template.subject || '')
+    setJoiningInstructionBody(template.body || '')
+  }
+
+  const saveJoiningInstructions = async () => {
+    const subjectToSave = joiningInstructionSubjectValue.trim()
+    const bodyToSave = joiningInstructionBodyValue.trim()
+
+    if (!subjectToSave || !bodyToSave) {
+      alert('Joining instruction subject and body are required')
+      return
+    }
+
+    setSavingJoiningInstructions(true)
+
+    const { error } = await supabase
+      .from('bookings')
+      .update({
+        joining_instruction_template_id: joiningInstructionTemplateId || null,
+        joining_instruction_subject: subjectToSave,
+        joining_instruction_body: bodyToSave,
+      })
+      .eq('id', booking.id)
+      .eq('organisation_id', profile.organisation_id)
+
+    setSavingJoiningInstructions(false)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    setJoiningInstructionMessage('Joining instructions saved.')
+    load()
+  }
+
+  const sendJoiningInstructions = async () => {
+    if (delegates.length === 0) {
+      alert('Add delegates before sending joining instructions.')
+      return
+    }
+
+    const force = booking.joining_instructions_sent_at
+      ? confirm('Joining instructions have already been sent for this booking. Send them again?')
+      : false
+
+    if (booking.joining_instructions_sent_at && !force) return
+
+    setSendingJoiningInstructions(true)
+    setJoiningInstructionMessage('')
+
+    const response = await fetch('/api/send-joining-instructions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        bookingId: booking.id,
+        organisationId: profile.organisation_id,
+        force,
+      }),
+    })
+
+    const result = await response.json()
+
+    setSendingJoiningInstructions(false)
+
+    if (!response.ok) {
+      alert(result.error?.message || result.error || 'Joining instructions failed')
+      return
+    }
+
+    const summary = result.summary || {}
+
+    if (summary.alreadySent) {
+      setJoiningInstructionMessage('Joining instructions were already sent for this booking.')
+    } else if (summary.skippedCancelled) {
+      setJoiningInstructionMessage('Cancelled bookings are skipped.')
+    } else {
+      setJoiningInstructionMessage(
+        `Sent: ${summary.sent || 0}. Missing email: ${summary.skippedMissingEmail || 0}. Failed: ${summary.failed || 0}.`
+      )
+    }
+
+    load()
   }
 
   const createDelegateAndAttach = async () => {
@@ -1486,6 +1608,22 @@ export default function BookingDetailPage() {
   const trainer = getTrainer()
   const selectedTemplate = getCertificateTemplateForBooking()
   const displayStatus = getComputedBookingStatus(booking)
+  const joiningInstructionDraft = getJoiningInstructionDraft(
+    {
+      ...booking,
+      joining_instruction_template_id:
+        joiningInstructionTemplateId || booking.joining_instruction_template_id,
+      joining_instruction_subject:
+        joiningInstructionSubject || booking.joining_instruction_subject,
+      joining_instruction_body:
+        joiningInstructionBody || booking.joining_instruction_body,
+    },
+    joiningInstructionTemplates
+  )
+  const joiningInstructionSubjectValue =
+    joiningInstructionSubject || joiningInstructionDraft.subject
+  const joiningInstructionBodyValue =
+    joiningInstructionBody || joiningInstructionDraft.body
 
   const selectedDelegates = delegates.filter((delegate) =>
     selectedDelegateIds.includes(delegate.id)
@@ -1917,6 +2055,124 @@ export default function BookingDetailPage() {
               </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className={`${panelClass} mt-4`}>
+        <div className={`${panelHeaderClass} flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3`}>
+          <div>
+            <h2 className="text-sm font-semibold text-slate-950">
+              Joining instructions
+            </h2>
+
+            <p className="text-xs text-slate-500 mt-0.5">
+              Automatically sends 7 days before the course if not already sent.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/dashboard/settings/joining-instructions"
+              className={buttonSecondary}
+            >
+              Manage templates
+            </Link>
+
+            <button
+              className={buttonPrimary}
+              onClick={sendJoiningInstructions}
+              disabled={sendingJoiningInstructions || delegates.length === 0}
+            >
+              {sendingJoiningInstructions ? 'Sending...' : 'Send joining instructions'}
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 grid gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            <select
+              className={`${inputClass} lg:col-span-2`}
+              value={joiningInstructionTemplateId}
+              onChange={(event) => applyJoiningInstructionTemplate(event.target.value)}
+            >
+              <option value="">Use default joining instruction template</option>
+
+              {joiningInstructionTemplates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                  {template.is_default ? ' - Default' : ''}
+                </option>
+              ))}
+            </select>
+
+            <button
+              className={buttonSecondary}
+              onClick={saveJoiningInstructions}
+              disabled={savingJoiningInstructions}
+            >
+              {savingJoiningInstructions ? 'Saving...' : 'Save instructions'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs text-slate-600">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="font-semibold text-slate-950">
+                Template
+              </p>
+
+              <p className="mt-1">
+                {joiningInstructionDraft.template?.name || 'Default joining instructions'}
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="font-semibold text-slate-950">
+                Last sent
+              </p>
+
+              <p className="mt-1">
+                {booking.joining_instructions_sent_at
+                  ? new Date(booking.joining_instructions_sent_at).toLocaleString()
+                  : 'Not sent yet'}
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="font-semibold text-slate-950">
+                Recipients
+              </p>
+
+              <p className="mt-1">
+                {delegates.filter((delegate) => delegate.email).length} with email,
+                {' '}
+                {delegates.filter((delegate) => !delegate.email).length} without email
+              </p>
+            </div>
+          </div>
+
+          {joiningInstructionMessage && (
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+              {joiningInstructionMessage}
+            </div>
+          )}
+
+          <input
+            className={inputClass}
+            placeholder="Email subject"
+            value={joiningInstructionSubjectValue}
+            onChange={(event) => setJoiningInstructionSubject(event.target.value)}
+          />
+
+          <textarea
+            className={`${inputClass} min-h-72`}
+            placeholder="Joining instruction body"
+            value={joiningInstructionBodyValue}
+            onChange={(event) => setJoiningInstructionBody(event.target.value)}
+          />
+
+          <p className="text-xs text-slate-500">
+            Placeholders such as {'{{delegate_name}}'}, {'{{course_name}}'}, {'{{booking_date}}'} and {'{{booking_location}}'} are replaced for each delegate.
+          </p>
         </div>
       </div>
 

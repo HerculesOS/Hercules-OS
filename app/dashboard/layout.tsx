@@ -167,6 +167,10 @@ const pageCopy: Record<string, { title: string; subtitle: string }> = {
     title: 'Settings',
     subtitle: 'Control business preferences, templates and automation.',
   },
+  '/dashboard/settings/joining-instructions': {
+    title: 'Joining Instructions',
+    subtitle: 'Manage reusable pre-course emails for delegates.',
+  },
 }
 
 export default function DashboardLayout({
