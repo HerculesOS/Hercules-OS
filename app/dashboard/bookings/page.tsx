@@ -9,6 +9,7 @@ import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
 import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import { getComputedBookingStatus } from '@/lib/bookingStatus'
+import { getDefaultBookingContactFromClient } from '@/lib/bookingEmailRecipients'
 import ClientPicker from './ClientPicker'
 
 const BOOKINGS_PAGE_SIZE = 50
@@ -57,6 +58,10 @@ export default function BookingsPage() {
   const [endTime, setEndTime] = useState('')
   const [location, setLocation] = useState('')
   const [autoFilledLocation, setAutoFilledLocation] = useState('')
+  const [bookingContactName, setBookingContactName] = useState('')
+  const [bookingContactEmail, setBookingContactEmail] = useState('')
+  const [bookingContactPhone, setBookingContactPhone] = useState('')
+  const [autoFilledBookingContact, setAutoFilledBookingContact] = useState(false)
   const [price, setPrice] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -79,6 +84,10 @@ export default function BookingsPage() {
   const [editEndTime, setEditEndTime] = useState('')
   const [editLocation, setEditLocation] = useState('')
   const [editAutoFilledLocation, setEditAutoFilledLocation] = useState('')
+  const [editBookingContactName, setEditBookingContactName] = useState('')
+  const [editBookingContactEmail, setEditBookingContactEmail] = useState('')
+  const [editBookingContactPhone, setEditBookingContactPhone] = useState('')
+  const [editAutoFilledBookingContact, setEditAutoFilledBookingContact] = useState(false)
   const [editPrice, setEditPrice] = useState('')
   const [editNotes, setEditNotes] = useState('')
 
@@ -399,6 +408,13 @@ export default function BookingsPage() {
         setLocation('')
       }
 
+      if (autoFilledBookingContact) {
+        setBookingContactName('')
+        setBookingContactEmail('')
+        setBookingContactPhone('')
+        setAutoFilledBookingContact(false)
+      }
+
       setAutoFilledLocation('')
       return
     }
@@ -416,6 +432,21 @@ export default function BookingsPage() {
       setLocation(selectedAddress)
       setAutoFilledLocation(selectedAddress)
     }
+
+    const contactDefaults = getDefaultBookingContactFromClient(selectedClient)
+
+    if (
+      courseDeliveryType === 'private' &&
+      (autoFilledBookingContact ||
+        (!bookingContactName.trim() &&
+          !bookingContactEmail.trim() &&
+          !bookingContactPhone.trim()))
+    ) {
+      setBookingContactName(contactDefaults.name)
+      setBookingContactEmail(contactDefaults.email)
+      setBookingContactPhone(contactDefaults.phone)
+      setAutoFilledBookingContact(true)
+    }
   }
 
   const setEditClientAndMaybeLocation = (selectedClientId: string) => {
@@ -426,6 +457,13 @@ export default function BookingsPage() {
 
       if (previousAutoFill && editLocation === previousAutoFill) {
         setEditLocation('')
+      }
+
+      if (editAutoFilledBookingContact) {
+        setEditBookingContactName('')
+        setEditBookingContactEmail('')
+        setEditBookingContactPhone('')
+        setEditAutoFilledBookingContact(false)
       }
 
       setEditAutoFilledLocation('')
@@ -444,6 +482,21 @@ export default function BookingsPage() {
     ) {
       setEditLocation(selectedAddress)
       setEditAutoFilledLocation(selectedAddress)
+    }
+
+    const contactDefaults = getDefaultBookingContactFromClient(selectedClient)
+
+    if (
+      editCourseDeliveryType === 'private' &&
+      (editAutoFilledBookingContact ||
+        (!editBookingContactName.trim() &&
+          !editBookingContactEmail.trim() &&
+          !editBookingContactPhone.trim()))
+    ) {
+      setEditBookingContactName(contactDefaults.name)
+      setEditBookingContactEmail(contactDefaults.email)
+      setEditBookingContactPhone(contactDefaults.phone)
+      setEditAutoFilledBookingContact(true)
     }
   }
 
@@ -599,6 +652,12 @@ export default function BookingsPage() {
       start_time: startTime || null,
       end_time: endTime || null,
       location,
+      booking_contact_name:
+        courseDeliveryType === 'private' ? bookingContactName.trim() || null : null,
+      booking_contact_email:
+        courseDeliveryType === 'private' ? bookingContactEmail.trim() || null : null,
+      booking_contact_phone:
+        courseDeliveryType === 'private' ? bookingContactPhone.trim() || null : null,
       price: parsedPrice.value,
       notes,
       status: 'scheduled',
@@ -621,6 +680,10 @@ export default function BookingsPage() {
     setEndTime('')
     setLocation('')
     setAutoFilledLocation('')
+    setBookingContactName('')
+    setBookingContactEmail('')
+    setBookingContactPhone('')
+    setAutoFilledBookingContact(false)
     setPrice('')
     setNotes('')
 
@@ -642,6 +705,10 @@ export default function BookingsPage() {
     setEditEndTime(booking.end_time || '')
     setEditLocation(booking.location || '')
     setEditAutoFilledLocation('')
+    setEditBookingContactName(booking.booking_contact_name || '')
+    setEditBookingContactEmail(booking.booking_contact_email || '')
+    setEditBookingContactPhone(booking.booking_contact_phone || '')
+    setEditAutoFilledBookingContact(false)
     setEditPrice(booking.price ? String(booking.price) : '')
     setEditNotes(booking.notes || '')
   }
@@ -660,6 +727,10 @@ export default function BookingsPage() {
     setEditEndTime('')
     setEditLocation('')
     setEditAutoFilledLocation('')
+    setEditBookingContactName('')
+    setEditBookingContactEmail('')
+    setEditBookingContactPhone('')
+    setEditAutoFilledBookingContact(false)
     setEditPrice('')
     setEditNotes('')
   }
@@ -708,6 +779,18 @@ export default function BookingsPage() {
         start_time: editStartTime || null,
         end_time: editEndTime || null,
         location: editLocation,
+        booking_contact_name:
+          editCourseDeliveryType === 'private'
+            ? editBookingContactName.trim() || null
+            : null,
+        booking_contact_email:
+          editCourseDeliveryType === 'private'
+            ? editBookingContactEmail.trim() || null
+            : null,
+        booking_contact_phone:
+          editCourseDeliveryType === 'private'
+            ? editBookingContactPhone.trim() || null
+            : null,
         price: parsedPrice.value,
         notes: editNotes,
       })
@@ -769,15 +852,15 @@ export default function BookingsPage() {
 
   const getRecipientEmailForBooking = (booking: any) => {
     const client = getClientForBooking(booking)
-    return recipientEmails[booking.id] || client?.email || ''
+    return recipientEmails[booking.id] || booking.booking_contact_email || client?.email || ''
   }
 
   const sendBookingConfirmation = async (booking: any) => {
-    const trainer = getTrainerForBooking(booking)
-    const recipientEmail = getRecipientEmailForBooking(booking)
-
-    if (!recipientEmail) {
-      alert('Enter a recipient email first')
+    if (
+      booking.course_delivery_type !== 'public' &&
+      !booking.booking_contact_email
+    ) {
+      alert('Add a booking contact email before sending.')
       return
     }
 
@@ -789,17 +872,7 @@ export default function BookingsPage() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        to: recipientEmail,
-        clientName: booking.client_name || getBookingClientDisplay(booking),
-        courseName: booking.course_name,
-        date: getFormattedDate(booking.date),
-        startTime: getFormattedTimeRange(booking.start_time, null),
-        endTime: booking.end_time ? getFormattedTimeRange(booking.end_time, null) : '',
-        location: booking.location,
-        trainerName: trainer?.name || '',
-        businessName: organisation?.name || 'Hercules OS',
-        businessEmail: organisation?.email || '',
-        businessPhone: organisation?.phone || '',
+        bookingId: booking.id,
         organisationId,
       }),
     })
@@ -813,7 +886,15 @@ export default function BookingsPage() {
       return
     }
 
-    alert('Booking confirmation sent')
+    const summary = result.summary || {}
+
+    if (summary.recipientMode === 'public') {
+      alert(
+        `Booking confirmation sent to ${summary.sent || 0} delegate email address(es). Missing email: ${summary.skippedMissingEmail || 0}. Failed: ${summary.failed || 0}.`
+      )
+    } else {
+      alert('Booking confirmation sent to the booking contact.')
+    }
 
     setRecipientEmails((previous) => ({
       ...previous,
@@ -1079,6 +1160,14 @@ export default function BookingsPage() {
 
                 if (selectedType === 'public') {
                   setClientAndMaybeLocation('')
+                } else if (clientId) {
+                  const selectedClient = clients.find((client) => client.id === clientId)
+                  const contactDefaults = getDefaultBookingContactFromClient(selectedClient)
+
+                  setBookingContactName(contactDefaults.name)
+                  setBookingContactEmail(contactDefaults.email)
+                  setBookingContactPhone(contactDefaults.phone)
+                  setAutoFilledBookingContact(true)
                 }
               }}
             >
@@ -1097,6 +1186,50 @@ export default function BookingsPage() {
                   : 'Search clients...'
               }
             />
+
+            {courseDeliveryType === 'private' && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold text-slate-950">
+                  Booking contact
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Booking confirmations and joining instructions for private courses are sent to this contact.
+                </p>
+
+                <div className="mt-3 grid grid-cols-1 gap-3">
+                  <input
+                    className={inputClass}
+                    placeholder="Booking contact name"
+                    value={bookingContactName}
+                    onChange={(e) => {
+                      setBookingContactName(e.target.value)
+                      setAutoFilledBookingContact(false)
+                    }}
+                  />
+
+                  <input
+                    className={inputClass}
+                    placeholder="Booking contact email"
+                    value={bookingContactEmail}
+                    onChange={(e) => {
+                      setBookingContactEmail(e.target.value)
+                      setAutoFilledBookingContact(false)
+                    }}
+                  />
+
+                  <input
+                    className={inputClass}
+                    placeholder="Booking contact phone optional"
+                    value={bookingContactPhone}
+                    onChange={(e) => {
+                      setBookingContactPhone(e.target.value)
+                      setAutoFilledBookingContact(false)
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
             <select
               className={inputClass}
@@ -1253,7 +1386,8 @@ export default function BookingsPage() {
             {bookings.map((booking) => {
               const trainer = getTrainerForBooking(booking)
               const client = getClientForBooking(booking)
-              const savedClientEmail = client?.email || ''
+              const savedClientEmail = booking.booking_contact_email || client?.email || ''
+              const bookingContactName = booking.booking_contact_name || client?.name || ''
               const isEditing = editingId === booking.id
               const certificateTemplate = getCertificateTemplateForBooking(booking)
               const bookingDeliveryType = booking.course_delivery_type || 'private'
@@ -1303,6 +1437,16 @@ export default function BookingsPage() {
                           {client?.name && (
                             <p className="text-xs text-slate-500 mt-1">
                               Primary contact: {client.name}
+                            </p>
+                          )}
+
+                          {bookingDeliveryType !== 'public' && (
+                            <p className="text-xs text-slate-500 mt-1">
+                              Booking contact:{' '}
+                              {bookingContactName || 'Not set'}
+                              {booking.booking_contact_email
+                                ? ` - ${booking.booking_contact_email}`
+                                : ''}
                             </p>
                           )}
 
@@ -1374,8 +1518,8 @@ export default function BookingsPage() {
                           placeholder={
                             savedClientEmail ||
                             (bookingDeliveryType === 'public'
-                              ? 'Recipient email for public course'
-                              : 'Recipient email')
+                              ? 'Reminder recipient email for public course'
+                              : 'Reminder recipient email')
                           }
                           value={recipientEmails[booking.id] || ''}
                           onChange={(e) =>
@@ -1388,7 +1532,7 @@ export default function BookingsPage() {
 
                         {savedClientEmail && (
                           <p className="text-xs text-slate-500 mt-2">
-                            Leave blank to send to saved client email: {savedClientEmail}
+                            Leave blank to send reminders to saved email: {savedClientEmail}
                           </p>
                         )}
 
@@ -1496,7 +1640,22 @@ export default function BookingsPage() {
                                 ? buttonPrimary
                                 : buttonSecondary
                             }
-                            onClick={() => setEditCourseDeliveryType('private')}
+                            onClick={() => {
+                              setEditCourseDeliveryType('private')
+
+                              if (editClientId) {
+                                const selectedClient = clients.find(
+                                  (client) => client.id === editClientId
+                                )
+                                const contactDefaults =
+                                  getDefaultBookingContactFromClient(selectedClient)
+
+                                setEditBookingContactName(contactDefaults.name)
+                                setEditBookingContactEmail(contactDefaults.email)
+                                setEditBookingContactPhone(contactDefaults.phone)
+                                setEditAutoFilledBookingContact(true)
+                              }
+                            }}
                           >
                             Private
                           </button>
@@ -1534,6 +1693,50 @@ export default function BookingsPage() {
                               : 'Search clients...'
                           }
                         />
+
+                        {editCourseDeliveryType === 'private' && (
+                          <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                            <p className="text-xs font-semibold text-slate-950">
+                              Booking contact
+                            </p>
+
+                            <p className="mt-1 text-xs text-slate-500">
+                              Booking confirmations and joining instructions for private courses are sent to this contact.
+                            </p>
+
+                            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                              <input
+                                className={inputClass}
+                                placeholder="Booking contact name"
+                                value={editBookingContactName}
+                                onChange={(e) => {
+                                  setEditBookingContactName(e.target.value)
+                                  setEditAutoFilledBookingContact(false)
+                                }}
+                              />
+
+                              <input
+                                className={inputClass}
+                                placeholder="Booking contact email"
+                                value={editBookingContactEmail}
+                                onChange={(e) => {
+                                  setEditBookingContactEmail(e.target.value)
+                                  setEditAutoFilledBookingContact(false)
+                                }}
+                              />
+
+                              <input
+                                className={inputClass}
+                                placeholder="Booking contact phone optional"
+                                value={editBookingContactPhone}
+                                onChange={(e) => {
+                                  setEditBookingContactPhone(e.target.value)
+                                  setEditAutoFilledBookingContact(false)
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
 
                         <select
                           className={inputClass}

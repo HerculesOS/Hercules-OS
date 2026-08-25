@@ -15,6 +15,7 @@ import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import { getComputedBookingStatus } from '@/lib/bookingStatus'
 import { getComputedCertificateStatus } from '@/lib/certificateStatus'
 import { getJoiningInstructionDraft } from '@/lib/joiningInstructions'
+import { getBookingEmailRecipientSummary } from '@/lib/bookingEmailRecipients'
 import {
   getBulkCertificateEmailSummary,
   getBulkCertificateGenerationSummary,
@@ -63,6 +64,9 @@ export default function BookingDetailPage() {
   const [editStartTime, setEditStartTime] = useState('')
   const [editEndTime, setEditEndTime] = useState('')
   const [editLocation, setEditLocation] = useState('')
+  const [editBookingContactName, setEditBookingContactName] = useState('')
+  const [editBookingContactEmail, setEditBookingContactEmail] = useState('')
+  const [editBookingContactPhone, setEditBookingContactPhone] = useState('')
   const [editPrice, setEditPrice] = useState('')
   const [editNotes, setEditNotes] = useState('')
   const [joiningInstructionTemplateId, setJoiningInstructionTemplateId] = useState('')
@@ -406,12 +410,15 @@ export default function BookingDetailPage() {
     setEditStartTime(bookingData.start_time || '')
     setEditEndTime(bookingData.end_time || '')
     setEditLocation(bookingData.location || '')
+    setEditBookingContactName(bookingData.booking_contact_name || '')
+    setEditBookingContactEmail(bookingData.booking_contact_email || '')
+    setEditBookingContactPhone(bookingData.booking_contact_phone || '')
     setEditPrice(bookingData.price ? String(bookingData.price) : '')
     setEditNotes(bookingData.notes || '')
     setJoiningInstructionTemplateId(bookingData.joining_instruction_template_id || '')
     setJoiningInstructionSubject(bookingData.joining_instruction_subject || '')
     setJoiningInstructionBody(bookingData.joining_instruction_body || '')
-    setRecipientEmail(clientData?.email || '')
+    setRecipientEmail(bookingData.booking_contact_email || clientData?.email || '')
     setDelegateClientId(
       bookingData.course_delivery_type === 'public'
         ? ''
@@ -535,6 +542,9 @@ export default function BookingDetailPage() {
     setEditStartTime(booking.start_time || '')
     setEditEndTime(booking.end_time || '')
     setEditLocation(booking.location || '')
+    setEditBookingContactName(booking.booking_contact_name || '')
+    setEditBookingContactEmail(booking.booking_contact_email || '')
+    setEditBookingContactPhone(booking.booking_contact_phone || '')
     setEditPrice(booking.price ? String(booking.price) : '')
     setEditNotes(booking.notes || '')
     setEditing(true)
@@ -551,6 +561,9 @@ export default function BookingDetailPage() {
     setEditStartTime(booking.start_time || '')
     setEditEndTime(booking.end_time || '')
     setEditLocation(booking.location || '')
+    setEditBookingContactName(booking.booking_contact_name || '')
+    setEditBookingContactEmail(booking.booking_contact_email || '')
+    setEditBookingContactPhone(booking.booking_contact_phone || '')
     setEditPrice(booking.price ? String(booking.price) : '')
     setEditNotes(booking.notes || '')
   }
@@ -586,6 +599,18 @@ export default function BookingDetailPage() {
         start_time: editStartTime || null,
         end_time: editEndTime || null,
         location: editLocation,
+        booking_contact_name:
+          booking.course_delivery_type === 'private'
+            ? editBookingContactName.trim() || null
+            : null,
+        booking_contact_email:
+          booking.course_delivery_type === 'private'
+            ? editBookingContactEmail.trim() || null
+            : null,
+        booking_contact_phone:
+          booking.course_delivery_type === 'private'
+            ? editBookingContactPhone.trim() || null
+            : null,
         price: parsedPrice.value,
         notes: editNotes,
       })
@@ -678,12 +703,13 @@ export default function BookingDetailPage() {
   }
 
   const sendBookingConfirmation = async () => {
-    if (!recipientEmail) {
-      alert('Enter a recipient email first')
+    if (
+      booking.course_delivery_type !== 'public' &&
+      !booking.booking_contact_email
+    ) {
+      alert('Add a booking contact email before sending.')
       return
     }
-
-    const trainer = getTrainer()
 
     setSendingConfirmation(true)
 
@@ -693,17 +719,7 @@ export default function BookingDetailPage() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        to: recipientEmail,
-        clientName: getBookingClientDisplay(),
-        courseName: booking.course_name,
-        date: getFormattedDate(booking.date),
-        startTime: getFormattedTimeRange(booking.start_time, null),
-        endTime: booking.end_time ? getFormattedTimeRange(booking.end_time, null) : '',
-        location: booking.location,
-        trainerName: trainer?.name || '',
-        businessName: organisation?.name || 'Hercules OS',
-        businessEmail: organisation?.email || '',
-        businessPhone: organisation?.phone || '',
+        bookingId: booking.id,
         organisationId: profile.organisation_id,
       }),
     })
@@ -717,7 +733,15 @@ export default function BookingDetailPage() {
       return
     }
 
-    alert('Booking confirmation sent')
+    const summary = result.summary || {}
+
+    if (summary.recipientMode === 'public') {
+      alert(
+        `Booking confirmation sent to ${summary.sent || 0} delegate email address(es). Missing email: ${summary.skippedMissingEmail || 0}. Failed: ${summary.failed || 0}.`
+      )
+    } else {
+      alert('Booking confirmation sent to the booking contact.')
+    }
   }
 
   const sendBookingReminder = async () => {
@@ -815,8 +839,16 @@ export default function BookingDetailPage() {
   }
 
   const sendJoiningInstructions = async () => {
-    if (delegates.length === 0) {
+    if (booking.course_delivery_type === 'public' && delegates.length === 0) {
       alert('Add delegates before sending joining instructions.')
+      return
+    }
+
+    if (
+      booking.course_delivery_type !== 'public' &&
+      !booking.booking_contact_email
+    ) {
+      alert('Add a booking contact email before sending.')
       return
     }
 
@@ -856,9 +888,16 @@ export default function BookingDetailPage() {
       setJoiningInstructionMessage('Joining instructions were already sent for this booking.')
     } else if (summary.skippedCancelled) {
       setJoiningInstructionMessage('Cancelled bookings are skipped.')
+    } else if (summary.missingPrivateContactEmail) {
+      setJoiningInstructionMessage('Add a booking contact email before sending.')
     } else {
+      const recipientText =
+        summary.recipientMode === 'private'
+          ? 'booking contact'
+          : 'delegate email address(es)'
+
       setJoiningInstructionMessage(
-        `Sent: ${summary.sent || 0}. Missing email: ${summary.skippedMissingEmail || 0}. Failed: ${summary.failed || 0}.`
+        `Sent to ${summary.sent || 0} ${recipientText}. Missing email: ${summary.skippedMissingEmail || 0}. Failed: ${summary.failed || 0}.`
       )
     }
 
@@ -1645,6 +1684,7 @@ export default function BookingDetailPage() {
     getCertificateForDelegate
   )
   const registerStatus = getRegisterStatus(delegates)
+  const bookingEmailSummary = getBookingEmailRecipientSummary(booking, delegates)
 
   const registerStatusCopy = {
     not_started: 'Not started',
@@ -1777,6 +1817,33 @@ export default function BookingDetailPage() {
                     {client?.name || 'Not set'}
                   </p>
                 </div>
+
+                {booking.course_delivery_type !== 'public' && (
+                  <>
+                    <div>
+                      <p className="text-xs text-slate-500">Booking contact</p>
+                      <p className="font-medium text-slate-950 mt-1">
+                        {booking.booking_contact_name || client?.name || 'Not set'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-slate-500">Booking contact email</p>
+                      <p className="font-medium text-slate-950 mt-1">
+                        {booking.booking_contact_email || 'Not set'}
+                      </p>
+                    </div>
+
+                    {booking.booking_contact_phone && (
+                      <div>
+                        <p className="text-xs text-slate-500">Booking contact phone</p>
+                        <p className="font-medium text-slate-950 mt-1">
+                          {booking.booking_contact_phone}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
 
                 <div>
                   <p className="text-xs text-slate-500">Course</p>
@@ -1953,6 +2020,41 @@ export default function BookingDetailPage() {
                     onChange={(e) => setEditLocation(e.target.value)}
                   />
 
+                  {booking.course_delivery_type !== 'public' && (
+                    <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-semibold text-slate-950">
+                        Booking contact
+                      </p>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        Booking confirmations and joining instructions for private courses are sent to this contact.
+                      </p>
+
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <input
+                          className={inputClass}
+                          placeholder="Booking contact name"
+                          value={editBookingContactName}
+                          onChange={(e) => setEditBookingContactName(e.target.value)}
+                        />
+
+                        <input
+                          className={inputClass}
+                          placeholder="Booking contact email"
+                          value={editBookingContactEmail}
+                          onChange={(e) => setEditBookingContactEmail(e.target.value)}
+                        />
+
+                        <input
+                          className={inputClass}
+                          placeholder="Booking contact phone optional"
+                          value={editBookingContactPhone}
+                          onChange={(e) => setEditBookingContactPhone(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   <datalist id="booking-detail-location-suggestions">
                     {bookingLocations.map((suggestion) => (
                       <option key={suggestion} value={suggestion} />
@@ -1996,12 +2098,35 @@ export default function BookingDetailPage() {
           </div>
 
           <div className="p-4 flex flex-col gap-3">
-            <input
-              className={inputClass}
-              placeholder="Recipient email"
-              value={recipientEmail}
-              onChange={(e) => setRecipientEmail(e.target.value)}
-            />
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              <p className="font-semibold text-slate-950">
+                Confirmation recipient
+              </p>
+
+              {bookingEmailSummary.mode === 'private' ? (
+                <p className="mt-1">
+                  {booking.booking_contact_email
+                    ? `${booking.booking_contact_name || 'Booking contact'} - ${booking.booking_contact_email}`
+                    : 'Add a booking contact email before sending.'}
+                </p>
+              ) : (
+                <p className="mt-1">
+                  Public course: {bookingEmailSummary.count} delegate email address(es),
+                  {' '}
+                  {bookingEmailSummary.skippedMissingEmail} missing email.
+                </p>
+              )}
+            </div>
+
+            <label className="grid gap-1 text-xs font-medium text-slate-600">
+              Reminder recipient
+              <input
+                className={inputClass}
+                placeholder="Recipient email"
+                value={recipientEmail}
+                onChange={(e) => setRecipientEmail(e.target.value)}
+              />
+            </label>
 
             <button
               className={buttonSecondary}
@@ -2081,7 +2206,10 @@ export default function BookingDetailPage() {
             <button
               className={buttonPrimary}
               onClick={sendJoiningInstructions}
-              disabled={sendingJoiningInstructions || delegates.length === 0}
+              disabled={
+                sendingJoiningInstructions ||
+                (booking.course_delivery_type === 'public' && delegates.length === 0)
+              }
             >
               {sendingJoiningInstructions ? 'Sending...' : 'Send joining instructions'}
             </button>
@@ -2142,11 +2270,19 @@ export default function BookingDetailPage() {
                 Recipients
               </p>
 
-              <p className="mt-1">
-                {delegates.filter((delegate) => delegate.email).length} with email,
-                {' '}
-                {delegates.filter((delegate) => !delegate.email).length} without email
-              </p>
+              {bookingEmailSummary.mode === 'private' ? (
+                <p className="mt-1">
+                  {booking.booking_contact_email
+                    ? `${booking.booking_contact_name || 'Booking contact'} - ${booking.booking_contact_email}`
+                    : 'Add a booking contact email before sending.'}
+                </p>
+              ) : (
+                <p className="mt-1">
+                  {bookingEmailSummary.count} delegate email address(es),
+                  {' '}
+                  {bookingEmailSummary.skippedMissingEmail} without email
+                </p>
+              )}
             </div>
           </div>
 

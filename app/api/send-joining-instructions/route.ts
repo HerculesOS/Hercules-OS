@@ -10,9 +10,9 @@ import {
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
 import {
   getJoiningInstructionDraft,
-  getJoiningInstructionSendSummary,
   replaceJoiningInstructionPlaceholders,
 } from '@/lib/joiningInstructions'
+import { getBookingEmailRecipients } from '@/lib/bookingEmailRecipients'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -135,25 +135,41 @@ const sendJoiningInstructionsForBooking = async ({
 
   const bookingClient = clients.find((client) => client.id === booking.client_id)
   const { subject, body } = getJoiningInstructionDraft(booking, templates || [])
-  const { sendableDelegates, skippedMissingEmail } =
-    getJoiningInstructionSendSummary(delegates)
+  const recipientSummary = getBookingEmailRecipients(booking, delegates)
+
+  if (recipientSummary.missingPrivateContactEmail) {
+    return {
+      sent: 0,
+      skippedMissingEmail: 0,
+      failed: 0,
+      alreadySent: false,
+      skippedCancelled: false,
+      missingPrivateContactEmail: true,
+      recipientMode: recipientSummary.mode,
+    }
+  }
+
   const baseUrl = getBaseUrl(request)
   const fromName = organisation?.name || 'Hercules OS'
   let sent = 0
   let failed = 0
 
-  for (const delegate of sendableDelegates) {
-    const delegateClient =
-      clients.find((client) => client.id === delegate.client_id) ||
-      bookingClient
+  for (const recipient of recipientSummary.recipients) {
+    const delegate = delegates.find(
+      (item) => item.email && item.email === recipient.email
+    )
+    const delegateClient = delegate
+      ? clients.find((client) => client.id === delegate.client_id) ||
+        bookingClient
+      : bookingClient
     const clientName =
       delegateClient?.company ||
       delegateClient?.name ||
       booking.client_name ||
       (booking.course_delivery_type === 'public' ? 'Public course' : '')
     const values = {
-      delegateName: delegate.full_name || '',
-      delegate_name: delegate.full_name || '',
+      delegateName: recipient.name || '',
+      delegate_name: recipient.name || '',
       clientName,
       client_name: clientName,
       courseName: booking.course_name || '',
@@ -185,7 +201,7 @@ const sendJoiningInstructionsForBooking = async ({
 
     const { error } = await resend.emails.send({
       from: `${fromName} <onboarding@resend.dev>`,
-      to: [delegate.email],
+      to: [recipient.email],
       subject: renderedSubject,
       html: buildEmailHtml({
         subject: renderedSubject,
@@ -233,10 +249,12 @@ const sendJoiningInstructionsForBooking = async ({
 
   return {
     sent,
-    skippedMissingEmail,
+    skippedMissingEmail: recipientSummary.skippedMissingEmail,
     failed,
     alreadySent: false,
     skippedCancelled: false,
+    missingPrivateContactEmail: false,
+    recipientMode: recipientSummary.mode,
   }
 }
 

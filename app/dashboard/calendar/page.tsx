@@ -9,6 +9,7 @@ import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
 import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
 import { getComputedBookingStatus } from '@/lib/bookingStatus'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
+import { getDefaultBookingContactFromClient } from '@/lib/bookingEmailRecipients'
 import ClientPicker from '../bookings/ClientPicker'
 
 export default function CalendarPage() {
@@ -36,6 +37,10 @@ export default function CalendarPage() {
   const [endTime, setEndTime] = useState('')
   const [location, setLocation] = useState('')
   const [autoFilledLocation, setAutoFilledLocation] = useState('')
+  const [bookingContactName, setBookingContactName] = useState('')
+  const [bookingContactEmail, setBookingContactEmail] = useState('')
+  const [bookingContactPhone, setBookingContactPhone] = useState('')
+  const [autoFilledBookingContact, setAutoFilledBookingContact] = useState(false)
   const [price, setPrice] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -208,6 +213,13 @@ export default function CalendarPage() {
         setLocation('')
       }
 
+      if (autoFilledBookingContact) {
+        setBookingContactName('')
+        setBookingContactEmail('')
+        setBookingContactPhone('')
+        setAutoFilledBookingContact(false)
+      }
+
       setAutoFilledLocation('')
       return
     }
@@ -224,6 +236,21 @@ export default function CalendarPage() {
     ) {
       setLocation(selectedAddress)
       setAutoFilledLocation(selectedAddress)
+    }
+
+    const contactDefaults = getDefaultBookingContactFromClient(selectedClient)
+
+    if (
+      courseDeliveryType === 'private' &&
+      (autoFilledBookingContact ||
+        (!bookingContactName.trim() &&
+          !bookingContactEmail.trim() &&
+          !bookingContactPhone.trim()))
+    ) {
+      setBookingContactName(contactDefaults.name)
+      setBookingContactEmail(contactDefaults.email)
+      setBookingContactPhone(contactDefaults.phone)
+      setAutoFilledBookingContact(true)
     }
   }
 
@@ -262,6 +289,10 @@ export default function CalendarPage() {
     setEndTime('')
     setLocation('')
     setAutoFilledLocation('')
+    setBookingContactName('')
+    setBookingContactEmail('')
+    setBookingContactPhone('')
+    setAutoFilledBookingContact(false)
     setPrice('')
     setNotes('')
   }
@@ -352,6 +383,12 @@ export default function CalendarPage() {
       start_time: startTime || null,
       end_time: endTime || null,
       location,
+      booking_contact_name:
+        courseDeliveryType === 'private' ? bookingContactName.trim() || null : null,
+      booking_contact_email:
+        courseDeliveryType === 'private' ? bookingContactEmail.trim() || null : null,
+      booking_contact_phone:
+        courseDeliveryType === 'private' ? bookingContactPhone.trim() || null : null,
       price: parsedPrice.value,
       notes,
       status: 'scheduled',
@@ -903,6 +940,15 @@ export default function CalendarPage() {
 
                     if (selectedType === 'public') {
                       setClientAndMaybeLocation('')
+                    } else if (clientId) {
+                      const selectedClient = clients.find((client) => client.id === clientId)
+                      const contactDefaults =
+                        getDefaultBookingContactFromClient(selectedClient)
+
+                      setBookingContactName(contactDefaults.name)
+                      setBookingContactEmail(contactDefaults.email)
+                      setBookingContactPhone(contactDefaults.phone)
+                      setAutoFilledBookingContact(true)
                     }
                   }}
                 >
@@ -921,6 +967,50 @@ export default function CalendarPage() {
                       : 'Search clients...'
                   }
                 />
+
+                {courseDeliveryType === 'private' && (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold text-slate-950">
+                      Booking contact
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Booking confirmations and joining instructions for private courses are sent to this contact.
+                    </p>
+
+                    <div className="mt-3 grid grid-cols-1 gap-3">
+                      <input
+                        className={inputClass}
+                        placeholder="Booking contact name"
+                        value={bookingContactName}
+                        onChange={(e) => {
+                          setBookingContactName(e.target.value)
+                          setAutoFilledBookingContact(false)
+                        }}
+                      />
+
+                      <input
+                        className={inputClass}
+                        placeholder="Booking contact email"
+                        value={bookingContactEmail}
+                        onChange={(e) => {
+                          setBookingContactEmail(e.target.value)
+                          setAutoFilledBookingContact(false)
+                        }}
+                      />
+
+                      <input
+                        className={inputClass}
+                        placeholder="Booking contact phone optional"
+                        value={bookingContactPhone}
+                        onChange={(e) => {
+                          setBookingContactPhone(e.target.value)
+                          setAutoFilledBookingContact(false)
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <select
                   className={inputClass}
