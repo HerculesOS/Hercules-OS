@@ -500,7 +500,10 @@ export default function CertificatesPage() {
         certificateNumber: certificate.certificate_number,
         verificationUrl,
         businessName: organisation?.name || 'Hercules OS',
+        businessEmail: organisation?.email || '',
+        businessPhone: organisation?.phone || '',
         organisationId: profile.organisation_id,
+        certificateId: certificate.id,
       }),
     })
 

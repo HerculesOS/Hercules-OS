@@ -16,6 +16,8 @@ import { getComputedBookingStatus } from '@/lib/bookingStatus'
 import { getComputedCertificateStatus } from '@/lib/certificateStatus'
 import { getJoiningInstructionDraft } from '@/lib/joiningInstructions'
 import { getBookingEmailRecipientSummary } from '@/lib/bookingEmailRecipients'
+import { getCertificateEmailSentDisplay } from '@/lib/certificateEmailTracking'
+import { validateOptionalDelegateEmail } from '@/lib/delegateEmailEditing'
 import {
   getBulkCertificateEmailSummary,
   getBulkCertificateGenerationSummary,
@@ -87,6 +89,9 @@ export default function BookingDetailPage() {
   const [editDelegateEmail, setEditDelegateEmail] = useState('')
   const [editDelegatePhone, setEditDelegatePhone] = useState('')
   const [editDelegateNotes, setEditDelegateNotes] = useState('')
+  const [editingDelegateEmailId, setEditingDelegateEmailId] = useState('')
+  const [inlineDelegateEmail, setInlineDelegateEmail] = useState('')
+  const [savingDelegateEmail, setSavingDelegateEmail] = useState(false)
 
   const [selectedDelegateIds, setSelectedDelegateIds] = useState<string[]>([])
   const [certificateIssueDate, setCertificateIssueDate] = useState('')
@@ -449,6 +454,20 @@ export default function BookingDetailPage() {
     endTimeValue: string | null | undefined
   ) => {
     return formatAppTimeRange(startTimeValue, endTimeValue, organisation)
+  }
+
+  const getFormattedDateTime = (dateTimeValue: string | null | undefined) => {
+    if (!dateTimeValue) return 'Not sent yet'
+
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: organisation?.timezone || 'Europe/London',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: organisation?.time_format === '12h',
+    }).format(new Date(dateTimeValue))
   }
 
   const getFormattedDateRange = () => {
@@ -1022,15 +1041,23 @@ export default function BookingDetailPage() {
       return
     }
 
+    const parsedEmail = validateOptionalDelegateEmail(editDelegateEmail)
+
+    if (parsedEmail.error) {
+      alert(parsedEmail.error)
+      return
+    }
+
     const { error } = await supabase
       .from('delegates')
       .update({
         full_name: editDelegateName,
-        email: editDelegateEmail || null,
+        email: parsedEmail.value,
         phone: editDelegatePhone || null,
         notes: editDelegateNotes || null,
       })
       .eq('id', delegateId)
+      .eq('organisation_id', profile.organisation_id)
 
     if (error) {
       alert(error.message)
@@ -1039,6 +1066,56 @@ export default function BookingDetailPage() {
 
     cancelEditingDelegate()
     load()
+  }
+
+  const startEditingDelegateEmail = (delegate: any) => {
+    setEditingDelegateEmailId(delegate.id)
+    setInlineDelegateEmail(delegate.email || '')
+  }
+
+  const cancelEditingDelegateEmail = () => {
+    setEditingDelegateEmailId('')
+    setInlineDelegateEmail('')
+  }
+
+  const saveDelegateEmail = async (delegateId: string) => {
+    const parsedEmail = validateOptionalDelegateEmail(inlineDelegateEmail)
+
+    if (parsedEmail.error) {
+      alert(parsedEmail.error)
+      return
+    }
+
+    setSavingDelegateEmail(true)
+
+    const { error } = await supabase
+      .from('delegates')
+      .update({ email: parsedEmail.value })
+      .eq('id', delegateId)
+      .eq('organisation_id', profile.organisation_id)
+
+    setSavingDelegateEmail(false)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    setDelegates((previous) =>
+      previous.map((delegate) =>
+        delegate.id === delegateId
+          ? { ...delegate, email: parsedEmail.value }
+          : delegate
+      )
+    )
+    setAllClientDelegates((previous) =>
+      previous.map((delegate) =>
+        delegate.id === delegateId
+          ? { ...delegate, email: parsedEmail.value }
+          : delegate
+      )
+    )
+    cancelEditingDelegateEmail()
   }
 
   const removeDelegateFromBooking = async (delegateId: string) => {
@@ -1529,12 +1606,24 @@ export default function BookingDetailPage() {
           certificateNumber: certificate.certificate_number,
           verificationUrl,
           businessName: organisation?.name || 'Hercules OS',
+          businessEmail: organisation?.email || '',
+          businessPhone: organisation?.phone || '',
           organisationId: profile.organisation_id,
+          certificateId: certificate.id,
         }),
       })
 
       if (response.ok) {
+        const sentAt = new Date().toISOString()
+
         sentCount += 1
+        setCertificates((previous) =>
+          previous.map((item) =>
+            item.id === certificate.id
+              ? { ...item, certificate_emailed_at: sentAt }
+              : item
+          )
+        )
       } else {
         failedCount += 1
       }
@@ -2867,7 +2956,52 @@ export default function BookingDetailPage() {
                           </div>
 
                           <div className="text-xs text-slate-600 mt-2 space-y-1">
-                            <p>Email: {delegate.email || 'Not set'}</p>
+                            {editingDelegateEmailId === delegate.id ? (
+                              <div className="mt-2 flex max-w-xl flex-col gap-2 sm:flex-row sm:items-center">
+                                <input
+                                  className={`${inputClass} flex-1`}
+                                  placeholder="Delegate email"
+                                  value={inlineDelegateEmail}
+                                  onChange={(e) =>
+                                    setInlineDelegateEmail(e.target.value)
+                                  }
+                                />
+
+                                <div className="flex gap-2">
+                                  <button
+                                    className={buttonPrimary}
+                                    onClick={() => saveDelegateEmail(delegate.id)}
+                                    disabled={savingDelegateEmail}
+                                  >
+                                    {savingDelegateEmail ? 'Saving...' : 'Save'}
+                                  </button>
+
+                                  <button
+                                    className={buttonSecondary}
+                                    onClick={cancelEditingDelegateEmail}
+                                    disabled={savingDelegateEmail}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="flex flex-wrap items-center gap-2">
+                                <span>
+                                  Email:{' '}
+                                  <span className={delegate.email ? '' : 'text-amber-700'}>
+                                    {delegate.email || 'No email set'}
+                                  </span>
+                                </span>
+
+                                <button
+                                  className="text-xs font-medium text-slate-500 hover:text-slate-950"
+                                  onClick={() => startEditingDelegateEmail(delegate)}
+                                >
+                                  Edit email
+                                </button>
+                              </p>
+                            )}
 
                             {isPublicBooking() && (
                               <p>Client: {getDelegateClientDisplay(delegate)}</p>
@@ -2879,6 +3013,15 @@ export default function BookingDetailPage() {
                               <>
                                 <p>
                                   Certificate No: {certificate.certificate_number}
+                                </p>
+
+                                <p>
+                                  Certificate last sent:{' '}
+                                  {getCertificateEmailSentDisplay(certificate)
+                                    ? getFormattedDateTime(
+                                        certificate.certificate_emailed_at
+                                      )
+                                    : 'Not sent yet'}
                                 </p>
 
                                 {certificate.certificate_title && (
@@ -3109,6 +3252,13 @@ export default function BookingDetailPage() {
 
                 <p className="text-xs text-slate-600 mt-2">
                   Expires: {getFormattedDate(certificate.expiry_date)}
+                </p>
+
+                <p className="text-xs text-slate-600 mt-1">
+                  Certificate last sent:{' '}
+                  {getCertificateEmailSentDisplay(certificate)
+                    ? getFormattedDateTime(certificate.certificate_emailed_at)
+                    : 'Not sent yet'}
                 </p>
 
                 <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getCertificateStatusStyle(getComputedCertificateStatus(certificate))}`}>

@@ -1,6 +1,7 @@
 import { Resend } from 'resend'
 import jsPDF from 'jspdf'
 import QRCode from 'qrcode'
+import { createClient } from '@supabase/supabase-js'
 import {
   buildEmailHtml,
   detailRow,
@@ -11,10 +12,16 @@ import {
   replacePlaceholders,
 } from '@/lib/emailTemplates'
 import { emailTemplateDefaults } from '@/lib/emailTemplateDefaults'
+import { getCertificateEmailSentUpdate } from '@/lib/certificateEmailTracking'
 
 export const runtime = 'nodejs'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 const createSafeFilename = (name: string, certificateNumber: string) => {
   const safeName = name
@@ -171,6 +178,7 @@ export async function POST(request: Request) {
       businessEmail,
       businessPhone,
       organisationId,
+      certificateId,
     } = body
 
     if (!to || !learnerName || !courseName || !verificationUrl) {
@@ -278,6 +286,22 @@ export async function POST(request: Request) {
 
     if (error) {
       return Response.json({ error }, { status: 500 })
+    }
+
+    if (certificateId && organisationId) {
+      const sentUpdate = getCertificateEmailSentUpdate(true)
+
+      if (sentUpdate) {
+        const { error: updateError } = await supabaseAdmin
+          .from('certificates')
+          .update(sentUpdate)
+          .eq('id', certificateId)
+          .eq('organisation_id', organisationId)
+
+        if (updateError) {
+          return Response.json({ error: updateError.message }, { status: 500 })
+        }
+      }
     }
 
     return Response.json({ success: true, data })

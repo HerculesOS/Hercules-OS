@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 type ClientPickerProps = {
   clients: any[]
@@ -24,6 +24,7 @@ export default function ClientPicker({
 }: ClientPickerProps) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const pickerRef = useRef<HTMLDivElement>(null)
   const selectedClient = clients.find((client) => client.id === value)
 
   useEffect(() => {
@@ -33,6 +34,25 @@ export default function ClientPicker({
       setQuery('')
     }
   }, [open, selectedClient])
+
+  useEffect(() => {
+    if (!open) return
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (
+        pickerRef.current &&
+        !pickerRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', closeOnOutsideClick)
+
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick)
+    }
+  }, [open])
 
   const matches = useMemo(() => {
     const term = query.trim().toLowerCase()
@@ -64,7 +84,7 @@ export default function ClientPicker({
   }
 
   return (
-    <div className="relative">
+    <div className="relative" ref={pickerRef}>
       <div className="flex gap-2">
         <input
           className={`${inputClass} min-w-0 flex-1`}
