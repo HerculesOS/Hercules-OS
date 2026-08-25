@@ -1,5 +1,6 @@
 import { Resend } from 'resend'
 import jsPDF from 'jspdf'
+import { createClient } from '@supabase/supabase-js'
 import {
   buildEmailHtml,
   detailRow,
@@ -11,10 +12,16 @@ import {
   textToHtml,
 } from '@/lib/emailTemplates'
 import { emailTemplateDefaults } from '@/lib/emailTemplateDefaults'
+import { getInvoiceEmailSuccessUpdate } from '@/lib/invoiceWorkflow'
 
 export const runtime = 'nodejs'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 const createSafeFilename = (invoiceNumber: string) => {
   const safeInvoiceNumber = invoiceNumber
@@ -33,6 +40,7 @@ const generateInvoicePdfBuffer = ({
   vatAmount,
   totalAmount,
   dueDate,
+  poNumber,
   status,
   businessName,
   businessEmail,
@@ -46,6 +54,7 @@ const generateInvoicePdfBuffer = ({
   vatAmount?: number | string
   totalAmount?: number | string
   dueDate?: string
+  poNumber?: string
   status?: string
   businessName?: string
   businessEmail?: string
@@ -91,7 +100,7 @@ const generateInvoicePdfBuffer = ({
 
   doc.setFillColor(249, 250, 251)
   doc.setDrawColor(229, 231, 235)
-  doc.roundedRect(22, 60, 76, 42, 3, 3, 'FD')
+  doc.roundedRect(22, 60, 76, poNumber ? 50 : 42, 3, 3, 'FD')
 
   doc.setFontSize(9)
   doc.setTextColor(107, 114, 128)
@@ -103,6 +112,10 @@ const generateInvoicePdfBuffer = ({
   doc.text(`Date: ${invoiceDate}`, 28, 85)
   doc.text(`Due Date: ${dueDate || 'Not set'}`, 28, 92)
   doc.text(`Status: ${invoiceStatus}`, 28, 99)
+
+  if (poNumber) {
+    doc.text(`PO No: ${poNumber}`, 28, 106)
+  }
 
   doc.setFillColor(249, 250, 251)
   doc.setDrawColor(229, 231, 235)
@@ -218,12 +231,14 @@ export async function POST(request: Request) {
       vatAmount,
       totalAmount,
       dueDate,
+      poNumber,
       status,
       businessName,
       businessEmail,
       businessPhone,
       paymentDetails,
       organisationId,
+      invoiceId,
     } = body
 
     const finalRecipientName = recipientName || clientName
@@ -236,6 +251,37 @@ export async function POST(request: Request) {
     }
 
     const fromName = businessName || 'Hercules OS'
+
+    let invoiceRecord: any = null
+
+    if (invoiceId && organisationId) {
+      const { data: invoice, error: invoiceFetchError } = await supabaseAdmin
+        .from('invoices')
+        .select('id, status, secured_at')
+        .eq('id', invoiceId)
+        .eq('organisation_id', organisationId)
+        .single()
+
+      if (invoiceFetchError || !invoice) {
+        return Response.json(
+          { error: invoiceFetchError?.message || 'Invoice not found' },
+          { status: 404 }
+        )
+      }
+
+      if (!invoice.secured_at) {
+        return Response.json(
+          {
+            error:
+              'Secure this invoice before sending so it cannot be changed after it has been sent.',
+          },
+          { status: 400 }
+        )
+      }
+
+      invoiceRecord = invoice
+    }
+
     const template = await getEmailTemplate(
       'invoice_email',
       organisationId,
@@ -250,6 +296,7 @@ export async function POST(request: Request) {
       vatAmount,
       totalAmount,
       dueDate,
+      poNumber,
       status,
       businessName: fromName,
       businessEmail,
@@ -294,6 +341,8 @@ export async function POST(request: Request) {
       invoice_number: invoiceNumber || '',
       invoiceAmount,
       invoice_amount: invoiceAmount,
+      poNumber: poNumber || '',
+      po_number: poNumber || '',
       dueDate: dueDate || 'Not set',
       due_date: dueDate || 'Not set',
       businessName: fromName,
@@ -325,6 +374,7 @@ export async function POST(request: Request) {
         detailsHtml: [
           detailsBox([
             detailRow('Invoice No', invoiceNumber),
+            poNumber ? detailRow('PO No', poNumber) : '',
             safeCourseName ? detailRow('Course', courseName) : '',
             detailRow('Recipient', finalRecipientName),
             detailRow('Net Amount', `\u00A3${Number(amount || 0).toFixed(2)}`),
@@ -351,6 +401,24 @@ export async function POST(request: Request) {
 
     if (error) {
       return Response.json({ error }, { status: 500 })
+    }
+
+    if (invoiceRecord && organisationId) {
+      const sentUpdate = getInvoiceEmailSuccessUpdate(true, invoiceRecord)
+
+      if (!sentUpdate) {
+        return Response.json({ success: true, data })
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from('invoices')
+        .update(sentUpdate)
+        .eq('id', invoiceRecord.id)
+        .eq('organisation_id', organisationId)
+
+      if (updateError) {
+        return Response.json({ error: updateError.message }, { status: 500 })
+      }
     }
 
     return Response.json({ success: true, data })

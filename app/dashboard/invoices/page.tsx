@@ -9,6 +9,11 @@ import { getNextInvoiceNumber, isDuplicateInvoiceNumberError } from '@/lib/invoi
 import { parseOptionalNonNegativeNumber, parseRequiredPositiveNumber } from '@/lib/numberValidation'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import { getComputedInvoiceStatus } from '@/lib/invoiceStatus'
+import {
+  calculateDefaultInvoiceDueDate,
+  getSentInvoiceUpdate,
+  normalizeOptionalPoNumber,
+} from '@/lib/invoiceWorkflow'
 import jsPDF from 'jspdf'
 
 const INVOICES_PAGE_SIZE = 50
@@ -41,6 +46,8 @@ export default function InvoicesPage() {
   const [amount, setAmount] = useState('')
   const [vatRate, setVatRate] = useState('0')
   const [dueDate, setDueDate] = useState('')
+  const [dueDateWasAutoFilled, setDueDateWasAutoFilled] = useState(false)
+  const [poNumber, setPoNumber] = useState('')
 
   const [recipientEmails, setRecipientEmails] = useState<Record<string, string>>({})
   const [sendingId, setSendingId] = useState('')
@@ -51,6 +58,7 @@ export default function InvoicesPage() {
   const [editAmount, setEditAmount] = useState('')
   const [editVatRate, setEditVatRate] = useState('0')
   const [editDueDate, setEditDueDate] = useState('')
+  const [editPoNumber, setEditPoNumber] = useState('')
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -95,6 +103,17 @@ export default function InvoicesPage() {
 
     if (booking?.price && !amount) {
       setAmount(String(booking.price))
+    }
+
+    if (!booking && dueDateWasAutoFilled) {
+      setDueDate('')
+      setDueDateWasAutoFilled(false)
+      return
+    }
+
+    if (booking && (!dueDate || dueDateWasAutoFilled)) {
+      setDueDate(calculateDefaultInvoiceDueDate(booking))
+      setDueDateWasAutoFilled(true)
     }
   }
 
@@ -204,6 +223,7 @@ export default function InvoicesPage() {
       `client_name.ilike.${term}`,
       `recipient_name.ilike.${term}`,
       `recipient_email.ilike.${term}`,
+      `po_number.ilike.${term}`,
       `status.ilike.${term}`,
       `invoice_target_type.ilike.${term}`,
     ]
@@ -486,6 +506,8 @@ export default function InvoicesPage() {
     setAmount('')
     setVatRate('0')
     setDueDate('')
+    setDueDateWasAutoFilled(false)
+    setPoNumber('')
   }
 
   const getInvoiceRecipientForCreate = () => {
@@ -619,6 +641,7 @@ export default function InvoicesPage() {
         vat_amount: vat,
         total_amount: total,
         due_date: dueDate || null,
+        po_number: normalizeOptionalPoNumber(poNumber),
         status: 'draft',
       })
 
@@ -650,6 +673,7 @@ export default function InvoicesPage() {
     setEditAmount(invoice.amount ? String(invoice.amount) : '')
     setEditVatRate(invoice.vat_rate ? String(invoice.vat_rate) : '0')
     setEditDueDate(invoice.due_date || '')
+    setEditPoNumber(invoice.po_number || '')
   }
 
   const cancelEditing = () => {
@@ -658,6 +682,7 @@ export default function InvoicesPage() {
     setEditAmount('')
     setEditVatRate('0')
     setEditDueDate('')
+    setEditPoNumber('')
   }
 
   const saveInvoiceEdit = async (invoiceId: string) => {
@@ -692,6 +717,7 @@ export default function InvoicesPage() {
         vat_amount: vat,
         total_amount: total,
         due_date: editDueDate || null,
+        po_number: normalizeOptionalPoNumber(editPoNumber),
       })
       .eq('id', invoiceId)
 
@@ -703,7 +729,7 @@ export default function InvoicesPage() {
     }
 
     cancelEditing()
-    load(currentPage, search)
+    await load(currentPage, search)
   }
 
   const secureInvoice = async (invoiceId: string) => {
@@ -756,10 +782,7 @@ export default function InvoicesPage() {
 
     const { error } = await supabase
       .from('invoices')
-      .update({
-        status: 'sent',
-        sent_at: new Date().toISOString(),
-      })
+      .update(getSentInvoiceUpdate(invoiceToUpdate))
       .eq('id', invoiceId)
 
     if (error) {
@@ -881,7 +904,7 @@ export default function InvoicesPage() {
 
     doc.setFillColor(249, 250, 251)
     doc.setDrawColor(229, 231, 235)
-    doc.roundedRect(22, 60, 76, 42, 3, 3, 'FD')
+    doc.roundedRect(22, 60, 76, invoice.po_number ? 50 : 42, 3, 3, 'FD')
 
     doc.setFontSize(9)
     doc.setTextColor(107, 114, 128)
@@ -893,6 +916,10 @@ export default function InvoicesPage() {
     doc.text(`Date: ${invoiceDate}`, 28, 85)
     doc.text(`Due Date: ${getFormattedDate(invoice.due_date)}`, 28, 92)
     doc.text(`Status: ${getComputedInvoiceStatus(invoice)}`, 28, 99)
+
+    if (invoice.po_number) {
+      doc.text(`PO No: ${invoice.po_number}`, 28, 106)
+    }
 
     doc.setFillColor(249, 250, 251)
     doc.setDrawColor(229, 231, 235)
@@ -1012,12 +1039,14 @@ export default function InvoicesPage() {
         vatAmount: invoice.vat_amount,
         totalAmount: invoice.total_amount || invoice.amount,
         dueDate: getFormattedDate(invoice.due_date),
+        poNumber: invoice.po_number || '',
         status: getComputedInvoiceStatus(invoice),
         businessName: organisation?.name || 'Hercules OS',
         businessEmail: organisation?.email || '',
         businessPhone: organisation?.phone || '',
         paymentDetails: organisation?.invoice_payment_details || '',
         organisationId,
+        invoiceId: invoice.id,
       }),
     })
 
@@ -1030,7 +1059,7 @@ export default function InvoicesPage() {
       return
     }
 
-    await markAsSent(invoice.id)
+    await load(currentPage, search)
 
     alert('Invoice email sent')
 
@@ -1277,6 +1306,12 @@ export default function InvoicesPage() {
                     Public course selected. You can invoice a company/client, an individual delegate, or a custom recipient.
                   </p>
                 )}
+
+                {dueDate && (
+                  <p className="mt-2 text-slate-500">
+                    Default due date: {getFormattedDate(dueDate)}
+                  </p>
+                )}
               </div>
             )}
 
@@ -1387,15 +1422,28 @@ export default function InvoicesPage() {
             />
 
             <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+              PO number optional
+              <input
+                className={inputClass}
+                placeholder="Purchase order number"
+                value={poNumber}
+                onChange={(e) => setPoNumber(e.target.value)}
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
               Due date
               <input
                 className={inputClass}
                 type="date"
                 value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
+                onChange={(e) => {
+                  setDueDate(e.target.value)
+                  setDueDateWasAutoFilled(false)
+                }}
               />
               <span className="font-normal text-slate-500">
-                The date payment is due.
+                Default due date is 30 days from booking/invoice creation or the course start date, whichever comes first.
               </span>
             </label>
 
@@ -1494,6 +1542,12 @@ export default function InvoicesPage() {
                             Due {getFormattedDate(invoice.due_date)}
                           </p>
 
+                          {invoice.po_number && (
+                            <p className="text-xs text-slate-500 mt-1">
+                              PO {invoice.po_number}
+                            </p>
+                          )}
+
                           {!isSecured && invoice.status !== 'paid' && (
                             <p className="text-xs font-medium text-amber-700 mt-2">
                               Secure before sending. Once secured, invoice details can no longer be edited.
@@ -1531,6 +1585,13 @@ export default function InvoicesPage() {
                               <p className="text-slate-400">Issue date</p>
                               <p className="font-medium text-slate-800 mt-1">
                                 {getFormattedDate(invoice.created_at)}
+                              </p>
+                            </div>
+
+                            <div>
+                              <p className="text-slate-400">PO number</p>
+                              <p className="font-medium text-slate-800 mt-1">
+                                {invoice.po_number || 'Not set'}
                               </p>
                             </div>
 
@@ -1695,6 +1756,16 @@ export default function InvoicesPage() {
                           onChange={(e) => setEditVatRate(e.target.value)}
                         />
 
+                        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                          PO number optional
+                          <input
+                            className={inputClass}
+                            placeholder="Purchase order number"
+                            value={editPoNumber}
+                            onChange={(e) => setEditPoNumber(e.target.value)}
+                          />
+                        </label>
+
                         <label className="md:col-span-2 flex flex-col gap-1 text-xs font-medium text-slate-600">
                           Due date
                           <input
@@ -1704,7 +1775,7 @@ export default function InvoicesPage() {
                             onChange={(e) => setEditDueDate(e.target.value)}
                           />
                           <span className="font-normal text-slate-500">
-                            The date payment is due.
+                            Default due date is 30 days from booking/invoice creation or the course start date, whichever comes first.
                           </span>
                         </label>
                       </div>
