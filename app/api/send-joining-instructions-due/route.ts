@@ -25,15 +25,35 @@ export async function GET(request: Request) {
     const targetDate = getFutureDateString(7)
     const baseUrl = getBaseUrl(request)
 
-    const { data: bookings, error } = await supabaseAdmin
-      .from('bookings')
-      .select('id, organisation_id')
-      .eq('date', targetDate)
-      .neq('status', 'cancelled')
-      .is('joining_instructions_sent_at', null)
+    const { data: sessionRows, error: sessionsError } = await supabaseAdmin
+      .from('booking_sessions')
+      .select('booking_id, organisation_id, sort_order')
+      .eq('session_date', targetDate)
+      .eq('sort_order', 1)
 
-    if (error) {
-      return Response.json({ error: error.message }, { status: 500 })
+    if (sessionsError) {
+      return Response.json({ error: sessionsError.message }, { status: 500 })
+    }
+
+    const bookingIds = Array.from(
+      new Set((sessionRows || []).map((session) => session.booking_id))
+    )
+
+    let bookings: Array<{ id: string; organisation_id: string }> = []
+
+    if (bookingIds.length > 0) {
+      const { data, error } = await supabaseAdmin
+        .from('bookings')
+        .select('id, organisation_id')
+        .in('id', bookingIds)
+        .neq('status', 'cancelled')
+        .is('joining_instructions_sent_at', null)
+
+      if (error) {
+        return Response.json({ error: error.message }, { status: 500 })
+      }
+
+      bookings = data || []
     }
 
     let bookingsChecked = 0

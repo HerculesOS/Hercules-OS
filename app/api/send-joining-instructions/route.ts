@@ -13,6 +13,7 @@ import {
   replaceJoiningInstructionPlaceholders,
 } from '@/lib/joiningInstructions'
 import { getBookingEmailRecipients } from '@/lib/bookingEmailRecipients'
+import { getBookingSessionDatesText } from '@/lib/bookingSessions'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -39,7 +40,7 @@ const sendJoiningInstructionsForBooking = async ({
 }) => {
   const { data: booking, error: bookingError } = await supabaseAdmin
     .from('bookings')
-    .select('*')
+    .select('*, booking_sessions(*)')
     .eq('id', bookingId)
     .eq('organisation_id', organisationId)
     .single()
@@ -151,6 +152,12 @@ const sendJoiningInstructionsForBooking = async ({
 
   const baseUrl = getBaseUrl(request)
   const fromName = organisation?.name || 'Hercules OS'
+  const courseDatesText = getBookingSessionDatesText(
+    booking,
+    (dateValue) => formatAppDate(dateValue, organisation),
+    (startTimeValue, endTimeValue) =>
+      formatAppTimeRange(startTimeValue, endTimeValue, organisation)
+  )
   let sent = 0
   let failed = 0
 
@@ -174,8 +181,8 @@ const sendJoiningInstructionsForBooking = async ({
       client_name: clientName,
       courseName: booking.course_name || '',
       course_name: booking.course_name || '',
-      bookingDate: formatAppDate(booking.date, organisation),
-      booking_date: formatAppDate(booking.date, organisation),
+      bookingDate: courseDatesText,
+      booking_date: courseDatesText,
       bookingStartTime: formatAppTimeRange(booking.start_time, null, organisation),
       booking_start_time: formatAppTimeRange(booking.start_time, null, organisation),
       bookingEndTime: formatAppTimeRange(booking.end_time, null, organisation),
@@ -208,7 +215,7 @@ const sendJoiningInstructionsForBooking = async ({
         body: renderedBody,
         detailsHtml: detailsBox([
           detailRow('Course', booking.course_name),
-          detailRow('Date', values.bookingDate),
+          detailRow('Course dates', values.bookingDate),
           detailRow(
             'Time',
             `${values.bookingStartTime || 'Not set'} - ${values.bookingEndTime || 'Not set'}`

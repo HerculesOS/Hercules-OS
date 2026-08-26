@@ -12,6 +12,7 @@ import {
 import { emailTemplateDefaults } from '@/lib/emailTemplateDefaults'
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
 import { getBookingEmailRecipients } from '@/lib/bookingEmailRecipients'
+import { getBookingSessionDatesText } from '@/lib/bookingSessions'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -111,7 +112,7 @@ const sendBookingConfirmationEmail = async ({
       body: emailBody,
       detailsHtml: detailsBox([
         detailRow('Course', courseName),
-        detailRow('Date', date),
+        detailRow('Course dates', date),
         detailRow('Time', `${startTime || 'Not set'} - ${endTime || 'Not set'}`),
         detailRow('Location', location),
         detailRow('Trainer', trainerName || 'To be confirmed'),
@@ -144,7 +145,7 @@ export async function POST(request: Request) {
     if (bookingId && organisationId) {
       const { data: booking, error: bookingError } = await supabaseAdmin
         .from('bookings')
-        .select('*')
+        .select('*, booking_sessions(*)')
         .eq('id', bookingId)
         .eq('organisation_id', organisationId)
         .single()
@@ -202,6 +203,12 @@ export async function POST(request: Request) {
         : { data: null }
 
       const recipientSummary = getBookingEmailRecipients(booking, delegates)
+      const courseDatesText = getBookingSessionDatesText(
+        booking,
+        (dateValue) => formatAppDate(dateValue, organisation),
+        (startTimeValue, endTimeValue) =>
+          formatAppTimeRange(startTimeValue, endTimeValue, organisation)
+      )
 
       if (recipientSummary.missingPrivateContactEmail) {
         return Response.json(
@@ -224,7 +231,7 @@ export async function POST(request: Request) {
           recipientName: recipient.name,
           clientName: resolvedClientName,
           courseName: booking.course_name,
-          date: formatAppDate(booking.date, organisation),
+          date: courseDatesText,
           startTime: formatAppTimeRange(booking.start_time, null, organisation),
           endTime: booking.end_time
             ? formatAppTimeRange(booking.end_time, null, organisation)

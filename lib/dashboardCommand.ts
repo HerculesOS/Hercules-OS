@@ -1,5 +1,11 @@
 const millisecondsPerDay = 1000 * 60 * 60 * 24
 
+type BookingSession = {
+  session_date?: string | null
+  end_time?: string | null
+  sort_order?: number | null
+}
+
 export type DashboardBooking = {
   id: string
   date?: string | null
@@ -8,6 +14,7 @@ export type DashboardBooking = {
   status?: string | null
   course_name?: string | null
   created_at?: string | null
+  booking_sessions?: BookingSession[] | null
 }
 
 export type DashboardInvoice = {
@@ -53,6 +60,51 @@ const getDateOnlyTime = (value?: string | null) => {
   if (!year || !month || !day) return null
 
   return new Date(year, month - 1, day).getTime()
+}
+
+const normalizeBookingSessions = (booking: DashboardBooking) =>
+  Array.isArray(booking.booking_sessions)
+    ? booking.booking_sessions
+        .filter((session) => session.session_date)
+        .sort((a, b) => {
+          const orderDiff = Number(a.sort_order || 0) - Number(b.sort_order || 0)
+          if (orderDiff !== 0) return orderDiff
+
+          return String(a.session_date || '').localeCompare(
+            String(b.session_date || '')
+          )
+        })
+    : []
+
+const bookingOccursOnDate = (booking: DashboardBooking, dateValue: string) =>
+  normalizeBookingSessions(booking).some(
+    (session) => session.session_date === dateValue
+  )
+
+const bookingOverlapsDateRange = (
+  booking: DashboardBooking,
+  rangeStart: string,
+  rangeEnd: string
+) => {
+  const sessions = normalizeBookingSessions(booking)
+
+  if (sessions.length > 0) {
+    return sessions.some((session) => {
+      const sessionDate = String(session.session_date || '')
+      return sessionDate >= rangeStart && sessionDate <= rangeEnd
+    })
+  }
+
+  const startDate = String(booking.date || '')
+  const endDate = String(booking.end_date || booking.date || '')
+
+  return Boolean(startDate && startDate <= rangeEnd && endDate >= rangeStart)
+}
+
+const getBookingFirstSessionDateTime = (booking: DashboardBooking) => {
+  const firstSession = normalizeBookingSessions(booking)[0]
+
+  return getDateOnlyTime(firstSession?.session_date)
 }
 
 const getDaysUntilDate = (value?: string | null, today = new Date()) => {
@@ -120,6 +172,29 @@ const endOfMonth = (today: Date) =>
   new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999).getTime()
 
 const getBookingEndTime = (booking: DashboardBooking) => {
+  const sessions = normalizeBookingSessions(booking)
+  const finalSession = sessions[sessions.length - 1]
+  const finalSessionTime = finalSession
+    ? getDateOnlyTime(finalSession.session_date)
+    : null
+
+  if (finalSession && finalSessionTime !== null) {
+    const [hoursText, minutesText] = String(finalSession.end_time || '').split(':')
+    const hours = Number(hoursText)
+    const minutes = Number(minutesText || 0)
+    const dateOnly = String(finalSession.session_date || '').split('T')[0]
+    const [yearText, monthText, dayText] = dateOnly.split('-')
+    const year = Number(yearText)
+    const month = Number(monthText)
+    const day = Number(dayText)
+
+    if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+      return new Date(year, month - 1, day, hours, minutes).getTime()
+    }
+
+    return new Date(year, month - 1, day, 23, 59, 59, 999).getTime()
+  }
+
   const dateOnly = String(booking.end_date || booking.date || '').split('T')[0]
   const [yearText, monthText, dayText] = dateOnly.split('-')
   const year = Number(yearText)
@@ -188,8 +263,22 @@ export const getUpcomingBookings = (
       if (computedStatus === 'cancelled') return false
       if (computedStatus === 'completed') return false
 
-      const startTime = getDateOnlyTime(booking.date)
-      const endTime = getDateOnlyTime(booking.end_date || booking.date)
+      const sessions = normalizeBookingSessions(booking)
+      const hasSessions = sessions.length > 0
+      const startTime = hasSessions
+        ? Math.min(
+            ...sessions
+              .map((session) => getDateOnlyTime(session.session_date))
+              .filter((time): time is number => time !== null)
+          )
+        : getDateOnlyTime(booking.date)
+      const endTime = hasSessions
+        ? Math.max(
+            ...sessions
+              .map((session) => getDateOnlyTime(session.session_date))
+              .filter((time): time is number => time !== null)
+          )
+        : getDateOnlyTime(booking.end_date || booking.date)
 
       return (
         startTime !== null &&
@@ -200,7 +289,8 @@ export const getUpcomingBookings = (
     })
     .sort((a, b) => {
       const dateDiff =
-        (getDateOnlyTime(a.date) || 0) - (getDateOnlyTime(b.date) || 0)
+        (getBookingFirstSessionDateTime(a) || getDateOnlyTime(a.date) || 0) -
+        (getBookingFirstSessionDateTime(b) || getDateOnlyTime(b.date) || 0)
 
       if (dateDiff !== 0) return dateDiff
 
@@ -220,6 +310,14 @@ export const getTodaysBookings = (
 
     if (computedStatus === 'cancelled') return false
     if (computedStatus === 'completed') return false
+
+    const todayValue = `${today.getFullYear()}-${String(
+      today.getMonth() + 1
+    ).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
+    if (normalizeBookingSessions(booking).length > 0) {
+      return bookingOccursOnDate(booking, todayValue)
+    }
 
     const startTime = getDateOnlyTime(booking.date)
     const endTime = getDateOnlyTime(booking.end_date || booking.date)
@@ -315,7 +413,11 @@ export const getTrainingSnapshot = (
 ) => {
   return {
     bookingsThisMonth: bookings.filter((booking) =>
-      isWithinCurrentMonth(booking.date, today)
+      bookingOverlapsDateRange(
+        booking,
+        `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`,
+        `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()).padStart(2, '0')}`
+      )
     ).length,
     delegatesThisMonth: delegates.filter((delegate) =>
       isWithinCurrentMonth(delegate.created_at, today)

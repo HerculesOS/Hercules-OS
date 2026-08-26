@@ -18,6 +18,7 @@ import {
   getTrainingSnapshot,
   getUpcomingBookings,
 } from '@/lib/dashboardCommand'
+import { getBookingSessionDateSummary } from '@/lib/bookingSessions'
 
 const emptySetupCounts: SetupCounts = {
   courseTemplates: 0,
@@ -80,7 +81,7 @@ export default function Dashboard() {
 
     const { data: bookingsData } = await supabase
       .from('bookings')
-      .select('*')
+      .select('*, booking_sessions(*)')
       .eq('organisation_id', profile.organisation_id)
       .order('date', { ascending: true })
 
@@ -286,10 +287,7 @@ export default function Dashboard() {
             </p>
 
             <p className="mt-1 text-xs text-slate-500">
-              {getFormattedDate(booking.date)}
-              {booking.end_date && booking.end_date !== booking.date
-                ? ` to ${getFormattedDate(booking.end_date)}`
-                : ''}
+              {getBookingSessionDateSummary(booking, getFormattedDate)}
               {booking.start_time ? ` - ${getFormattedTimeRange(booking)}` : ''}
             </p>
 

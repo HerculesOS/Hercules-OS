@@ -39,6 +39,29 @@ describe('trainer schedule helpers', () => {
     assert.deepEqual(recent.map((booking) => booking.id), ['complete', 'past'])
   })
 
+  it('keeps non-consecutive trainer bookings upcoming until the final session ends', () => {
+    const { upcoming, recent } = splitTrainerBookings(
+      [
+        {
+          id: 'faw',
+          trainer_id: 'trainer-1',
+          date: '2026-09-01',
+          end_date: '2026-09-15',
+          status: 'scheduled',
+          booking_sessions: [
+            { session_date: '2026-09-01', end_time: '16:00', sort_order: 1 },
+            { session_date: '2026-09-08', end_time: '16:00', sort_order: 2 },
+            { session_date: '2026-09-15', end_time: '16:00', sort_order: 3 },
+          ],
+        },
+      ],
+      new Date(2026, 8, 9, 12, 0)
+    )
+
+    assert.deepEqual(upcoming.map((booking) => booking.id), ['faw'])
+    assert.deepEqual(recent, [])
+  })
+
   it('calculates register status for trainer booking rows', () => {
     assert.equal(
       getTrainerRegisterStatus('booking-1', [

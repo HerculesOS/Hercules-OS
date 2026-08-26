@@ -70,6 +70,29 @@ describe('booking status helpers', () => {
     )
   })
 
+  it('uses the final non-consecutive session to decide completion', () => {
+    const booking = {
+      status: 'scheduled',
+      date: '2026-09-01',
+      end_date: '2026-09-15',
+      end_time: '16:00',
+      booking_sessions: [
+        { session_date: '2026-09-01', end_time: '16:00', sort_order: 1 },
+        { session_date: '2026-09-08', end_time: '16:00', sort_order: 2 },
+        { session_date: '2026-09-15', end_time: '16:00', sort_order: 3 },
+      ],
+    }
+
+    assert.equal(
+      getComputedBookingStatus(booking, new Date(2026, 8, 9, 12, 0)),
+      'scheduled'
+    )
+    assert.equal(
+      getComputedBookingStatus(booking, new Date(2026, 8, 15, 17, 0)),
+      'completed'
+    )
+  })
+
   it('keeps cancelled bookings cancelled after their end time', () => {
     const status = getComputedBookingStatus(
       { status: 'cancelled', date: '2026-07-13', end_time: '17:00' },

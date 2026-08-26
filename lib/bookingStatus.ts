@@ -3,6 +3,11 @@ export type BookingStatusLike = {
   date?: string | null
   end_date?: string | null
   end_time?: string | null
+  booking_sessions?: Array<{
+    session_date?: string | null
+    end_time?: string | null
+    sort_order?: number | null
+  }> | null
 }
 
 const parseDateParts = (value?: string | null) => {
@@ -39,12 +44,30 @@ const parseTimeParts = (value?: string | null) => {
   return { hours, minutes, seconds: 0, milliseconds: 0 }
 }
 
+const getSortedSessions = (booking: BookingStatusLike) =>
+  Array.isArray(booking.booking_sessions)
+    ? booking.booking_sessions
+        .filter((session) => session.session_date)
+        .sort((a, b) => {
+          const orderDiff = Number(a.sort_order || 0) - Number(b.sort_order || 0)
+          if (orderDiff !== 0) return orderDiff
+
+          return String(a.session_date || '').localeCompare(
+            String(b.session_date || '')
+          )
+        })
+    : []
+
 export const getBookingEndDateTime = (booking: BookingStatusLike) => {
-  const dateParts = parseDateParts(booking.end_date || booking.date)
+  const sessions = getSortedSessions(booking)
+  const finalSession = sessions[sessions.length - 1]
+  const dateParts = parseDateParts(
+    finalSession?.session_date || booking.end_date || booking.date
+  )
 
   if (!dateParts) return null
 
-  const timeParts = parseTimeParts(booking.end_time)
+  const timeParts = parseTimeParts(finalSession?.end_time || booking.end_time)
 
   return new Date(
     dateParts.year,

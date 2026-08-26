@@ -6,6 +6,7 @@ const {
   getMoneySnapshot,
   getOverdueInvoices,
   getTrainingSnapshot,
+  getTodaysBookings,
   getUpcomingBookings,
   getBookingsWithIncompleteRegisters,
 } = await import('../lib/dashboardCommand.ts')
@@ -24,6 +25,28 @@ describe('dashboard command helpers', () => {
     assert.deepEqual(
       getUpcomingBookings(bookings, today).map((booking) => booking.id),
       ['today', 'week']
+    )
+  })
+
+  it('does not treat gaps between non-consecutive sessions as today', () => {
+    assert.deepEqual(
+      getTodaysBookings(
+        [
+          {
+            id: 'faw',
+            date: '2026-09-01',
+            end_date: '2026-09-15',
+            status: 'scheduled',
+            booking_sessions: [
+              { session_date: '2026-09-01', sort_order: 1 },
+              { session_date: '2026-09-08', sort_order: 2 },
+              { session_date: '2026-09-15', sort_order: 3 },
+            ],
+          },
+        ],
+        new Date(2026, 8, 9, 12, 0)
+      ),
+      []
     )
   })
 

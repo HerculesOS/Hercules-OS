@@ -9,6 +9,7 @@ import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import { getComputedBookingStatus } from '@/lib/bookingStatus'
 import { getComputedCertificateStatus } from '@/lib/certificateStatus'
 import { getComputedInvoiceStatus } from '@/lib/invoiceStatus'
+import { getBookingSessionDateSummary } from '@/lib/bookingSessions'
 
 const RELATED_PAGE_SIZE = 20
 
@@ -227,7 +228,7 @@ export default function ClientDetailPage() {
 
     const { data: bookingsData, count: bookingsTotal } = await supabase
       .from('bookings')
-      .select('*', { count: 'exact' })
+      .select('*, booking_sessions(*)', { count: 'exact' })
       .eq('client_id', clientId)
       .eq('organisation_id', currentProfile.organisation_id)
       .order('date', { ascending: false })
@@ -1178,7 +1179,9 @@ export default function ClientDetailPage() {
                 </p>
 
                 <p className="text-xs text-slate-500 mt-1">
-                  {booking.date}
+                  {getBookingSessionDateSummary(booking, (dateValue) =>
+                    dateValue ? String(dateValue) : 'Not set'
+                  )}
                   {booking.start_time ? ` · ${booking.start_time}` : ''}
                 </p>
 

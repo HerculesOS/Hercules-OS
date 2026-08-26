@@ -6,11 +6,21 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
 import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
-import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
+import { getCourseDurationDays } from '@/lib/bookingDates'
+import {
+  createDefaultBookingSessions,
+  getBookingLegacyDateFieldsFromSessions,
+  getBookingSessionDateSummary,
+  getBookingSessionDatesText,
+  getBookingSessionPayload,
+  normalizeBookingSessions,
+  type BookingSession,
+} from '@/lib/bookingSessions'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import { getComputedBookingStatus } from '@/lib/bookingStatus'
 import { getDefaultBookingContactFromClient } from '@/lib/bookingEmailRecipients'
 import ClientPicker from './ClientPicker'
+import CourseSessionsEditor from './CourseSessionsEditor'
 
 const BOOKINGS_PAGE_SIZE = 50
 
@@ -56,6 +66,9 @@ export default function BookingsPage() {
   const [endDate, setEndDate] = useState('')
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
+  const [courseSessions, setCourseSessions] = useState<BookingSession[]>(
+    createDefaultBookingSessions('', 1)
+  )
   const [location, setLocation] = useState('')
   const [autoFilledLocation, setAutoFilledLocation] = useState('')
   const [bookingContactName, setBookingContactName] = useState('')
@@ -82,6 +95,9 @@ export default function BookingsPage() {
   const [editEndDate, setEditEndDate] = useState('')
   const [editStartTime, setEditStartTime] = useState('')
   const [editEndTime, setEditEndTime] = useState('')
+  const [editCourseSessions, setEditCourseSessions] = useState<BookingSession[]>(
+    createDefaultBookingSessions('', 1)
+  )
   const [editLocation, setEditLocation] = useState('')
   const [editAutoFilledLocation, setEditAutoFilledLocation] = useState('')
   const [editBookingContactName, setEditBookingContactName] = useState('')
@@ -241,7 +257,7 @@ export default function BookingsPage() {
     const to = from + BOOKINGS_PAGE_SIZE - 1
     let bookingQuery = supabase
       .from('bookings')
-      .select('*', { count: 'exact' })
+      .select('*, booking_sessions(*)', { count: 'exact' })
       .eq('organisation_id', profile.organisation_id)
       .range(from, to)
 
@@ -336,12 +352,15 @@ export default function BookingsPage() {
   }
 
   const getFormattedDateRange = (booking: any) => {
-    const start = getFormattedDate(booking.date)
-    const endDateValue = booking.end_date || booking.date
+    return getBookingSessionDateSummary(booking, getFormattedDate)
+  }
 
-    if (!endDateValue || endDateValue === booking.date) return start
-
-    return `${start} - ${getFormattedDate(endDateValue)}`
+  const getFormattedCourseDays = (booking: any) => {
+    return getBookingSessionDatesText(
+      booking,
+      getFormattedDate,
+      getFormattedTimeRange
+    )
   }
 
   const getCertificateTemplateLabel = (template: any) => {
@@ -396,6 +415,67 @@ export default function BookingsPage() {
         bookingLocations
       )
     ).sort((a, b) => a.localeCompare(b))
+  }
+
+  const syncCourseSessions = (sessions: BookingSession[]) => {
+    const selectedCourse = courseTemplates.find((course) => course.id === courseTemplateId)
+    const durationDays = getCourseDurationDays(selectedCourse)
+    const shouldGenerateTemplateSessions =
+      sessions.length === 1 &&
+      Boolean(sessions[0]?.session_date) &&
+      !date &&
+      durationDays > 1
+    const normalizedSessions = normalizeBookingSessions({
+      booking_sessions: shouldGenerateTemplateSessions
+        ? createDefaultBookingSessions(
+            sessions[0].session_date || '',
+            durationDays,
+            sessions[0].start_time || startTime,
+            sessions[0].end_time || endTime
+          )
+        : sessions.length > 0
+          ? sessions
+          : createDefaultBookingSessions(date, 1, startTime, endTime),
+    })
+
+    setCourseSessions(normalizedSessions)
+
+    const legacyFields = getBookingLegacyDateFieldsFromSessions(normalizedSessions)
+    setDate(legacyFields.date)
+    setEndDate(legacyFields.end_date)
+    setStartTime(legacyFields.start_time || '')
+    setEndTime(legacyFields.end_time || '')
+  }
+
+  const syncEditCourseSessions = (sessions: BookingSession[]) => {
+    const selectedCourse = courseTemplates.find((course) => course.id === editCourseTemplateId)
+    const durationDays = getCourseDurationDays(selectedCourse)
+    const shouldGenerateTemplateSessions =
+      sessions.length === 1 &&
+      Boolean(sessions[0]?.session_date) &&
+      !editDate &&
+      durationDays > 1
+    const normalizedSessions = normalizeBookingSessions({
+      booking_sessions:
+        shouldGenerateTemplateSessions
+          ? createDefaultBookingSessions(
+              sessions[0].session_date || '',
+              durationDays,
+              sessions[0].start_time || editStartTime,
+              sessions[0].end_time || editEndTime
+            )
+          : sessions.length > 0
+          ? sessions
+          : createDefaultBookingSessions(editDate, 1, editStartTime, editEndTime),
+    })
+
+    setEditCourseSessions(normalizedSessions)
+
+    const legacyFields = getBookingLegacyDateFieldsFromSessions(normalizedSessions)
+    setEditDate(legacyFields.date)
+    setEditEndDate(legacyFields.end_date)
+    setEditStartTime(legacyFields.start_time || '')
+    setEditEndTime(legacyFields.end_time || '')
   }
 
   const setClientAndMaybeLocation = (selectedClientId: string) => {
@@ -501,29 +581,29 @@ export default function BookingsPage() {
   }
 
   const updateDateWithTemplateDuration = (nextDate: string) => {
-    setDate(nextDate)
-
     const selectedCourse = courseTemplates.find((course) => course.id === courseTemplateId)
     const durationDays = getCourseDurationDays(selectedCourse)
+    const nextSessions = createDefaultBookingSessions(
+      nextDate,
+      durationDays,
+      startTime,
+      endTime
+    )
 
-    if (durationDays > 1) {
-      setEndDate(getDefaultEndDateForDuration(nextDate, durationDays))
-    } else if (!endDate || endDate === date) {
-      setEndDate(nextDate)
-    }
+    syncCourseSessions(nextSessions)
   }
 
   const updateEditDateWithTemplateDuration = (nextDate: string) => {
-    setEditDate(nextDate)
-
     const selectedCourse = courseTemplates.find((course) => course.id === editCourseTemplateId)
     const durationDays = getCourseDurationDays(selectedCourse)
+    const nextSessions = createDefaultBookingSessions(
+      nextDate,
+      durationDays,
+      editStartTime,
+      editEndTime
+    )
 
-    if (durationDays > 1) {
-      setEditEndDate(getDefaultEndDateForDuration(nextDate, durationDays))
-    } else if (!editEndDate || editEndDate === editDate) {
-      setEditEndDate(nextDate)
-    }
+    syncEditCourseSessions(nextSessions)
   }
 
   const applyCourseTemplate = (templateId: string) => {
@@ -550,9 +630,22 @@ export default function BookingsPage() {
     }
 
     const durationDays = getCourseDurationDays(selectedCourse)
+    const templateStartTime = selectedCourse.default_start_time
+      ? String(selectedCourse.default_start_time).slice(0, 5)
+      : startTime
+    const templateEndTime = selectedCourse.default_end_time
+      ? String(selectedCourse.default_end_time).slice(0, 5)
+      : endTime
 
     if (date) {
-      setEndDate(getDefaultEndDateForDuration(date, durationDays))
+      syncCourseSessions(
+        createDefaultBookingSessions(
+          date,
+          durationDays,
+          templateStartTime,
+          templateEndTime
+        )
+      )
     }
 
     if (selectedCourse.notes && !notes) {
@@ -591,9 +684,22 @@ export default function BookingsPage() {
     }
 
     const durationDays = getCourseDurationDays(selectedCourse)
+    const templateStartTime = selectedCourse.default_start_time
+      ? String(selectedCourse.default_start_time).slice(0, 5)
+      : editStartTime
+    const templateEndTime = selectedCourse.default_end_time
+      ? String(selectedCourse.default_end_time).slice(0, 5)
+      : editEndTime
 
     if (editDate) {
-      setEditEndDate(getDefaultEndDateForDuration(editDate, durationDays))
+      syncEditCourseSessions(
+        createDefaultBookingSessions(
+          editDate,
+          durationDays,
+          templateStartTime,
+          templateEndTime
+        )
+      )
     }
 
     if (selectedCourse.notes && !editNotes) {
@@ -609,18 +715,23 @@ export default function BookingsPage() {
   }
 
   const addBooking = async () => {
+    const normalizedSessions = normalizeBookingSessions({
+      booking_sessions: courseSessions,
+    })
+    const legacyFields = getBookingLegacyDateFieldsFromSessions(normalizedSessions)
+
     if (courseDeliveryType === 'private' && !clientId) {
       alert('Private bookings require a client')
       return
     }
 
-    if (!courseName || !date) {
-      alert('Course and date are required')
+    if (!courseName || !legacyFields.date || normalizedSessions.length === 0) {
+      alert('Course and at least one course day are required')
       return
     }
 
-    if (endDate && endDate < date) {
-      alert('End date must be on or after the start date')
+    if (normalizedSessions.some((session) => !session.session_date)) {
+      alert('Each course day needs a date')
       return
     }
 
@@ -635,7 +746,7 @@ export default function BookingsPage() {
 
     const selectedClient = clients.find((c) => c.id === clientId)
 
-    const { error } = await supabase.from('bookings').insert({
+    const { data: bookingData, error } = await supabase.from('bookings').insert({
       user_id: userData.user?.id,
       organisation_id: organisationId,
       course_delivery_type: courseDeliveryType,
@@ -647,10 +758,10 @@ export default function BookingsPage() {
           ? 'Public course'
           : selectedClient?.name || null,
       course_name: courseName,
-      date,
-      end_date: endDate || date,
-      start_time: startTime || null,
-      end_time: endTime || null,
+      date: legacyFields.date,
+      end_date: legacyFields.end_date || legacyFields.date,
+      start_time: legacyFields.start_time,
+      end_time: legacyFields.end_time,
       location,
       booking_contact_name:
         courseDeliveryType === 'private' ? bookingContactName.trim() || null : null,
@@ -661,10 +772,20 @@ export default function BookingsPage() {
       price: parsedPrice.value,
       notes,
       status: 'scheduled',
-    })
+    }).select('id').single()
 
     if (error) {
       alert(error.message)
+      return
+    }
+
+    const { error: sessionError } = await supabase.from('booking_sessions').insert(
+      getBookingSessionPayload(bookingData.id, organisationId, normalizedSessions)
+    )
+
+    if (sessionError) {
+      await supabase.from('bookings').delete().eq('id', bookingData.id)
+      alert(`Booking was not created because course days could not be saved: ${sessionError.message}`)
       return
     }
 
@@ -678,6 +799,7 @@ export default function BookingsPage() {
     setEndDate('')
     setStartTime('')
     setEndTime('')
+    setCourseSessions(createDefaultBookingSessions('', 1))
     setLocation('')
     setAutoFilledLocation('')
     setBookingContactName('')
@@ -703,6 +825,7 @@ export default function BookingsPage() {
     setEditEndDate(booking.end_date || booking.date || '')
     setEditStartTime(booking.start_time || '')
     setEditEndTime(booking.end_time || '')
+    setEditCourseSessions(normalizeBookingSessions(booking))
     setEditLocation(booking.location || '')
     setEditAutoFilledLocation('')
     setEditBookingContactName(booking.booking_contact_name || '')
@@ -725,6 +848,7 @@ export default function BookingsPage() {
     setEditEndDate('')
     setEditStartTime('')
     setEditEndTime('')
+    setEditCourseSessions(createDefaultBookingSessions('', 1))
     setEditLocation('')
     setEditAutoFilledLocation('')
     setEditBookingContactName('')
@@ -736,18 +860,23 @@ export default function BookingsPage() {
   }
 
   const saveBookingEdit = async (bookingId: string) => {
+    const normalizedSessions = normalizeBookingSessions({
+      booking_sessions: editCourseSessions,
+    })
+    const legacyFields = getBookingLegacyDateFieldsFromSessions(normalizedSessions)
+
     if (editCourseDeliveryType === 'private' && !editClientId) {
       alert('Private bookings require a client')
       return
     }
 
-    if (!editCourseName || !editDate) {
-      alert('Course and date are required')
+    if (!editCourseName || !legacyFields.date || normalizedSessions.length === 0) {
+      alert('Course and at least one course day are required')
       return
     }
 
-    if (editEndDate && editEndDate < editDate) {
-      alert('End date must be on or after the start date')
+    if (normalizedSessions.some((session) => !session.session_date)) {
+      alert('Each course day needs a date')
       return
     }
 
@@ -774,10 +903,10 @@ export default function BookingsPage() {
             ? 'Public course'
             : selectedClient?.name || null,
         course_name: editCourseName,
-        date: editDate,
-        end_date: editEndDate || editDate,
-        start_time: editStartTime || null,
-        end_time: editEndTime || null,
+        date: legacyFields.date,
+        end_date: legacyFields.end_date || legacyFields.date,
+        start_time: legacyFields.start_time,
+        end_time: legacyFields.end_time,
         location: editLocation,
         booking_contact_name:
           editCourseDeliveryType === 'private'
@@ -796,10 +925,32 @@ export default function BookingsPage() {
       })
       .eq('id', bookingId)
 
+    if (error) {
+      setSavingEdit(false)
+      alert(error.message)
+      return
+    }
+
+    const { error: deleteSessionsError } = await supabase
+      .from('booking_sessions')
+      .delete()
+      .eq('booking_id', bookingId)
+      .eq('organisation_id', organisationId)
+
+    if (deleteSessionsError) {
+      setSavingEdit(false)
+      alert(deleteSessionsError.message)
+      return
+    }
+
+    const { error: insertSessionsError } = await supabase
+      .from('booking_sessions')
+      .insert(getBookingSessionPayload(bookingId, organisationId, normalizedSessions))
+
     setSavingEdit(false)
 
-    if (error) {
-      alert(error.message)
+    if (insertSessionsError) {
+      alert(insertSessionsError.message)
       return
     }
 
@@ -922,7 +1073,7 @@ export default function BookingsPage() {
         to: recipientEmail,
         clientName: booking.client_name || getBookingClientDisplay(booking),
         courseName: booking.course_name,
-        date: getFormattedDate(booking.date),
+        date: getFormattedCourseDays(booking),
         startTime: getFormattedTimeRange(booking.start_time, null),
         endTime: booking.end_time ? getFormattedTimeRange(booking.end_time, null) : '',
         location: booking.location,
@@ -1281,35 +1432,15 @@ export default function BookingsPage() {
               onChange={(e) => setCourseName(e.target.value)}
             />
 
-            <input
-              className={inputClass}
-              type="date"
-              value={date}
-              onChange={(e) => updateDateWithTemplateDuration(e.target.value)}
+            <CourseSessionsEditor
+              sessions={
+                courseSessions.length > 0
+                  ? courseSessions
+                  : createDefaultBookingSessions(date, 1, startTime, endTime)
+              }
+              onChange={syncCourseSessions}
+              inputClass={inputClass}
             />
-
-            <input
-              className={inputClass}
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
-
-            <div className="grid grid-cols-2 gap-3">
-              <input
-                className={inputClass}
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
-
-              <input
-                className={inputClass}
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-              />
-            </div>
 
             <input
               className={inputClass}
@@ -1468,7 +1599,7 @@ export default function BookingsPage() {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-4 text-xs text-slate-600">
                         <div>
-                          <p className="text-slate-400">Date</p>
+                          <p className="text-slate-400">Course days</p>
                           <p className="font-medium text-slate-800 mt-1">
                             {getFormattedDateRange(booking)}
                           </p>
@@ -1496,10 +1627,18 @@ export default function BookingsPage() {
                         </div>
                       </div>
 
-                      {(booking.location || booking.notes) && (
+                      {(normalizeBookingSessions(booking).length > 1 ||
+                        booking.location ||
+                        booking.notes) && (
                         <div className="mt-3 text-xs text-slate-600">
-                          {booking.location && (
+                          {normalizeBookingSessions(booking).length > 1 && (
                             <p>
+                              <span className="text-slate-400">Dates:</span> {getFormattedCourseDays(booking)}
+                            </p>
+                          )}
+
+                          {booking.location && (
+                            <p className={normalizeBookingSessions(booking).length > 1 ? 'mt-1' : ''}>
                               <span className="text-slate-400">Location:</span> {booking.location}
                             </p>
                           )}
@@ -1788,32 +1927,19 @@ export default function BookingsPage() {
                           onChange={(e) => setEditCourseName(e.target.value)}
                         />
 
-                        <input
-                          className={inputClass}
-                          type="date"
-                          value={editDate}
-                          onChange={(e) => updateEditDateWithTemplateDuration(e.target.value)}
-                        />
-
-                        <input
-                          className={inputClass}
-                          type="date"
-                          value={editEndDate}
-                          onChange={(e) => setEditEndDate(e.target.value)}
-                        />
-
-                        <input
-                          className={inputClass}
-                          type="time"
-                          value={editStartTime}
-                          onChange={(e) => setEditStartTime(e.target.value)}
-                        />
-
-                        <input
-                          className={inputClass}
-                          type="time"
-                          value={editEndTime}
-                          onChange={(e) => setEditEndTime(e.target.value)}
+                        <CourseSessionsEditor
+                          sessions={
+                            editCourseSessions.length > 0
+                              ? editCourseSessions
+                              : createDefaultBookingSessions(
+                                  editDate,
+                                  1,
+                                  editStartTime,
+                                  editEndTime
+                                )
+                          }
+                          onChange={syncEditCourseSessions}
+                          inputClass={inputClass}
                         />
 
                         <input

@@ -6,11 +6,23 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTime, formatAppTimeRange } from '@/lib/formatters'
 import { parseOptionalNonNegativeNumber } from '@/lib/numberValidation'
-import { getCourseDurationDays, getDefaultEndDateForDuration } from '@/lib/bookingDates'
+import { getCourseDurationDays } from '@/lib/bookingDates'
+import {
+  bookingOccursOnDate,
+  bookingOverlapsDateRange,
+  createDefaultBookingSessions,
+  getBookingLegacyDateFieldsFromSessions,
+  getBookingSessionForDate,
+  getBookingSessionDateSummary,
+  getBookingSessionPayload,
+  normalizeBookingSessions,
+  type BookingSession,
+} from '@/lib/bookingSessions'
 import { getComputedBookingStatus } from '@/lib/bookingStatus'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import { getDefaultBookingContactFromClient } from '@/lib/bookingEmailRecipients'
 import ClientPicker from '../bookings/ClientPicker'
+import CourseSessionsEditor from '../bookings/CourseSessionsEditor'
 
 export default function CalendarPage() {
   const [bookings, setBookings] = useState<any[]>([])
@@ -35,6 +47,7 @@ export default function CalendarPage() {
   const [endDate, setEndDate] = useState('')
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
+  const [courseSessions, setCourseSessions] = useState<BookingSession[]>([])
   const [location, setLocation] = useState('')
   const [autoFilledLocation, setAutoFilledLocation] = useState('')
   const [bookingContactName, setBookingContactName] = useState('')
@@ -102,11 +115,15 @@ export default function CalendarPage() {
       .eq('organisation_id', profile.organisation_id)
       .order('name', { ascending: true })
 
-    const { data: bookingsData } = await supabase
-      .from('bookings')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
-      .order('date', { ascending: true })
+    const bookingsData = await fetchPaginatedImportRecords<any>(
+      async (from, to) =>
+        await supabase
+          .from('bookings')
+          .select('*, booking_sessions(*)')
+          .eq('organisation_id', profile.organisation_id)
+          .order('date', { ascending: true })
+          .range(from, to)
+    )
 
     setOrganisation(organisationData || null)
     setClients(clientsData || [])
@@ -151,24 +168,8 @@ export default function CalendarPage() {
 
   const getBookingsForDate = (dateValue: string) => {
     return bookings.filter((booking) => {
-      const bookingStart = booking.date
-      const bookingEnd = booking.end_date || booking.date
-
-      return bookingStart <= dateValue && bookingEnd >= dateValue
+      return bookingOccursOnDate(booking, dateValue)
     })
-  }
-
-  const bookingOverlapsDateRange = (
-    booking: any,
-    rangeStart: string,
-    rangeEnd: string
-  ) => {
-    const bookingStart = booking.date
-    const bookingEnd = booking.end_date || booking.date
-
-    if (!bookingStart) return false
-
-    return bookingStart <= rangeEnd && bookingEnd >= rangeStart
   }
 
   const getClientForBooking = (booking: any) => {
@@ -201,6 +202,37 @@ export default function CalendarPage() {
           .filter(Boolean)
       )
     ).sort((a, b) => a.localeCompare(b))
+  }
+
+  const syncCourseSessions = (sessions: BookingSession[]) => {
+    const selectedCourse = courseTemplates.find((course) => course.id === courseTemplateId)
+    const durationDays = getCourseDurationDays(selectedCourse)
+    const shouldGenerateTemplateSessions =
+      sessions.length === 1 &&
+      Boolean(sessions[0]?.session_date) &&
+      !date &&
+      durationDays > 1
+    const normalizedSessions = normalizeBookingSessions({
+      booking_sessions:
+        shouldGenerateTemplateSessions
+          ? createDefaultBookingSessions(
+              sessions[0].session_date || '',
+              durationDays,
+              sessions[0].start_time || startTime,
+              sessions[0].end_time || endTime
+            )
+          : sessions.length > 0
+          ? sessions
+          : createDefaultBookingSessions(date, 1, startTime, endTime),
+    })
+
+    setCourseSessions(normalizedSessions)
+
+    const legacyFields = getBookingLegacyDateFieldsFromSessions(normalizedSessions)
+    setDate(legacyFields.date)
+    setEndDate(legacyFields.end_date)
+    setStartTime(legacyFields.start_time || '')
+    setEndTime(legacyFields.end_time || '')
   }
 
   const setClientAndMaybeLocation = (selectedClientId: string) => {
@@ -255,22 +287,23 @@ export default function CalendarPage() {
   }
 
   const updateDateWithTemplateDuration = (nextDate: string) => {
-    setDate(nextDate)
-
     const selectedCourse = courseTemplates.find((course) => course.id === courseTemplateId)
     const durationDays = getCourseDurationDays(selectedCourse)
+    const nextSessions = createDefaultBookingSessions(
+      nextDate,
+      durationDays,
+      startTime,
+      endTime
+    )
 
-    if (durationDays > 1) {
-      setEndDate(getDefaultEndDateForDuration(nextDate, durationDays))
-    } else if (!endDate || endDate === date) {
-      setEndDate(nextDate)
-    }
+    syncCourseSessions(nextSessions)
   }
 
   const openCreateForm = (dateValue: string) => {
     setSelectedDate(dateValue)
     setDate(dateValue)
     setEndDate(dateValue)
+    setCourseSessions(createDefaultBookingSessions(dateValue, 1, startTime, endTime))
     setShowCreateForm(true)
   }
 
@@ -287,6 +320,7 @@ export default function CalendarPage() {
     setEndDate('')
     setStartTime('')
     setEndTime('')
+    setCourseSessions([])
     setLocation('')
     setAutoFilledLocation('')
     setBookingContactName('')
@@ -321,9 +355,22 @@ export default function CalendarPage() {
     }
 
     const durationDays = getCourseDurationDays(selectedCourse)
+    const templateStartTime = selectedCourse.default_start_time
+      ? String(selectedCourse.default_start_time).slice(0, 5)
+      : startTime
+    const templateEndTime = selectedCourse.default_end_time
+      ? String(selectedCourse.default_end_time).slice(0, 5)
+      : endTime
 
     if (date) {
-      setEndDate(getDefaultEndDateForDuration(date, durationDays))
+      syncCourseSessions(
+        createDefaultBookingSessions(
+          date,
+          durationDays,
+          templateStartTime,
+          templateEndTime
+        )
+      )
     }
 
     if (selectedCourse.notes && !notes) {
@@ -340,18 +387,23 @@ export default function CalendarPage() {
   }
 
   const createBooking = async () => {
+    const normalizedSessions = normalizeBookingSessions({
+      booking_sessions: courseSessions,
+    })
+    const legacyFields = getBookingLegacyDateFieldsFromSessions(normalizedSessions)
+
     if (courseDeliveryType === 'private' && !clientId) {
       alert('Private bookings require a client')
       return
     }
 
-    if (!courseName || !date) {
-      alert('Course and date are required')
+    if (!courseName || !legacyFields.date || normalizedSessions.length === 0) {
+      alert('Course and at least one course day are required')
       return
     }
 
-    if (endDate && endDate < date) {
-      alert('End date must be on or after the start date')
+    if (normalizedSessions.some((session) => !session.session_date)) {
+      alert('Each course day needs a date')
       return
     }
 
@@ -366,7 +418,7 @@ export default function CalendarPage() {
 
     const selectedClient = clients.find((client) => client.id === clientId)
 
-    const { error } = await supabase.from('bookings').insert({
+    const { data: bookingData, error } = await supabase.from('bookings').insert({
       user_id: userData.user?.id,
       organisation_id: organisationId,
       course_delivery_type: courseDeliveryType,
@@ -378,10 +430,10 @@ export default function CalendarPage() {
           ? 'Public course'
           : selectedClient?.name || null,
       course_name: courseName,
-      date,
-      end_date: endDate || date,
-      start_time: startTime || null,
-      end_time: endTime || null,
+      date: legacyFields.date,
+      end_date: legacyFields.end_date || legacyFields.date,
+      start_time: legacyFields.start_time,
+      end_time: legacyFields.end_time,
       location,
       booking_contact_name:
         courseDeliveryType === 'private' ? bookingContactName.trim() || null : null,
@@ -392,10 +444,20 @@ export default function CalendarPage() {
       price: parsedPrice.value,
       notes,
       status: 'scheduled',
-    })
+    }).select('id').single()
 
     if (error) {
       alert(error.message)
+      return
+    }
+
+    const { error: sessionError } = await supabase.from('booking_sessions').insert(
+      getBookingSessionPayload(bookingData.id, organisationId, normalizedSessions)
+    )
+
+    if (sessionError) {
+      await supabase.from('bookings').delete().eq('id', bookingData.id)
+      alert(`Booking was not created because course days could not be saved: ${sessionError.message}`)
       return
     }
 
@@ -764,6 +826,8 @@ export default function CalendarPage() {
                   <div className="flex flex-col gap-1">
                     {dayBookings.slice(0, 3).map((booking) => {
                       const deliveryType = getBookingDeliveryType(booking)
+                      const session = getBookingSessionForDate(booking, dateValue)
+                      const sessionStartTime = session?.start_time || booking.start_time
 
                       return (
                         <Link
@@ -774,7 +838,7 @@ export default function CalendarPage() {
                           )}`}
                         >
                           <p className="text-[11px] font-semibold truncate text-slate-950">
-                            {booking.start_time ? `${getFormattedTime(booking.start_time)} · ` : ''}
+                            {sessionStartTime ? `${getFormattedTime(sessionStartTime)} · ` : ''}
                             {booking.course_name}
                           </p>
 
@@ -890,10 +954,10 @@ export default function CalendarPage() {
 
                         <div className="grid grid-cols-2 gap-3 mt-3 text-xs text-slate-600">
                           <div>
-                            <p className="text-slate-400">Date</p>
+                            <p className="text-slate-400">Course days</p>
 
                             <p className="font-medium text-slate-800 mt-1">
-                              {getFormattedDate(booking.date)}
+                              {getBookingSessionDateSummary(booking, getFormattedDate)}
                             </p>
                           </div>
 
@@ -1062,35 +1126,15 @@ export default function CalendarPage() {
                   onChange={(e) => setCourseName(e.target.value)}
                 />
 
-                <input
-                  className={inputClass}
-                  type="date"
-                  value={date}
-                  onChange={(e) => updateDateWithTemplateDuration(e.target.value)}
+                <CourseSessionsEditor
+                  sessions={
+                    courseSessions.length > 0
+                      ? courseSessions
+                      : createDefaultBookingSessions(date, 1, startTime, endTime)
+                  }
+                  onChange={syncCourseSessions}
+                  inputClass={inputClass}
                 />
-
-                <input
-                  className={inputClass}
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                />
-
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    className={inputClass}
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                  />
-
-                  <input
-                    className={inputClass}
-                    type="time"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                  />
-                </div>
 
                 <input
                   className={inputClass}

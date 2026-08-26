@@ -62,6 +62,23 @@ describe('joining instruction helpers', () => {
     )
   })
 
+  it('uses the first actual session date for scheduled joining instructions', () => {
+    assert.equal(
+      isBookingDueForJoiningInstructions(
+        {
+          date: '2026-09-01',
+          status: 'scheduled',
+          booking_sessions: [
+            { session_date: '2026-09-08', sort_order: 1 },
+            { session_date: '2026-09-15', sort_order: 2 },
+          ],
+        },
+        new Date(2026, 8, 1)
+      ),
+      true
+    )
+  })
+
   it('skips cancelled bookings and bookings already sent', () => {
     assert.equal(
       isBookingDueForJoiningInstructions(

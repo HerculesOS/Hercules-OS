@@ -12,6 +12,7 @@ import {
   getTrainerRegisterStatus,
   getTrainerWorkloadStats,
 } from '@/lib/trainerSchedule'
+import { getBookingSessionDateSummary } from '@/lib/bookingSessions'
 
 const TRAINER_BOOKINGS_PAGE_SIZE = 20
 
@@ -149,7 +150,7 @@ export default function TrainerDetailPage() {
 
     let upcomingQuery = supabase
       .from('bookings')
-      .select('*', { count: 'exact' })
+      .select('*, booking_sessions(*)', { count: 'exact' })
       .eq('trainer_id', trainerId)
       .eq('organisation_id', profile.organisation_id)
       .order('date', { ascending: true })
@@ -159,7 +160,7 @@ export default function TrainerDetailPage() {
 
     let recentQuery = supabase
       .from('bookings')
-      .select('*', { count: 'exact' })
+      .select('*, booking_sessions(*)', { count: 'exact' })
       .eq('trainer_id', trainerId)
       .eq('organisation_id', profile.organisation_id)
       .order('date', { ascending: false })
@@ -309,10 +310,7 @@ export default function TrainerDetailPage() {
             </div>
 
             <p className="mt-2 text-sm text-slate-600">
-              {getFormattedDate(booking.date)}
-              {booking.end_date && booking.end_date !== booking.date
-                ? ` to ${getFormattedDate(booking.end_date)}`
-                : ''}
+              {getBookingSessionDateSummary(booking, getFormattedDate)}
               {booking.start_time ? ` - ${getFormattedTimeRange(booking)}` : ''}
             </p>
 

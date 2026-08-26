@@ -171,16 +171,27 @@ export const replaceJoiningInstructionPlaceholders = (
 export const isBookingDueForJoiningInstructions = (
   booking: {
     date?: string | null
+    booking_sessions?: Array<{
+      session_date?: string | null
+      sort_order?: number | null
+    }> | null
     status?: string | null
     joining_instructions_sent_at?: string | null
   },
   today = new Date()
 ) => {
-  if (!booking.date) return false
+  const firstSession = Array.isArray(booking.booking_sessions)
+    ? booking.booking_sessions
+        .filter((session) => session.session_date)
+        .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))[0]
+    : null
+  const startDate = firstSession?.session_date || booking.date
+
+  if (!startDate) return false
   if (booking.joining_instructions_sent_at) return false
   if (booking.status === 'cancelled') return false
 
-  const [yearText, monthText, dayText] = String(booking.date).split('T')[0].split('-')
+  const [yearText, monthText, dayText] = String(startDate).split('T')[0].split('-')
   const year = Number(yearText)
   const month = Number(monthText)
   const day = Number(dayText)
