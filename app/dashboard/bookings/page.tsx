@@ -21,6 +21,7 @@ import { getComputedBookingStatus } from '@/lib/bookingStatus'
 import { getDefaultBookingContactFromClient } from '@/lib/bookingEmailRecipients'
 import ClientPicker from './ClientPicker'
 import CourseSessionsEditor from './CourseSessionsEditor'
+import SearchableSelect from '../components/SearchableSelect'
 
 const BOOKINGS_PAGE_SIZE = 50
 
@@ -376,6 +377,26 @@ export default function BookingsPage() {
 
     return parts.join(' · ')
   }
+
+  const trainerOptions = trainers.map((trainer) => ({
+    value: trainer.id,
+    label: trainer.name || 'Unnamed trainer',
+    detail: [trainer.email, trainer.phone].filter(Boolean).join(' - '),
+  }))
+  const courseTemplateOptions = courseTemplates.map((course) => ({
+    value: course.id,
+    label: `${course.code ? `${course.code} - ` : ''}${course.name || 'Course template'}`,
+    detail: [course.default_start_time, course.default_end_time]
+      .filter(Boolean)
+      .join(' - '),
+    searchText: [course.notes, course.price].filter(Boolean).join(' '),
+  }))
+
+  const certificateTemplateOptions = certificateTemplates.map((template) => ({
+    value: template.id,
+    label: getCertificateTemplateLabel(template),
+    detail: template.is_default ? 'Default template' : '',
+  }))
 
   const findMatchingCertificateTemplateForCourse = (courseTemplateIdValue: string) => {
     if (!courseTemplateIdValue) return null
@@ -1247,19 +1268,14 @@ export default function BookingsPage() {
               <option value="cancelled">Cancelled</option>
             </select>
 
-            <select
-              className={inputClass}
-              value={trainerFilter}
-              onChange={(e) => setTrainerFilter(e.target.value)}
-            >
-              <option value="all">All trainers</option>
-
-              {trainers.map((trainer) => (
-                <option key={trainer.id} value={trainer.id}>
-                  {trainer.name}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              options={trainerOptions}
+              value={trainerFilter === 'all' ? '' : trainerFilter}
+              onChange={(value) => setTrainerFilter(value || 'all')}
+              inputClass={inputClass}
+              placeholder="All trainers"
+              emptyMessage="No trainers found"
+            />
 
             <select
               className={inputClass}
@@ -1382,48 +1398,32 @@ export default function BookingsPage() {
               </div>
             )}
 
-            <select
-              className={inputClass}
+            <SearchableSelect
+              options={trainerOptions}
               value={trainerId}
-              onChange={(e) => setTrainerId(e.target.value)}
-            >
-              <option value="">Assign trainer</option>
+              onChange={setTrainerId}
+              inputClass={inputClass}
+              placeholder="Search trainers..."
+              emptyMessage="No trainers found"
+            />
 
-              {trainers.map((trainer) => (
-                <option key={trainer.id} value={trainer.id}>
-                  {trainer.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className={inputClass}
+            <SearchableSelect
+              options={courseTemplateOptions}
               value={courseTemplateId}
-              onChange={(e) => applyCourseTemplate(e.target.value)}
-            >
-              <option value="">Select course template</option>
+              onChange={applyCourseTemplate}
+              inputClass={inputClass}
+              placeholder="Search course templates..."
+              emptyMessage="No course templates found"
+            />
 
-              {courseTemplates.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.code ? `${course.code} - ` : ''}
-                  {course.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className={inputClass}
+            <SearchableSelect
+              options={certificateTemplateOptions}
               value={certificateTemplateId}
-              onChange={(e) => setCertificateTemplateId(e.target.value)}
-            >
-              <option value="">Use automatic certificate template</option>
-
-              {certificateTemplates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {getCertificateTemplateLabel(template)}
-                </option>
-              ))}
-            </select>
+              onChange={setCertificateTemplateId}
+              inputClass={inputClass}
+              placeholder="Search certificate templates..."
+              emptyMessage="No certificate templates found"
+            />
 
             <input
               className={inputClass}
@@ -1877,48 +1877,34 @@ export default function BookingsPage() {
                           </div>
                         )}
 
-                        <select
-                          className={inputClass}
+                        <SearchableSelect
+                          options={trainerOptions}
                           value={editTrainerId}
-                          onChange={(e) => setEditTrainerId(e.target.value)}
-                        >
-                          <option value="">Assign trainer</option>
+                          onChange={setEditTrainerId}
+                          inputClass={inputClass}
+                          placeholder="Search trainers..."
+                          emptyMessage="No trainers found"
+                        />
 
-                          {trainers.map((trainer) => (
-                            <option key={trainer.id} value={trainer.id}>
-                              {trainer.name}
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          className={`${inputClass} md:col-span-2`}
+                        <SearchableSelect
+                          options={courseTemplateOptions}
                           value={editCourseTemplateId}
-                          onChange={(e) => applyEditCourseTemplate(e.target.value)}
-                        >
-                          <option value="">Apply course template</option>
+                          onChange={applyEditCourseTemplate}
+                          inputClass={inputClass}
+                          placeholder="Search course templates..."
+                          emptyMessage="No course templates found"
+                          className="md:col-span-2"
+                        />
 
-                          {courseTemplates.map((course) => (
-                            <option key={course.id} value={course.id}>
-                              {course.code ? `${course.code} - ` : ''}
-                              {course.name}
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          className={`${inputClass} md:col-span-2`}
+                        <SearchableSelect
+                          options={certificateTemplateOptions}
                           value={editCertificateTemplateId}
-                          onChange={(e) => setEditCertificateTemplateId(e.target.value)}
-                        >
-                          <option value="">Use automatic certificate template</option>
-
-                          {certificateTemplates.map((template) => (
-                            <option key={template.id} value={template.id}>
-                              {getCertificateTemplateLabel(template)}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={setEditCertificateTemplateId}
+                          inputClass={inputClass}
+                          placeholder="Search certificate templates..."
+                          emptyMessage="No certificate templates found"
+                          className="md:col-span-2"
+                        />
 
                         <input
                           className={inputClass}

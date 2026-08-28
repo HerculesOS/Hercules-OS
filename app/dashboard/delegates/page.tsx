@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { fetchPaginatedImportRecords } from '@/lib/importCsv'
+import SearchableSelect from '../components/SearchableSelect'
 
 const DELEGATES_PAGE_SIZE = 50
 
@@ -55,6 +56,15 @@ export default function DelegatesPage() {
 
   const panelHeaderClass =
     'px-4 py-3 border-b border-slate-200'
+
+  const clientOptions = clients.map((client) => ({
+    value: client.id,
+    label: client.company || client.name || 'Client',
+    detail: [client.name, client.email, client.phone].filter(Boolean).join(' · '),
+    searchText: [client.company, client.name, client.email, client.phone, client.address]
+      .filter(Boolean)
+      .join(' '),
+  }))
 
   const getMatchingClientIds = async (organisationIdValue: string, searchTerm: string) => {
     const cleanTerm = cleanSearchTerm(searchTerm)
@@ -377,19 +387,14 @@ export default function DelegatesPage() {
           </div>
 
           <div className="p-4 flex flex-col gap-3">
-            <select
-              className={inputClass}
+            <SearchableSelect
+              options={clientOptions}
               value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-            >
-              <option value="">Select client / company</option>
-
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.company} - {client.name}
-                </option>
-              ))}
-            </select>
+              onChange={setClientId}
+              inputClass={inputClass}
+              placeholder="Search client / company"
+              emptyMessage="No clients found."
+            />
 
             <input
               className={inputClass}
@@ -592,19 +597,15 @@ export default function DelegatesPage() {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <select
-                            className={`${inputClass} md:col-span-2`}
+                          <SearchableSelect
+                            options={clientOptions}
                             value={editClientId}
-                            onChange={(e) => setEditClientId(e.target.value)}
-                          >
-                            <option value="">Select client / company</option>
-
-                            {clients.map((client) => (
-                              <option key={client.id} value={client.id}>
-                                {client.company} - {client.name}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={setEditClientId}
+                            inputClass={inputClass}
+                            placeholder="Search client / company"
+                            emptyMessage="No clients found."
+                            className="md:col-span-2"
+                          />
 
                           <input
                             className={inputClass}

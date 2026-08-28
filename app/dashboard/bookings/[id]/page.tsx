@@ -44,6 +44,7 @@ import {
   type ResultStatus,
 } from '@/lib/attendanceRegister'
 import CourseSessionsEditor from '../CourseSessionsEditor'
+import SearchableSelect from '../../components/SearchableSelect'
 
 export default function BookingDetailPage() {
   const params = useParams()
@@ -530,6 +531,40 @@ export default function BookingDetailPage() {
       getFormattedTimeRange
     )
   }
+
+  const getCertificateTemplateLabel = (template: any) => {
+    const linkedCourse = courseTemplates.find(
+      (course) => course.id === template.course_template_id
+    )
+    const parts = [
+      template.name || 'Certificate template',
+      template.is_default ? 'Default' : '',
+      linkedCourse ? linkedCourse.name : template.course_template_id ? 'Course-specific' : 'Any course',
+    ].filter(Boolean)
+
+    return parts.join(' · ')
+  }
+
+  const trainerOptions = trainers.map((trainer) => ({
+    value: trainer.id,
+    label: trainer.name || 'Unnamed trainer',
+    detail: [trainer.email, trainer.phone].filter(Boolean).join(' - '),
+  }))
+
+  const courseTemplateOptions = courseTemplates.map((course) => ({
+    value: course.id,
+    label: `${course.code ? `${course.code} - ` : ''}${course.name || 'Course template'}`,
+    detail: [course.default_start_time, course.default_end_time]
+      .filter(Boolean)
+      .join(' - '),
+    searchText: [course.notes, course.price].filter(Boolean).join(' '),
+  }))
+
+  const certificateTemplateOptions = certificateTemplates.map((template) => ({
+    value: template.id,
+    label: getCertificateTemplateLabel(template),
+    detail: template.is_default ? 'Default template' : '',
+  }))
 
   const syncEditCourseSessions = (sessions: BookingSession[]) => {
     const selectedCourse = courseTemplates.find((course) => course.id === editCourseTemplateId)
@@ -2493,52 +2528,34 @@ export default function BookingDetailPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <select
-                    className={`${inputClass} md:col-span-2`}
+                  <SearchableSelect
+                    options={courseTemplateOptions}
                     value={editCourseTemplateId}
-                    onChange={(e) => applyCourseTemplate(e.target.value)}
-                  >
-                    <option value="">Apply course template</option>
+                    onChange={applyCourseTemplate}
+                    inputClass={inputClass}
+                    placeholder="Search course templates..."
+                    emptyMessage="No course templates found"
+                    className="md:col-span-2"
+                  />
 
-                    {courseTemplates.map((course) => (
-                      <option key={course.id} value={course.id}>
-                        {course.code ? `${course.code} - ` : ''}
-                        {course.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    className={`${inputClass} md:col-span-2`}
+                  <SearchableSelect
+                    options={certificateTemplateOptions}
                     value={editCertificateTemplateId}
-                    onChange={(e) => setEditCertificateTemplateId(e.target.value)}
-                  >
-                    <option value="">Use automatic certificate template</option>
+                    onChange={setEditCertificateTemplateId}
+                    inputClass={inputClass}
+                    placeholder="Search certificate templates..."
+                    emptyMessage="No certificate templates found"
+                    className="md:col-span-2"
+                  />
 
-                    {certificateTemplates.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {template.name}
-                        {template.is_default ? ' · Default' : ''}
-                        {template.course_template_id
-                          ? ` · ${courseTemplates.find((course) => course.id === template.course_template_id)?.name || 'Course-specific'}`
-                          : ' · Any course'}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    className={inputClass}
+                  <SearchableSelect
+                    options={trainerOptions}
                     value={editTrainerId}
-                    onChange={(e) => setEditTrainerId(e.target.value)}
-                  >
-                    <option value="">Assign trainer</option>
-
-                    {trainers.map((trainer) => (
-                      <option key={trainer.id} value={trainer.id}>
-                        {trainer.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setEditTrainerId}
+                    inputClass={inputClass}
+                    placeholder="Search trainers..."
+                    emptyMessage="No trainers found"
+                  />
 
                   <input
                     className={inputClass}
@@ -2970,21 +2987,32 @@ export default function BookingDetailPage() {
                   </div>
                 )}
 
-                <select
-                  className={inputClass}
+                <SearchableSelect
+                  options={availableDelegates.map((delegate) => ({
+                    value: delegate.id,
+                    label: delegate.full_name || 'Unnamed delegate',
+                    detail: [
+                      delegate.email,
+                      isPublicBooking() ? getDelegateClientDisplay(delegate) : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' - '),
+                    searchText: [delegate.phone, delegate.notes].filter(Boolean).join(' '),
+                  }))}
                   value={existingDelegateId}
-                  onChange={(e) => setExistingDelegateId(e.target.value)}
-                >
-                  <option value="">Select existing delegate</option>
-
-                  {availableDelegates.map((delegate) => (
-                    <option key={delegate.id} value={delegate.id}>
-                      {delegate.full_name}
-                      {delegate.email ? ` - ${delegate.email}` : ''}
-                      {isPublicBooking() ? ` - ${getDelegateClientDisplay(delegate)}` : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setExistingDelegateId}
+                  inputClass={inputClass}
+                  placeholder={
+                    isPublicBooking()
+                      ? 'Search above, then choose a delegate...'
+                      : 'Search delegates...'
+                  }
+                  emptyMessage={
+                    isPublicBooking()
+                      ? 'No searched delegates available'
+                      : 'No unattached delegates found'
+                  }
+                />
 
                 <button
                   className={buttonPrimary}

@@ -23,6 +23,7 @@ import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import { getDefaultBookingContactFromClient } from '@/lib/bookingEmailRecipients'
 import ClientPicker from '../bookings/ClientPicker'
 import CourseSessionsEditor from '../bookings/CourseSessionsEditor'
+import SearchableSelect from '../components/SearchableSelect'
 
 export default function CalendarPage() {
   const [bookings, setBookings] = useState<any[]>([])
@@ -159,6 +160,27 @@ export default function CalendarPage() {
   ) => {
     return formatAppTimeRange(startTimeValue, endTimeValue, organisation)
   }
+
+  const trainerOptions = trainers.map((trainer) => ({
+    value: trainer.id,
+    label: trainer.name || 'Unnamed trainer',
+    detail: [trainer.email, trainer.phone].filter(Boolean).join(' - '),
+  }))
+
+  const courseTemplateOptions = courseTemplates.map((course) => ({
+    value: course.id,
+    label: `${course.code ? `${course.code} - ` : ''}${course.name || 'Course template'}`,
+    detail: [course.default_start_time, course.default_end_time]
+      .filter(Boolean)
+      .join(' - '),
+    searchText: [course.notes, course.price].filter(Boolean).join(' '),
+  }))
+
+  const certificateTemplateOptions = certificateTemplates.map((template) => ({
+    value: template.id,
+    label: template.name || 'Certificate template',
+    detail: template.is_default ? 'Default template' : '',
+  }))
 
   const formatDate = (year: number, month: number, day: number) => {
     const monthValue = String(month + 1).padStart(2, '0')
@@ -1083,48 +1105,32 @@ export default function CalendarPage() {
                   </div>
                 )}
 
-                <select
-                  className={inputClass}
+                <SearchableSelect
+                  options={trainerOptions}
                   value={trainerId}
-                  onChange={(e) => setTrainerId(e.target.value)}
-                >
-                  <option value="">Assign trainer</option>
+                  onChange={setTrainerId}
+                  inputClass={inputClass}
+                  placeholder="Search trainers..."
+                  emptyMessage="No trainers found"
+                />
 
-                  {trainers.map((trainer) => (
-                    <option key={trainer.id} value={trainer.id}>
-                      {trainer.name}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  className={inputClass}
+                <SearchableSelect
+                  options={courseTemplateOptions}
                   value={courseTemplateId}
-                  onChange={(e) => applyCourseTemplate(e.target.value)}
-                >
-                  <option value="">Select course template</option>
+                  onChange={applyCourseTemplate}
+                  inputClass={inputClass}
+                  placeholder="Search course templates..."
+                  emptyMessage="No course templates found"
+                />
 
-                  {courseTemplates.map((course) => (
-                    <option key={course.id} value={course.id}>
-                      {course.code ? `${course.code} - ` : ''}
-                      {course.name}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  className={inputClass}
+                <SearchableSelect
+                  options={certificateTemplateOptions}
                   value={certificateTemplateId}
-                  onChange={(e) => setCertificateTemplateId(e.target.value)}
-                >
-                  <option value="">Use automatic certificate template</option>
-
-                  {certificateTemplates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setCertificateTemplateId}
+                  inputClass={inputClass}
+                  placeholder="Search certificate templates..."
+                  emptyMessage="No certificate templates found"
+                />
 
                 <input
                   className={inputClass}

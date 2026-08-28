@@ -15,12 +15,22 @@ import {
   normalizeOptionalPoNumber,
 } from '@/lib/invoiceWorkflow'
 import { getPublicDelegateInvoiceLineItems, type InvoiceLineItem } from '@/lib/publicBookingPricing'
+import SearchableSelect from '../components/SearchableSelect'
 import jsPDF from 'jspdf'
 
 const INVOICES_PAGE_SIZE = 50
 
 const cleanSearchTerm = (value: string) =>
   value.trim().replace(/[%_,]/g, ' ')
+
+const mergeRowsById = (existingRows: any[], incomingRows: any[]) =>
+  Array.from(
+    new Map(
+      [...existingRows, ...incomingRows]
+        .filter((row) => row?.id)
+        .map((row) => [row.id, row])
+    ).values()
+  )
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<any[]>([])
@@ -39,6 +49,8 @@ export default function InvoicesPage() {
   const [securedInvoicesCount, setSecuredInvoicesCount] = useState(0)
 
   const [bookingId, setBookingId] = useState('')
+  const [bookingSearch, setBookingSearch] = useState('')
+  const [searchingBookings, setSearchingBookings] = useState(false)
   const [invoiceTargetType, setInvoiceTargetType] = useState('booking_client')
   const [invoiceClientId, setInvoiceClientId] = useState('')
   const [invoiceDelegateId, setInvoiceDelegateId] = useState('')
@@ -84,7 +96,8 @@ export default function InvoicesPage() {
 
   const selectBookingForCreate = (
     selectedBookingId: string,
-    availableBookings = bookings
+    availableBookings = bookings,
+    organisationIdValue = organisationId
   ) => {
     const booking = availableBookings.find(
       (bookingItem) => bookingItem.id === selectedBookingId
@@ -116,6 +129,58 @@ export default function InvoicesPage() {
       setDueDate(calculateDefaultInvoiceDueDate(booking))
       setDueDateWasAutoFilled(true)
     }
+
+    if (booking && organisationIdValue) {
+      loadInvoiceBookingContext(booking.id, organisationIdValue)
+    }
+  }
+
+  const loadInvoiceBookingContext = async (
+    selectedBookingId: string,
+    organisationIdValue = organisationId
+  ) => {
+    if (!selectedBookingId || !organisationIdValue) return
+
+    const selectedBooking = bookings.find((booking) => booking.id === selectedBookingId)
+
+    const { data: linksData } = await supabase
+      .from('booking_delegates')
+      .select('*')
+      .eq('organisation_id', organisationIdValue)
+      .eq('booking_id', selectedBookingId)
+
+    const links = linksData || []
+    const delegateIds = Array.from(
+      new Set(links.map((link: any) => link.delegate_id).filter(Boolean))
+    )
+
+    const delegatesResult = delegateIds.length > 0
+      ? await supabase
+          .from('delegates')
+          .select('*')
+          .eq('organisation_id', organisationIdValue)
+          .in('id', delegateIds)
+      : { data: [] }
+
+    const loadedDelegates = delegatesResult.data || []
+    const clientIds = Array.from(
+      new Set([
+        selectedBooking?.client_id,
+        ...loadedDelegates.map((delegate: any) => delegate.client_id),
+      ].filter(Boolean))
+    )
+
+    const clientsResult = clientIds.length > 0
+      ? await supabase
+          .from('clients')
+          .select('*')
+          .eq('organisation_id', organisationIdValue)
+          .in('id', clientIds)
+      : { data: [] }
+
+    setBookingDelegateLinks((current) => mergeRowsById(current, links))
+    setDelegates((current) => mergeRowsById(current, loadedDelegates))
+    setClients((current) => mergeRowsById(current, clientsResult.data || []))
   }
 
   const getMatchingRelatedIds = async (
@@ -159,6 +224,52 @@ export default function InvoicesPage() {
       bookingIds: (bookingsResult.data || []).map((booking) => booking.id),
       clientIds: (clientsResult.data || []).map((client) => client.id),
       delegateIds: (delegatesResult.data || []).map((delegate) => delegate.id),
+    }
+  }
+
+  const searchInvoiceBookings = async () => {
+    const cleanTerm = cleanSearchTerm(bookingSearch)
+
+    if (!organisationId || cleanTerm.length < 2) {
+      alert('Type at least 2 characters to search bookings.')
+      return
+    }
+
+    setSearchingBookings(true)
+
+    const term = `%${cleanTerm}%`
+    const relatedIds = await getMatchingRelatedIds(cleanTerm, organisationId)
+    const filters = [
+      `course_name.ilike.${term}`,
+      `client_name.ilike.${term}`,
+      `location.ilike.${term}`,
+      `status.ilike.${term}`,
+      `course_delivery_type.ilike.${term}`,
+    ]
+
+    if (relatedIds.clientIds.length > 0) {
+      filters.push(`client_id.in.(${relatedIds.clientIds.join(',')})`)
+    }
+
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('organisation_id', organisationId)
+      .or(filters.join(','))
+      .order('date', { ascending: false })
+      .limit(50)
+
+    setSearchingBookings(false)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    setBookings((current) => mergeRowsById(current, data || []))
+
+    if ((data || []).length === 0) {
+      alert('No matching bookings found.')
     }
   }
 
@@ -414,7 +525,7 @@ export default function InvoicesPage() {
     const allowedStatuses = ['all', 'draft', 'sent', 'overdue', 'paid']
 
     if (requestedBookingId) {
-      selectBookingForCreate(requestedBookingId, bookingRows || [])
+      selectBookingForCreate(requestedBookingId, bookingRows || [], profile.organisation_id)
     }
 
     if (requestedSearch) {
@@ -535,6 +646,46 @@ export default function InvoicesPage() {
 
   const selectedBooking = getBookingById(bookingId)
   const selectedBookingDeliveryType = getBookingDeliveryType(selectedBooking)
+  const bookingOptions = bookings.map((booking) => ({
+    value: booking.id,
+    label: getBookingOptionLabel(booking),
+    detail: [booking.course_name, booking.client_name, booking.location, booking.status]
+      .filter(Boolean)
+      .join(' · '),
+    searchText: [
+      booking.course_name,
+      booking.client_name,
+      booking.location,
+      booking.status,
+      getBookingDeliveryType(booking),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  }))
+  const publicBookingClientOptions = getPublicBookingClientOptions(selectedBooking).map((client: any) => ({
+    value: client.id,
+    label: client.company || client.name || 'Client',
+    detail: [client.name, client.email, client.phone].filter(Boolean).join(' · '),
+    searchText: [client.company, client.name, client.email, client.phone]
+      .filter(Boolean)
+      .join(' '),
+  }))
+  const selectedBookingDelegateOptions = getDelegatesForSelectedBooking().map((delegate) => ({
+    value: delegate.id,
+    label: delegate.full_name || 'Delegate',
+    detail: [delegate.email, delegate.phone, getClientById(delegate.client_id)?.company]
+      .filter(Boolean)
+      .join(' · '),
+    searchText: [
+      delegate.full_name,
+      delegate.email,
+      delegate.phone,
+      getClientById(delegate.client_id)?.company,
+      getClientById(delegate.client_id)?.name,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  }))
 
   const resetCreateForm = () => {
     setBookingId('')
@@ -1366,19 +1517,42 @@ export default function InvoicesPage() {
           </div>
 
           <div className="p-4 flex flex-col gap-3">
-            <select
-              className={inputClass}
-              value={bookingId}
-              onChange={(e) => selectBookingForCreate(e.target.value)}
-            >
-              <option value="">Select booking</option>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                className={`${inputClass} flex-1`}
+                placeholder="Search bookings by course, client, location or status"
+                value={bookingSearch}
+                onChange={(e) => setBookingSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    searchInvoiceBookings()
+                  }
+                }}
+              />
 
-              {bookings.map((booking) => (
-                <option key={booking.id} value={booking.id}>
-                  {getBookingOptionLabel(booking)}
-                </option>
-              ))}
-            </select>
+              <button
+                type="button"
+                className={buttonSecondary}
+                disabled={searchingBookings}
+                onClick={searchInvoiceBookings}
+              >
+                {searchingBookings ? 'Searching...' : 'Search bookings'}
+              </button>
+            </div>
+
+            <SearchableSelect
+              options={bookingOptions}
+              value={bookingId}
+              onChange={(value) => selectBookingForCreate(value)}
+              inputClass={inputClass}
+              placeholder="Select booking"
+              emptyMessage="No bookings found. Search to load older bookings."
+            />
+
+            <p className="text-xs text-slate-500">
+              Showing recent and searched bookings. Search to find older bookings.
+            </p>
 
             {selectedBooking && (
               <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600">
@@ -1435,45 +1609,35 @@ export default function InvoicesPage() {
                 </select>
 
                 {invoiceTargetType === 'client' && (
-                  <select
-                    className={inputClass}
+                  <SearchableSelect
+                    options={publicBookingClientOptions}
                     value={invoiceClientId}
-                    onChange={(e) => setInvoiceClientId(e.target.value)}
-                  >
-                    <option value="">Select client/company</option>
-
-                    {getPublicBookingClientOptions(selectedBooking).map((client: any) => (
-                      <option key={client.id} value={client.id}>
-                        {client.company} - {client.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setInvoiceClientId}
+                    inputClass={inputClass}
+                    placeholder="Search client/company"
+                    emptyMessage="No clients found for this booking."
+                  />
                 )}
 
                 {invoiceTargetType === 'delegate' && (
-                  <select
-                    className={inputClass}
+                  <SearchableSelect
+                    options={selectedBookingDelegateOptions}
                     value={invoiceDelegateId}
-                    onChange={(e) => {
-                      const delegateId = e.target.value
+                    onChange={(delegateId) => {
                       const delegate = getDelegateById(delegateId)
 
                       setInvoiceDelegateId(delegateId)
 
                       if (delegate?.email) {
                         setCustomRecipientEmail(delegate.email)
+                      } else {
+                        setCustomRecipientEmail('')
                       }
                     }}
-                  >
-                    <option value="">Select delegate</option>
-
-                    {getDelegatesForSelectedBooking().map((delegate) => (
-                      <option key={delegate.id} value={delegate.id}>
-                        {delegate.full_name}
-                        {delegate.email ? ` - ${delegate.email}` : ''}
-                      </option>
-                    ))}
-                  </select>
+                    inputClass={inputClass}
+                    placeholder="Search delegate"
+                    emptyMessage="No delegates found for this booking."
+                  />
                 )}
 
                 {invoiceTargetType === 'custom' && (

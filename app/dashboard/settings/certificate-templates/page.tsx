@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
+import SearchableSelect from '../../components/SearchableSelect'
 
 export default function CertificateTemplatesPage() {
   const [templates, setTemplates] = useState<any[]>([])
@@ -65,6 +66,17 @@ export default function CertificateTemplatesPage() {
     '{{business_name}}',
     '{{trainer_name}}',
   ]
+
+  const courseTemplateOptions = courseTemplates.map((course) => ({
+    value: course.id,
+    label: `${course.code ? `${course.code} - ` : ''}${course.name}`,
+    detail: [course.default_start_time, course.default_end_time]
+      .filter(Boolean)
+      .join(' · '),
+    searchText: [course.code, course.name, course.notes]
+      .filter(Boolean)
+      .join(' '),
+  }))
 
   const load = async () => {
     const profile = await getOrCreateAccount()
@@ -366,20 +378,14 @@ export default function CertificateTemplatesPage() {
               onChange={(e) => setName(e.target.value)}
             />
 
-            <select
-              className={inputClass}
+            <SearchableSelect
+              options={courseTemplateOptions}
               value={courseTemplateId}
-              onChange={(e) => setCourseTemplateId(e.target.value)}
-            >
-              <option value="">Any course</option>
-
-              {courseTemplates.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.code ? `${course.code} - ` : ''}
-                  {course.name}
-                </option>
-              ))}
-            </select>
+              onChange={setCourseTemplateId}
+              inputClass={inputClass}
+              placeholder="Any course"
+              emptyMessage="No course templates found."
+            />
 
             <input
               className={inputClass}
@@ -584,20 +590,14 @@ export default function CertificateTemplatesPage() {
                           onChange={(e) => setEditName(e.target.value)}
                         />
 
-                        <select
-                          className={inputClass}
+                        <SearchableSelect
+                          options={courseTemplateOptions}
                           value={editCourseTemplateId}
-                          onChange={(e) => setEditCourseTemplateId(e.target.value)}
-                        >
-                          <option value="">Any course</option>
-
-                          {courseTemplates.map((course) => (
-                            <option key={course.id} value={course.id}>
-                              {course.code ? `${course.code} - ` : ''}
-                              {course.name}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={setEditCourseTemplateId}
+                          inputClass={inputClass}
+                          placeholder="Any course"
+                          emptyMessage="No course templates found."
+                        />
 
                         <input
                           className={`${inputClass} md:col-span-2`}
