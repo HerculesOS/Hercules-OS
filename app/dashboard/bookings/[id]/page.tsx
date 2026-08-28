@@ -9,6 +9,8 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate, formatAppTimeRange } from '@/lib/formatters'
 import { createCertificateVerificationId } from '@/lib/certificateVerification'
+import { getNextInvoiceNumber, isDuplicateInvoiceNumberError } from '@/lib/invoiceNumbers'
+import { calculateDefaultInvoiceDueDate, normalizeOptionalPoNumber } from '@/lib/invoiceWorkflow'
 import { getCourseDurationDays } from '@/lib/bookingDates'
 import {
   createDefaultBookingSessions,
@@ -27,6 +29,11 @@ import { getJoiningInstructionDraft } from '@/lib/joiningInstructions'
 import { getBookingEmailRecipientSummary } from '@/lib/bookingEmailRecipients'
 import { getCertificateEmailSentDisplay } from '@/lib/certificateEmailTracking'
 import { validateOptionalDelegateEmail } from '@/lib/delegateEmailEditing'
+import {
+  buildPublicDelegateInvoiceLineDescription,
+  getPublicBookingPricingSummary,
+  getPublicDelegateInvoiceSummary,
+} from '@/lib/publicBookingPricing'
 import {
   getBulkCertificateEmailSummary,
   getBulkCertificateGenerationSummary,
@@ -89,6 +96,8 @@ export default function BookingDetailPage() {
   const [recipientEmail, setRecipientEmail] = useState('')
 
   const [existingDelegateId, setExistingDelegateId] = useState('')
+  const [delegateSearch, setDelegateSearch] = useState('')
+  const [searchingDelegates, setSearchingDelegates] = useState(false)
   const [delegateClientId, setDelegateClientId] = useState('')
   const [delegateName, setDelegateName] = useState('')
   const [delegateEmail, setDelegateEmail] = useState('')
@@ -105,6 +114,12 @@ export default function BookingDetailPage() {
   const [savingDelegateEmail, setSavingDelegateEmail] = useState(false)
 
   const [selectedDelegateIds, setSelectedDelegateIds] = useState<string[]>([])
+  const [selectedInvoiceDelegateIds, setSelectedInvoiceDelegateIds] = useState<string[]>([])
+  const [savingPublicPrices, setSavingPublicPrices] = useState(false)
+  const [creatingPublicInvoice, setCreatingPublicInvoice] = useState(false)
+  const [publicInvoiceVatRate, setPublicInvoiceVatRate] = useState('0')
+  const [publicInvoicePoNumber, setPublicInvoicePoNumber] = useState('')
+  const [publicInvoiceMessage, setPublicInvoiceMessage] = useState('')
   const [certificateIssueDate, setCertificateIssueDate] = useState('')
   const [certificateExpiryDate, setCertificateExpiryDate] = useState('')
   const [creatingCertificates, setCreatingCertificates] = useState(false)
@@ -244,16 +259,6 @@ export default function BookingDetailPage() {
       .eq('id', currentProfile.organisation_id)
       .single()
 
-    const clientsData = await fetchPaginatedImportRecords<any>(
-      async (from, to) =>
-        await supabase
-          .from('clients')
-          .select('*')
-          .eq('organisation_id', currentProfile.organisation_id)
-          .order('company', { ascending: true })
-          .range(from, to)
-    )
-
     const { data: bookingData, error: bookingError } = await supabase
       .from('bookings')
       .select('*, booking_sessions(*)')
@@ -327,27 +332,6 @@ export default function BookingDetailPage() {
       .eq('organisation_id', currentProfile.organisation_id)
       .not('location', 'is', null)
 
-    let allClientDelegatesData: any[] = []
-
-    if (bookingData.course_delivery_type === 'public') {
-      const { data } = await supabase
-        .from('delegates')
-        .select('*')
-        .eq('organisation_id', currentProfile.organisation_id)
-        .order('full_name', { ascending: true })
-
-      allClientDelegatesData = data || []
-    } else {
-      const { data } = await supabase
-        .from('delegates')
-        .select('*')
-        .eq('client_id', bookingData.client_id)
-        .eq('organisation_id', currentProfile.organisation_id)
-        .order('full_name', { ascending: true })
-
-      allClientDelegatesData = data || []
-    }
-
     const { data: bookingLinksData } = await supabase
       .from('booking_delegates')
       .select('*')
@@ -385,8 +369,58 @@ export default function BookingDetailPage() {
           result_status: normalizedRegister.result_status,
           attendance_notes: link.attendance_notes || '',
           register_marked_at: link.register_marked_at || null,
+          unit_price: Number(link.unit_price || 0),
+          invoice_id: link.invoice_id || null,
+          invoice_line_description: link.invoice_line_description || '',
         }
       })
+    }
+
+    const delegateClientIds = bookingDelegatesData
+      .map((delegate) => delegate.client_id)
+      .filter(Boolean)
+    const visibleClientIds = Array.from(
+      new Set([
+        bookingData.client_id,
+        clientData?.id,
+        ...delegateClientIds,
+      ].filter(Boolean))
+    )
+    let clientsData: any[] = []
+
+    if (bookingData.course_delivery_type === 'public') {
+      clientsData = await fetchPaginatedImportRecords<any>(
+        async (from, to) =>
+          await supabase
+            .from('clients')
+            .select('id, company, name, email, phone, address')
+            .eq('organisation_id', currentProfile.organisation_id)
+            .order('company', { ascending: true })
+            .range(from, to)
+      )
+    } else if (visibleClientIds.length > 0) {
+      const { data } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('organisation_id', currentProfile.organisation_id)
+        .in('id', visibleClientIds)
+        .order('company', { ascending: true })
+
+      clientsData = data || []
+    }
+
+    let allClientDelegatesData: any[] = []
+
+    if (bookingData.course_delivery_type !== 'public' && bookingData.client_id) {
+      const { data } = await supabase
+        .from('delegates')
+        .select('*')
+        .eq('client_id', bookingData.client_id)
+        .eq('organisation_id', currentProfile.organisation_id)
+        .order('full_name', { ascending: true })
+        .limit(250)
+
+      allClientDelegatesData = data || []
     }
 
     const selectedTemplate = getCertificateTemplateFromLists(
@@ -460,6 +494,9 @@ export default function BookingDetailPage() {
   const getFormattedDate = (dateValue: string | null | undefined) => {
     return formatAppDate(dateValue, organisation)
   }
+
+  const formatMoney = (value: number | string | null | undefined) =>
+    `£${Number(value || 0).toFixed(2)}`
 
   const getFormattedTimeRange = (
     startTimeValue: string | null | undefined,
@@ -1113,6 +1150,52 @@ export default function BookingDetailPage() {
     load()
   }
 
+  const searchAvailableDelegates = async () => {
+    const cleanSearch = delegateSearch.trim()
+
+    if (isPublicBooking() && cleanSearch.length < 2) {
+      alert('Type at least 2 characters to search delegates.')
+      return
+    }
+
+    setSearchingDelegates(true)
+
+    let query = supabase
+      .from('delegates')
+      .select('*')
+      .eq('organisation_id', profile.organisation_id)
+      .order('full_name', { ascending: true })
+      .limit(50)
+
+    if (isPublicBooking()) {
+      const escapedSearch = cleanSearch.replace(/[%_,]/g, ' ')
+      query = query.or(
+        `full_name.ilike.%${escapedSearch}%,email.ilike.%${escapedSearch}%,phone.ilike.%${escapedSearch}%`
+      )
+    } else {
+      query = query.eq('client_id', booking.client_id)
+    }
+
+    const { data, error } = await query
+
+    setSearchingDelegates(false)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    setAllClientDelegates((previous) => {
+      const rowsById = new Map(
+        [...previous, ...(data || [])].map((delegate) => [delegate.id, delegate])
+      )
+
+      return Array.from(rowsById.values()).sort((a, b) =>
+        String(a.full_name || '').localeCompare(String(b.full_name || ''))
+      )
+    })
+  }
+
   const startEditingDelegate = (delegate: any) => {
     setEditingDelegateId(delegate.id)
     setEditDelegateName(delegate.full_name || '')
@@ -1233,6 +1316,9 @@ export default function BookingDetailPage() {
     setSelectedDelegateIds((previous) =>
       previous.filter((id) => id !== delegateId)
     )
+    setSelectedInvoiceDelegateIds((previous) =>
+      previous.filter((id) => id !== delegateId)
+    )
 
     load()
   }
@@ -1253,6 +1339,291 @@ export default function BookingDetailPage() {
 
   const clearSelectedDelegates = () => {
     setSelectedDelegateIds([])
+  }
+
+  const publicPricingSummary = getPublicBookingPricingSummary(delegates)
+  const publicInvoiceSummary = getPublicDelegateInvoiceSummary(
+    delegates,
+    selectedInvoiceDelegateIds
+  )
+
+  const updatePublicDelegatePrice = (delegateId: string, value: string) => {
+    setPublicInvoiceMessage('')
+    setDelegates((previous) =>
+      previous.map((delegate) =>
+        delegate.id === delegateId ? { ...delegate, unit_price: value } : delegate
+      )
+    )
+  }
+
+  const toggleInvoiceDelegateSelection = (delegateId: string) => {
+    setPublicInvoiceMessage('')
+    setSelectedInvoiceDelegateIds((previous) => {
+      if (previous.includes(delegateId)) {
+        return previous.filter((id) => id !== delegateId)
+      }
+
+      return [...previous, delegateId]
+    })
+  }
+
+  const selectUninvoicedPublicDelegates = () => {
+    setPublicInvoiceMessage('')
+    setSelectedInvoiceDelegateIds(
+      delegates
+        .filter((delegate) => !delegate.invoice_id)
+        .map((delegate) => delegate.id)
+    )
+  }
+
+  const clearInvoiceDelegateSelection = () => {
+    setPublicInvoiceMessage('')
+    setSelectedInvoiceDelegateIds([])
+  }
+
+  const savePublicDelegatePrices = async () => {
+    const parsedRows = delegates.map((delegate) => {
+      const parsedPrice = parseOptionalNonNegativeNumber(
+        String(delegate.unit_price ?? ''),
+        `${delegate.full_name || 'Delegate'} price`
+      )
+
+      return {
+        delegate,
+        parsedPrice,
+      }
+    })
+
+    const firstError = parsedRows.find((row) => row.parsedPrice.error)
+
+    if (firstError?.parsedPrice.error) {
+      alert(firstError.parsedPrice.error)
+      return
+    }
+
+    setSavingPublicPrices(true)
+
+    for (const row of parsedRows) {
+      if (!row.delegate.booking_delegate_id) continue
+
+      const { error } = await supabase
+        .from('booking_delegates')
+        .update({ unit_price: row.parsedPrice.value || 0 })
+        .eq('id', row.delegate.booking_delegate_id)
+        .eq('organisation_id', profile.organisation_id)
+
+      if (error) {
+        setSavingPublicPrices(false)
+        alert(error.message)
+        return
+      }
+    }
+
+    setSavingPublicPrices(false)
+    setPublicInvoiceMessage('Delegate prices saved.')
+    load()
+  }
+
+  const loadExistingInvoiceNumbers = async () => {
+    try {
+      const data = await fetchPaginatedImportRecords<{ invoice_number: string | null }>(
+        async (from, to) =>
+          await supabase
+            .from('invoices')
+            .select('invoice_number')
+            .eq('organisation_id', profile.organisation_id)
+            .range(from, to)
+      )
+
+      return data.map((invoice) => invoice.invoice_number)
+    } catch {
+      return invoices.map((invoice) => invoice.invoice_number)
+    }
+  }
+
+  const createPublicDelegateInvoice = async () => {
+    if (!isPublicBooking()) return
+
+    if (publicInvoiceSummary.selectedCount === 0) {
+      alert('Select at least one uninvoiced delegate first.')
+      return
+    }
+
+    if (publicInvoiceSummary.uninvoicedCount === 0) {
+      alert('The selected delegates have already been invoiced.')
+      return
+    }
+
+    if (publicInvoiceSummary.hasMixedClients) {
+      alert('Select delegates from one client at a time, or use the main Invoices page for custom recipients.')
+      return
+    }
+
+    if (!publicInvoiceSummary.hasClientRecipient || !publicInvoiceSummary.clientId) {
+      alert('Selected public delegates need a client before a client invoice can be created.')
+      return
+    }
+
+    const recipientClient = clients.find(
+      (clientItem) => clientItem.id === publicInvoiceSummary.clientId
+    )
+
+    if (!recipientClient) {
+      alert('Client could not be found for the selected delegates.')
+      return
+    }
+
+    const parsedInvoiceRows = publicInvoiceSummary.readyToInvoice.map((delegate) => {
+      const parsedPrice = parseOptionalNonNegativeNumber(
+        String(delegate.unit_price ?? ''),
+        `${delegate.full_name || 'Delegate'} price`
+      )
+
+      return {
+        delegate,
+        parsedPrice,
+      }
+    })
+
+    const firstPriceError = parsedInvoiceRows.find((row) => row.parsedPrice.error)
+    const parsedVatRate = parseOptionalNonNegativeNumber(
+      publicInvoiceVatRate,
+      'VAT rate'
+    )
+
+    if (firstPriceError?.parsedPrice.error) {
+      alert(firstPriceError.parsedPrice.error)
+      return
+    }
+
+    if (parsedVatRate.error) {
+      alert(parsedVatRate.error)
+      return
+    }
+
+    const netAmount = parsedInvoiceRows.reduce(
+      (total, row) => total + (row.parsedPrice.value || 0),
+      0
+    )
+    const numericVatRate = parsedVatRate.value || 0
+    const vatAmount = netAmount * (numericVatRate / 100)
+    const totalAmount = netAmount + vatAmount
+
+    if (netAmount <= 0) {
+      alert('Set a delegate price greater than £0 before creating an invoice.')
+      return
+    }
+
+    if (publicInvoiceSummary.readyToInvoice.some((delegate) => !delegate.booking_delegate_id)) {
+      alert('One or more selected delegates are missing their booking link. Refresh the page and try again.')
+      return
+    }
+
+    const { data: userData } = await supabase.auth.getUser()
+    let createdInvoice: any = null
+    let error: any = null
+
+    setCreatingPublicInvoice(true)
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const existingInvoiceNumbers = await loadExistingInvoiceNumbers()
+      const invoiceNumber = getNextInvoiceNumber(existingInvoiceNumbers)
+
+      const { data, error: insertError } = await supabase
+        .from('invoices')
+        .insert({
+          user_id: userData.user?.id,
+          organisation_id: profile.organisation_id,
+          booking_id: booking.id,
+          client_id: recipientClient.id,
+          delegate_id: null,
+          invoice_target_type: 'client',
+          recipient_name: recipientClient.company || recipientClient.name || 'Client',
+          recipient_email: recipientClient.email || '',
+          client_name: recipientClient.company || recipientClient.name || 'Client',
+          invoice_number: invoiceNumber,
+          amount: netAmount,
+          vat_rate: numericVatRate,
+          vat_amount: vatAmount,
+          total_amount: totalAmount,
+          due_date: calculateDefaultInvoiceDueDate(booking) || null,
+          po_number: normalizeOptionalPoNumber(publicInvoicePoNumber),
+          status: 'draft',
+        })
+        .select('*')
+        .single()
+
+      createdInvoice = data
+      error = insertError
+
+      if (!error || !isDuplicateInvoiceNumberError(error)) {
+        break
+      }
+    }
+
+    if (error || !createdInvoice) {
+      setCreatingPublicInvoice(false)
+      alert(error?.message || 'Invoice could not be created')
+      return
+    }
+
+    const updatedDelegateLinkIds: string[] = []
+
+    for (const row of parsedInvoiceRows) {
+      const delegate = row.delegate
+
+      const { data: updatedLink, error: linkError } = await supabase
+        .from('booking_delegates')
+        .update({
+          unit_price: row.parsedPrice.value || 0,
+          invoice_id: createdInvoice.id,
+          invoice_line_description: buildPublicDelegateInvoiceLineDescription(
+            delegate,
+            booking.course_name
+          ),
+        })
+        .eq('id', delegate.booking_delegate_id)
+        .eq('organisation_id', profile.organisation_id)
+        .is('invoice_id', null)
+        .select('id')
+        .single()
+
+      if (linkError) {
+        if (updatedDelegateLinkIds.length > 0) {
+          await supabase
+            .from('booking_delegates')
+            .update({ invoice_id: null, invoice_line_description: null })
+            .in('id', updatedDelegateLinkIds)
+            .eq('organisation_id', profile.organisation_id)
+        }
+
+        await supabase
+          .from('invoices')
+          .delete()
+          .eq('id', createdInvoice.id)
+          .eq('organisation_id', profile.organisation_id)
+
+        setCreatingPublicInvoice(false)
+        alert(
+          `Invoice could not be linked to all selected delegates, so the new invoice was rolled back: ${linkError.message}`
+        )
+        load()
+        return
+      }
+
+      if (updatedLink?.id) {
+        updatedDelegateLinkIds.push(updatedLink.id)
+      }
+    }
+
+    setCreatingPublicInvoice(false)
+    setSelectedInvoiceDelegateIds([])
+    setPublicInvoiceVatRate('0')
+    setPublicInvoicePoNumber('')
+    setPublicInvoiceMessage(
+      `Created invoice ${createdInvoice.invoice_number} for ${publicInvoiceSummary.uninvoicedCount} delegate(s).`
+    )
+    load()
   }
 
   const updateDelegateRegisterField = (
@@ -2574,6 +2945,31 @@ export default function BookingDetailPage() {
               </h3>
 
               <div className="flex flex-col gap-3">
+                {isPublicBooking() && (
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      className={`${inputClass} flex-1`}
+                      placeholder="Search delegates by name, email or phone..."
+                      value={delegateSearch}
+                      onChange={(e) => setDelegateSearch(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          searchAvailableDelegates()
+                        }
+                      }}
+                    />
+
+                    <button
+                      className={buttonSecondary}
+                      onClick={searchAvailableDelegates}
+                      disabled={searchingDelegates}
+                    >
+                      {searchingDelegates ? 'Searching...' : 'Search'}
+                    </button>
+                  </div>
+                )}
+
                 <select
                   className={inputClass}
                   value={existingDelegateId}
@@ -2600,7 +2996,7 @@ export default function BookingDetailPage() {
                 {availableDelegates.length === 0 && (
                   <p className="text-xs text-slate-500">
                     {isPublicBooking()
-                      ? 'No unattached delegates available.'
+                      ? 'Search for an existing delegate to attach.'
                       : 'No unattached delegates available for this client.'}
                   </p>
                 )}
@@ -2988,11 +3384,117 @@ export default function BookingDetailPage() {
             </div>
           </div>
 
+          {isPublicBooking() && (
+            <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-950">
+                    Public course pricing
+                  </h4>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Set each delegate price, then invoice selected uninvoiced delegates for one client at a time.
+                  </p>
+
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-3">
+                    <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                      <p className="text-slate-400">Course value</p>
+                      <p className="mt-1 font-semibold text-slate-950">
+                        {formatMoney(publicPricingSummary.totalValue)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                      <p className="text-slate-400">Invoiced</p>
+                      <p className="mt-1 font-semibold text-slate-950">
+                        {publicPricingSummary.invoicedCount} delegate(s) · {formatMoney(publicPricingSummary.invoicedValue)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                      <p className="text-slate-400">Uninvoiced</p>
+                      <p className="mt-1 font-semibold text-slate-950">
+                        {publicPricingSummary.uninvoicedCount} delegate(s) · {formatMoney(publicPricingSummary.uninvoicedValue)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="w-full max-w-sm space-y-2">
+                  <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                    VAT rate %
+                    <input
+                      className={inputClass}
+                      placeholder="0"
+                      value={publicInvoiceVatRate}
+                      onChange={(e) => setPublicInvoiceVatRate(e.target.value)}
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                    PO number optional
+                    <input
+                      className={inputClass}
+                      placeholder="Purchase order number"
+                      value={publicInvoicePoNumber}
+                      onChange={(e) => setPublicInvoicePoNumber(e.target.value)}
+                    />
+                  </label>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className={buttonSecondary}
+                      onClick={savePublicDelegatePrices}
+                      disabled={savingPublicPrices}
+                    >
+                      {savingPublicPrices ? 'Saving...' : 'Save prices'}
+                    </button>
+
+                    <button
+                      className={buttonPrimary}
+                      onClick={createPublicDelegateInvoice}
+                      disabled={creatingPublicInvoice}
+                    >
+                      {creatingPublicInvoice ? 'Creating...' : 'Create invoice for selected'}
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <button
+                      className="font-medium text-slate-500 hover:text-slate-950"
+                      onClick={selectUninvoicedPublicDelegates}
+                    >
+                      Select uninvoiced
+                    </button>
+
+                    <button
+                      className="font-medium text-slate-500 hover:text-slate-950"
+                      onClick={clearInvoiceDelegateSelection}
+                    >
+                      Clear invoice selection
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-slate-500">
+                    {publicInvoiceSummary.uninvoicedCount} selected for invoice · Net {formatMoney(publicInvoiceSummary.totalAmount)}
+                  </p>
+
+                  {publicInvoiceMessage && (
+                    <p className="text-xs font-medium text-emerald-700">
+                      {publicInvoiceMessage}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
             {delegates.map((delegate) => {
               const isEditingDelegate = editingDelegateId === delegate.id
               const certificate = getCertificateForDelegate(delegate)
               const isSelected = selectedDelegateIds.includes(delegate.id)
+              const isSelectedForInvoice = selectedInvoiceDelegateIds.includes(delegate.id)
 
               return (
                 <div
@@ -3006,6 +3508,7 @@ export default function BookingDetailPage() {
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => toggleDelegateSelection(delegate.id)}
+                          title="Select for certificate actions"
                           className="mt-1"
                         />
 
@@ -3043,9 +3546,58 @@ export default function BookingDetailPage() {
                                 No email
                               </span>
                             )}
+
+                            {isPublicBooking() && (
+                              <span
+                                className={`border px-2 py-1 rounded-md text-xs font-medium ${
+                                  delegate.invoice_id
+                                    ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                    : 'border-amber-100 bg-amber-50 text-amber-700'
+                                }`}
+                              >
+                                {delegate.invoice_id ? 'Invoiced' : 'Not invoiced'}
+                              </span>
+                            )}
                           </div>
 
                           <div className="text-xs text-slate-600 mt-2 space-y-1">
+                            {isPublicBooking() && (
+                              <div className="mt-2 flex flex-col gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3 sm:flex-row sm:items-end">
+                                <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                                  Delegate price
+                                  <input
+                                    className={`${inputClass} w-32`}
+                                    value={String(delegate.unit_price ?? '')}
+                                    onChange={(e) =>
+                                      updatePublicDelegatePrice(delegate.id, e.target.value)
+                                    }
+                                    placeholder="0.00"
+                                  />
+                                </label>
+
+                                <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelectedForInvoice}
+                                    disabled={Boolean(delegate.invoice_id)}
+                                    onChange={() =>
+                                      toggleInvoiceDelegateSelection(delegate.id)
+                                    }
+                                  />
+                                  Select for invoice
+                                </label>
+
+                                {delegate.invoice_id && (
+                                  <Link
+                                    href={`/dashboard/invoices?search=${encodeURIComponent(delegate.invoice_id)}`}
+                                    className="text-xs font-medium text-slate-500 hover:text-slate-950"
+                                  >
+                                    View linked invoice
+                                  </Link>
+                                )}
+                              </div>
+                            )}
+
                             {editingDelegateEmailId === delegate.id ? (
                               <div className="mt-2 flex max-w-xl flex-col gap-2 sm:flex-row sm:items-center">
                                 <input
@@ -3256,41 +3808,58 @@ export default function BookingDetailPage() {
           </div>
 
           <div className="divide-y divide-slate-100">
-            {invoices.map((invoice) => (
-              <div
-                key={invoice.id}
-                className="p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-950">
-                      {invoice.invoice_number || 'Invoice'}
-                    </p>
+            {invoices.map((invoice) => {
+                const invoiceDelegates = delegates.filter(
+                  (delegate) => delegate.invoice_id === invoice.id
+                )
 
-                    <p className="text-xs text-slate-500 mt-1">
-                      Due: {getFormattedDate(invoice.due_date)}
-                    </p>
-                  </div>
-
-                  <p className="text-sm font-semibold text-slate-950">
-                    £{Number(invoice.total_amount || invoice.amount || 0).toFixed(2)}
-                  </p>
-                </div>
-
-                <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getInvoiceStatusStyle(invoice.status)}`}>
-                  {invoice.status}
-                </span>
-
-                <div className="flex flex-wrap gap-2 mt-3">
-                  <Link
-                    href={`/dashboard/invoices?search=${encodeURIComponent(invoice.id)}`}
-                    className={buttonSecondary}
+                return (
+                  <div
+                    key={invoice.id}
+                    className="p-4"
                   >
-                    View invoice
-                  </Link>
-                </div>
-              </div>
-            ))}
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-950">
+                          {invoice.invoice_number || 'Invoice'}
+                        </p>
+
+                        <p className="text-xs text-slate-500 mt-1">
+                          Due: {getFormattedDate(invoice.due_date)}
+                        </p>
+
+                        {invoiceDelegates.length > 0 && (
+                          <p className="text-xs text-slate-500 mt-1">
+                            {invoiceDelegates.length} public delegate(s):{' '}
+                            {invoiceDelegates
+                              .slice(0, 3)
+                              .map((delegate) => delegate.full_name)
+                              .join(', ')}
+                            {invoiceDelegates.length > 3 ? '...' : ''}
+                          </p>
+                        )}
+                      </div>
+
+                      <p className="text-sm font-semibold text-slate-950">
+                        £{Number(invoice.total_amount || invoice.amount || 0).toFixed(2)}
+                      </p>
+                    </div>
+
+                    <span className={`inline-flex border mt-3 px-2.5 py-1 rounded-md text-xs font-medium ${getInvoiceStatusStyle(invoice.status)}`}>
+                      {invoice.status}
+                    </span>
+
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      <Link
+                        href={`/dashboard/invoices?search=${encodeURIComponent(invoice.id)}`}
+                        className={buttonSecondary}
+                      >
+                        View invoice
+                      </Link>
+                    </div>
+                  </div>
+                )
+            })}
 
             {invoices.length === 0 && (
               <div className="p-4 text-sm text-slate-500">

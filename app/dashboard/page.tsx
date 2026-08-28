@@ -32,6 +32,17 @@ const emptySetupCounts: SetupCounts = {
 const getSetupCardDismissalKey = (organisationId: string) =>
   `hercules.setupCardDismissed.${organisationId}`
 
+const toDateString = (date: Date) => date.toISOString().split('T')[0]
+
+const addDays = (date: Date, days: number) => {
+  const nextDate = new Date(date)
+  nextDate.setDate(nextDate.getDate() + days)
+  return nextDate
+}
+
+const uniqueById = (rows: any[]) =>
+  Array.from(new Map(rows.filter(Boolean).map((row) => [row.id, row])).values())
+
 const countRows = async (table: string, organisationId: string) => {
   const { count, error } = await supabase
     .from(table)
@@ -69,21 +80,18 @@ export default function Dashboard() {
       .eq('id', profile.organisation_id)
       .single()
 
-    const { data: clientsData } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
-
-    const { data: delegatesData } = await supabase
-      .from('delegates')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
-
-    const { data: bookingsData } = await supabase
-      .from('bookings')
-      .select('*, booking_sessions(*)')
-      .eq('organisation_id', profile.organisation_id)
-      .order('date', { ascending: true })
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const todayString = toDateString(today)
+    const weekEndString = toDateString(addDays(today, 7))
+    const ninetyDayString = toDateString(addDays(today, 90))
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+    const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    const monthStartString = toDateString(monthStart)
+    const monthEndString = toDateString(monthEnd)
+    const monthStartIso = monthStart.toISOString()
+    const nextMonthStartIso = nextMonthStart.toISOString()
 
     const { data: trainersData } = await supabase
       .from('trainers')
@@ -91,55 +99,210 @@ export default function Dashboard() {
       .eq('organisation_id', profile.organisation_id)
       .order('name', { ascending: true })
 
-    const { data: invoicesData } = await supabase
-      .from('invoices')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
-      .order('created_at', { ascending: false })
-
-    const { data: certificatesData } = await supabase
-      .from('certificates')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
-      .order('expiry_date', { ascending: true })
-
-    const { data: requestsData } = await supabase
-      .from('training_requests')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
-      .order('created_at', { ascending: false })
-
-    const { data: bookingDelegateLinksData } = await supabase
-      .from('booking_delegates')
-      .select('*')
-      .eq('organisation_id', profile.organisation_id)
-
     const [
+      clientsCount,
+      delegatesCount,
+      bookingsCount,
       courseTemplatesCount,
       certificateTemplatesCount,
       emailTemplatesCount,
+      upcomingBookingsResult,
+      activeBookingsResult,
+      monthBookingsResult,
+      recentBookingsResult,
+      invoicesThisMonthResult,
+      paidThisMonthResult,
+      outstandingInvoicesResult,
+      overdueInvoicesResult,
+      certificatesExpiringResult,
+      certificatesIssuedResult,
+      requestsResult,
+      recentRequestsResult,
     ] = await Promise.all([
+      countRows('clients', profile.organisation_id),
+      countRows('delegates', profile.organisation_id),
+      countRows('bookings', profile.organisation_id),
       countRows('course_templates', profile.organisation_id),
       countRows('certificate_templates', profile.organisation_id),
       countRows('email_templates', profile.organisation_id),
+      supabase
+        .from('bookings')
+        .select('id, organisation_id, client_id, trainer_id, course_name, course_delivery_type, client_name, date, end_date, start_time, end_time, status, created_at, booking_sessions(id, booking_id, session_date, start_time, end_time, sort_order)')
+        .eq('organisation_id', profile.organisation_id)
+        .gte('date', todayString)
+        .lte('date', weekEndString)
+        .order('date', { ascending: true })
+        .limit(100),
+      supabase
+        .from('bookings')
+        .select('id, organisation_id, client_id, trainer_id, course_name, course_delivery_type, client_name, date, end_date, start_time, end_time, status, created_at, booking_sessions(id, booking_id, session_date, start_time, end_time, sort_order)')
+        .eq('organisation_id', profile.organisation_id)
+        .lte('date', todayString)
+        .gte('end_date', todayString)
+        .order('date', { ascending: true })
+        .limit(100),
+      supabase
+        .from('bookings')
+        .select('id, organisation_id, client_id, trainer_id, course_name, course_delivery_type, client_name, date, end_date, start_time, end_time, status, created_at, booking_sessions(id, booking_id, session_date, start_time, end_time, sort_order)')
+        .eq('organisation_id', profile.organisation_id)
+        .lte('date', monthEndString)
+        .or(`end_date.gte.${monthStartString},end_date.is.null`)
+        .order('date', { ascending: true })
+        .limit(250),
+      supabase
+        .from('bookings')
+        .select('id, course_name, created_at')
+        .eq('organisation_id', profile.organisation_id)
+        .order('created_at', { ascending: false })
+        .limit(3),
+      supabase
+        .from('invoices')
+        .select('id, amount, total_amount, status, due_date, created_at, paid_at, client_name, recipient_name, invoice_number')
+        .eq('organisation_id', profile.organisation_id)
+        .gte('created_at', monthStartIso)
+        .lt('created_at', nextMonthStartIso)
+        .limit(500),
+      supabase
+        .from('invoices')
+        .select('id, amount, total_amount, status, due_date, created_at, paid_at, client_name, recipient_name, invoice_number')
+        .eq('organisation_id', profile.organisation_id)
+        .eq('status', 'paid')
+        .gte('paid_at', monthStartIso)
+        .lt('paid_at', nextMonthStartIso)
+        .limit(500),
+      supabase
+        .from('invoices')
+        .select('id, amount, total_amount, status, due_date, created_at, paid_at, client_name, recipient_name, invoice_number')
+        .eq('organisation_id', profile.organisation_id)
+        .not('status', 'in', '(paid,cancelled,canceled,void)')
+        .limit(1000),
+      supabase
+        .from('invoices')
+        .select('id, amount, total_amount, status, due_date, created_at, paid_at, client_name, recipient_name, invoice_number')
+        .eq('organisation_id', profile.organisation_id)
+        .not('due_date', 'is', null)
+        .lt('due_date', todayString)
+        .not('status', 'in', '(paid,cancelled,canceled,void)')
+        .order('due_date', { ascending: true })
+        .limit(50),
+      supabase
+        .from('certificates')
+        .select('id, delegate_id, course_name, learner_name, status, expiry_date, issue_date, expiry_reminder_sent_at')
+        .eq('organisation_id', profile.organisation_id)
+        .not('expiry_date', 'is', null)
+        .lte('expiry_date', ninetyDayString)
+        .order('expiry_date', { ascending: true })
+        .limit(1000),
+      supabase
+        .from('certificates')
+        .select('id, delegate_id, course_name, learner_name, status, expiry_date, issue_date, expiry_reminder_sent_at')
+        .eq('organisation_id', profile.organisation_id)
+        .gte('issue_date', monthStartString)
+        .lte('issue_date', monthEndString)
+        .limit(500),
+      supabase
+        .from('training_requests')
+        .select('*')
+        .eq('organisation_id', profile.organisation_id)
+        .in('status', ['new', 'contacted'])
+        .order('created_at', { ascending: false })
+        .limit(100),
+      supabase
+        .from('training_requests')
+        .select('*')
+        .eq('organisation_id', profile.organisation_id)
+        .order('created_at', { ascending: false })
+        .limit(3),
     ])
 
+    const bookingsData = uniqueById([
+      ...(upcomingBookingsResult.data || []),
+      ...(activeBookingsResult.data || []),
+      ...(monthBookingsResult.data || []),
+      ...(recentBookingsResult.data || []),
+    ])
+    const invoicesData = uniqueById([
+      ...(invoicesThisMonthResult.data || []),
+      ...(paidThisMonthResult.data || []),
+      ...(outstandingInvoicesResult.data || []),
+      ...(overdueInvoicesResult.data || []),
+    ])
+    const certificatesData = uniqueById([
+      ...(certificatesExpiringResult.data || []),
+      ...(certificatesIssuedResult.data || []),
+    ])
+    const requestsData = uniqueById([
+      ...(requestsResult.data || []),
+      ...(recentRequestsResult.data || []),
+    ])
+    const bookingIds = bookingsData.map((booking) => booking.id)
+    const certificateDelegateIds = certificatesData
+      .map((certificate) => certificate.delegate_id)
+      .filter(Boolean)
+    const clientIds = bookingsData
+      .map((booking) => booking.client_id)
+      .filter(Boolean)
+
+    const [
+      bookingDelegateLinksResult,
+      delegatesResult,
+      clientsResult,
+    ] = await Promise.all([
+      bookingIds.length > 0
+        ? supabase
+            .from('booking_delegates')
+            .select('booking_id, delegate_id, attendance_status, result_status')
+            .eq('organisation_id', profile.organisation_id)
+            .in('booking_id', bookingIds)
+            .limit(1000)
+        : Promise.resolve({ data: [] }),
+      certificateDelegateIds.length > 0
+        ? supabase
+            .from('delegates')
+            .select('id, client_id, created_at')
+            .eq('organisation_id', profile.organisation_id)
+            .in('id', certificateDelegateIds)
+            .limit(1000)
+        : Promise.resolve({ data: [] }),
+      clientIds.length > 0
+        ? supabase
+            .from('clients')
+            .select('id, company, name')
+            .eq('organisation_id', profile.organisation_id)
+            .in('id', clientIds)
+            .limit(250)
+        : Promise.resolve({ data: [] }),
+    ])
+
+    const delegatesCreatedThisMonth = await supabase
+      .from('delegates')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', profile.organisation_id)
+      .gte('created_at', monthStartIso)
+      .lt('created_at', nextMonthStartIso)
+
     setOrganisation(organisationData || null)
-    setClients(clientsData || [])
-    setDelegates(delegatesData || [])
+    setClients(clientsResult.data || [])
+    setDelegates([
+      ...(delegatesResult.data || []),
+      ...Array.from({ length: delegatesCreatedThisMonth.count || 0 }).map((_, index) => ({
+        id: `created-this-month-${index}`,
+        created_at: monthStartIso,
+      })),
+    ])
     setBookings(bookingsData || [])
     setTrainers(trainersData || [])
     setInvoices(invoicesData || [])
     setCertificates(certificatesData || [])
     setRequests(requestsData || [])
-    setBookingDelegateLinks(bookingDelegateLinksData || [])
+    setBookingDelegateLinks(bookingDelegateLinksResult.data || [])
     setSetupCounts({
       courseTemplates: courseTemplatesCount,
       certificateTemplates: certificateTemplatesCount,
       emailTemplates: emailTemplatesCount,
-      clients: clientsData?.length || 0,
-      delegates: delegatesData?.length || 0,
-      bookings: bookingsData?.length || 0,
+      clients: clientsCount,
+      delegates: delegatesCount,
+      bookings: bookingsCount,
     })
   }
 

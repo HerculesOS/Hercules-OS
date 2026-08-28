@@ -8,7 +8,6 @@ import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import { formatAppDate } from '@/lib/formatters'
 import { createCertificateVerificationId } from '@/lib/certificateVerification'
-import { fetchPaginatedImportRecords } from '@/lib/importCsv'
 import { getComputedCertificateStatus } from '@/lib/certificateStatus'
 
 const CERTIFICATES_PAGE_SIZE = 50
@@ -77,13 +76,11 @@ export default function CertificatesPage() {
     }
   }
 
-  const getMatchingRelatedIds = (
+  const getMatchingRelatedIds = async (
     searchTerm: string,
-    localClients: any[],
-    localDelegates: any[],
-    localBookings: any[]
+    organisationId: string
   ) => {
-    const cleanTerm = cleanSearchTerm(searchTerm).toLowerCase()
+    const cleanTerm = cleanSearchTerm(searchTerm)
 
     if (!cleanTerm) {
       return {
@@ -93,49 +90,54 @@ export default function CertificatesPage() {
       }
     }
 
-    const clientIds = localClients
-      .filter((client) =>
-        `
-          ${client.company || ''}
-          ${client.name || ''}
-          ${client.email || ''}
-          ${client.phone || ''}
-        `
-          .toLowerCase()
-          .includes(cleanTerm)
-      )
-      .map((client) => client.id)
+    const term = `%${cleanTerm}%`
 
-    const delegateIds = localDelegates
-      .filter((delegate) => {
-        const matchesDelegate = `
-          ${delegate.full_name || ''}
-          ${delegate.email || ''}
-          ${delegate.phone || ''}
-        `
-          .toLowerCase()
-          .includes(cleanTerm)
+    const clientsResult = await supabase
+      .from('clients')
+      .select('id')
+      .eq('organisation_id', organisationId)
+      .or(`company.ilike.${term},name.ilike.${term},email.ilike.${term},phone.ilike.${term}`)
+      .limit(200)
+    const clientIds = (clientsResult.data || []).map((client) => client.id)
+    const [delegatesResult, bookingsResult] = await Promise.all([
+      supabase
+        .from('delegates')
+        .select('id')
+        .eq('organisation_id', organisationId)
+        .or(
+          [
+            `full_name.ilike.${term}`,
+            `email.ilike.${term}`,
+            `phone.ilike.${term}`,
+            clientIds.length > 0 ? `client_id.in.(${clientIds.join(',')})` : '',
+          ]
+            .filter(Boolean)
+            .join(',')
+        )
+        .limit(200),
+      supabase
+        .from('bookings')
+        .select('id')
+        .eq('organisation_id', organisationId)
+        .or(
+          [
+            `course_name.ilike.${term}`,
+            `client_name.ilike.${term}`,
+            `location.ilike.${term}`,
+            `status.ilike.${term}`,
+            clientIds.length > 0 ? `client_id.in.(${clientIds.join(',')})` : '',
+          ]
+            .filter(Boolean)
+            .join(',')
+        )
+        .limit(200),
+    ])
 
-        return matchesDelegate || clientIds.includes(delegate.client_id)
-      })
-      .map((delegate) => delegate.id)
-
-    const bookingIds = localBookings
-      .filter((booking) => {
-        const matchesBooking = `
-          ${booking.course_name || ''}
-          ${booking.client_name || ''}
-          ${booking.location || ''}
-          ${booking.status || ''}
-        `
-          .toLowerCase()
-          .includes(cleanTerm)
-
-        return matchesBooking || clientIds.includes(booking.client_id)
-      })
-      .map((booking) => booking.id)
-
-    return { bookingIds, clientIds, delegateIds }
+    return {
+      bookingIds: (bookingsResult.data || []).map((booking) => booking.id),
+      clientIds,
+      delegateIds: (delegatesResult.data || []).map((delegate) => delegate.id),
+    }
   }
 
   const applyCertificateFilters = (
@@ -218,41 +220,9 @@ export default function CertificatesPage() {
       .eq('id', currentProfile.organisation_id)
       .single()
 
-    const bookingsData = await fetchPaginatedImportRecords<any>(
-      async (from, to) =>
-        await supabase
-          .from('bookings')
-          .select('*')
-          .eq('organisation_id', currentProfile.organisation_id)
-          .order('date', { ascending: false })
-          .range(from, to)
-    )
-
-    const clientsData = await fetchPaginatedImportRecords<any>(
-      async (from, to) =>
-        await supabase
-          .from('clients')
-          .select('*')
-          .eq('organisation_id', currentProfile.organisation_id)
-          .order('company', { ascending: true })
-          .range(from, to)
-    )
-
-    const delegatesData = await fetchPaginatedImportRecords<any>(
-      async (from, to) =>
-        await supabase
-          .from('delegates')
-          .select('*')
-          .eq('organisation_id', currentProfile.organisation_id)
-          .order('full_name', { ascending: true })
-          .range(from, to)
-    )
-
-    const relatedIds = getMatchingRelatedIds(
+    const relatedIds = await getMatchingRelatedIds(
       searchTerm,
-      clientsData,
-      delegatesData,
-      bookingsData
+      currentProfile.organisation_id
     )
     const from = (page - 1) * CERTIFICATES_PAGE_SIZE
     const to = from + CERTIFICATES_PAGE_SIZE - 1
@@ -321,11 +291,48 @@ export default function CertificatesPage() {
       .gte('expiry_date', today)
       .lte('expiry_date', endDate)
 
+    const certificateRows = certificatesData || []
+    const bookingIds = Array.from(
+      new Set(certificateRows.map((certificate) => certificate.booking_id).filter(Boolean))
+    )
+    const delegateIds = Array.from(
+      new Set(certificateRows.map((certificate) => certificate.delegate_id).filter(Boolean))
+    )
+    const [bookingsResult, delegatesResult] = await Promise.all([
+      bookingIds.length > 0
+        ? supabase
+            .from('bookings')
+            .select('*')
+            .eq('organisation_id', currentProfile.organisation_id)
+            .in('id', bookingIds)
+        : Promise.resolve({ data: [] }),
+      delegateIds.length > 0
+        ? supabase
+            .from('delegates')
+            .select('*')
+            .eq('organisation_id', currentProfile.organisation_id)
+            .in('id', delegateIds)
+        : Promise.resolve({ data: [] }),
+    ])
+    const clientIds = Array.from(
+      new Set([
+        ...(bookingsResult.data || []).map((booking: any) => booking.client_id),
+        ...(delegatesResult.data || []).map((delegate: any) => delegate.client_id),
+      ].filter(Boolean))
+    )
+    const clientsResult = clientIds.length > 0
+      ? await supabase
+          .from('clients')
+          .select('*')
+          .eq('organisation_id', currentProfile.organisation_id)
+          .in('id', clientIds)
+      : { data: [] }
+
     setOrganisation(organisationData || null)
-    setCertificates(certificatesData || [])
-    setBookings(bookingsData || [])
-    setClients(clientsData || [])
-    setDelegates(delegatesData || [])
+    setCertificates(certificateRows)
+    setBookings(bookingsResult.data || [])
+    setClients(clientsResult.data || [])
+    setDelegates(delegatesResult.data || [])
     setMatchingCertificates(certificatesCount || 0)
     setTotalCertificates(allCount || 0)
     setValidCertificatesCount(validCount || 0)

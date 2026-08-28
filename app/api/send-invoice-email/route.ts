@@ -13,6 +13,7 @@ import {
 } from '@/lib/emailTemplates'
 import { emailTemplateDefaults } from '@/lib/emailTemplateDefaults'
 import { getInvoiceEmailSuccessUpdate } from '@/lib/invoiceWorkflow'
+import type { InvoiceLineItem } from '@/lib/publicBookingPricing'
 
 export const runtime = 'nodejs'
 
@@ -46,6 +47,7 @@ const generateInvoicePdfBuffer = ({
   businessEmail,
   businessPhone,
   paymentDetails,
+  lineItems,
 }: {
   invoiceNumber: string
   recipientName: string
@@ -60,12 +62,17 @@ const generateInvoicePdfBuffer = ({
   businessEmail?: string
   businessPhone?: string
   paymentDetails?: string
+  lineItems?: InvoiceLineItem[]
 }) => {
   const doc = new jsPDF()
 
   const netAmount = Number(amount || 0)
   const vat = Number(vatAmount || 0)
   const total = Number(totalAmount || amount || 0)
+  const displayLineItems =
+    lineItems && lineItems.length > 0
+      ? lineItems
+      : [{ description: courseName || 'Training course delivery', amount: netAmount }]
 
   const providerName = businessName || 'Training Provider'
   const invoiceStatus = status || 'draft'
@@ -148,20 +155,42 @@ const generateInvoicePdfBuffer = ({
   doc.text('VAT', 150, 134)
   doc.text('Total', 172, 134)
 
+  const visibleLineItems = displayLineItems.slice(0, 8)
+  const hiddenLineItemCount = displayLineItems.length - visibleLineItems.length
+  const lineItemHeight = Math.max(
+    22,
+    visibleLineItems.length * 10 + (hiddenLineItemCount > 0 ? 8 : 0)
+  )
+
   doc.setFillColor(255, 255, 255)
   doc.setDrawColor(229, 231, 235)
-  doc.rect(22, 138, 166, 22, 'D')
+  doc.rect(22, 138, 166, lineItemHeight, 'D')
 
   doc.setTextColor(17, 24, 39)
   doc.setFontSize(10)
 
-  const description = courseName || 'Training course delivery'
-  const descriptionLines = doc.splitTextToSize(description, 88)
-  doc.text(descriptionLines, 28, 150)
+  visibleLineItems.forEach((lineItem, index) => {
+    const y = 148 + index * 10
+    const lineNet = Number(lineItem.amount || 0)
+    const lineVat = lineNet * (netAmount > 0 ? Number(vatAmount || 0) / netAmount : 0)
+    const lineTotal = lineNet + lineVat
+    const descriptionLines = doc.splitTextToSize(lineItem.description, 88)
 
-  doc.text(`\u00A3${netAmount.toFixed(2)}`, 128, 150)
-  doc.text(`\u00A3${vat.toFixed(2)}`, 150, 150)
-  doc.text(`\u00A3${total.toFixed(2)}`, 172, 150)
+    doc.text(descriptionLines.slice(0, 1), 28, y)
+    doc.text(`\u00A3${lineNet.toFixed(2)}`, 128, y)
+    doc.text(`\u00A3${lineVat.toFixed(2)}`, 150, y)
+    doc.text(`\u00A3${lineTotal.toFixed(2)}`, 172, y)
+  })
+
+  if (hiddenLineItemCount > 0) {
+    doc.setFontSize(8)
+    doc.setTextColor(107, 114, 128)
+    doc.text(
+      `+ ${hiddenLineItemCount} more delegate line(s)`,
+      28,
+      148 + visibleLineItems.length * 10
+    )
+  }
 
   doc.setFillColor(249, 250, 251)
   doc.setDrawColor(229, 231, 235)
@@ -233,6 +262,7 @@ export async function POST(request: Request) {
       dueDate,
       poNumber,
       status,
+      lineItems,
       businessName,
       businessEmail,
       businessPhone,
@@ -298,6 +328,7 @@ export async function POST(request: Request) {
       dueDate,
       poNumber,
       status,
+      lineItems,
       businessName: fromName,
       businessEmail,
       businessPhone,
@@ -355,6 +386,28 @@ export async function POST(request: Request) {
     }
     const subject = replacePlaceholders(template.subject, placeholderValues)
     const emailBody = replacePlaceholders(template.body, placeholderValues)
+    const lineItemsHtml =
+      Array.isArray(lineItems) && lineItems.length > 0
+        ? `
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 24px 0;">
+            <h2 style="font-size: 18px; margin-top: 0;">Invoice lines</h2>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tbody>
+                ${lineItems
+                  .map(
+                    (lineItem: InvoiceLineItem) => `
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0;">${escapeHtml(lineItem.description)}</td>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0; text-align: right;">\u00A3${Number(lineItem.amount || 0).toFixed(2)}</td>
+                      </tr>
+                    `
+                  )
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
+        `
+        : ''
     const paymentDetailsHtml = safePaymentDetails
       ? `
         <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 16px; margin: 24px 0;">
@@ -383,6 +436,7 @@ export async function POST(request: Request) {
             detailRow('Due Date', dueDate || 'Not set'),
             detailRow('Status', status || 'draft'),
           ].join('')),
+          lineItemsHtml,
           paymentDetailsHtml,
         ].join(''),
         footerHtml: [

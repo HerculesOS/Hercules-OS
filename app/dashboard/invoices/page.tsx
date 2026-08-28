@@ -14,6 +14,7 @@ import {
   getSentInvoiceUpdate,
   normalizeOptionalPoNumber,
 } from '@/lib/invoiceWorkflow'
+import { getPublicDelegateInvoiceLineItems, type InvoiceLineItem } from '@/lib/publicBookingPricing'
 import jsPDF from 'jspdf'
 
 const INVOICES_PAGE_SIZE = 50
@@ -117,13 +118,11 @@ export default function InvoicesPage() {
     }
   }
 
-  const getMatchingRelatedIds = (
+  const getMatchingRelatedIds = async (
     searchTerm: string,
-    localClients: any[],
-    localDelegates: any[],
-    localBookings: any[]
+    organisationIdValue: string
   ) => {
-    const cleanTerm = cleanSearchTerm(searchTerm).toLowerCase()
+    const cleanTerm = cleanSearchTerm(searchTerm)
 
     if (!cleanTerm) {
       return {
@@ -133,46 +132,34 @@ export default function InvoicesPage() {
       }
     }
 
-    const clientIds = localClients
-      .filter((client) =>
-        `
-          ${client.company || ''}
-          ${client.name || ''}
-          ${client.email || ''}
-          ${client.phone || ''}
-        `
-          .toLowerCase()
-          .includes(cleanTerm)
-      )
-      .map((client) => client.id)
+    const term = `%${cleanTerm}%`
 
-    const delegateIds = localDelegates
-      .filter((delegate) =>
-        `
-          ${delegate.full_name || ''}
-          ${delegate.email || ''}
-          ${delegate.phone || ''}
-        `
-          .toLowerCase()
-          .includes(cleanTerm)
-      )
-      .map((delegate) => delegate.id)
+    const [clientsResult, delegatesResult, bookingsResult] = await Promise.all([
+      supabase
+        .from('clients')
+        .select('id')
+        .eq('organisation_id', organisationIdValue)
+        .or(`company.ilike.${term},name.ilike.${term},email.ilike.${term},phone.ilike.${term}`)
+        .limit(200),
+      supabase
+        .from('delegates')
+        .select('id')
+        .eq('organisation_id', organisationIdValue)
+        .or(`full_name.ilike.${term},email.ilike.${term},phone.ilike.${term}`)
+        .limit(200),
+      supabase
+        .from('bookings')
+        .select('id')
+        .eq('organisation_id', organisationIdValue)
+        .or(`course_name.ilike.${term},client_name.ilike.${term},location.ilike.${term},course_delivery_type.ilike.${term},status.ilike.${term}`)
+        .limit(200),
+    ])
 
-    const bookingIds = localBookings
-      .filter((booking) =>
-        `
-          ${booking.course_name || ''}
-          ${booking.client_name || ''}
-          ${booking.location || ''}
-          ${booking.course_delivery_type || ''}
-          ${booking.status || ''}
-        `
-          .toLowerCase()
-          .includes(cleanTerm)
-      )
-      .map((booking) => booking.id)
-
-    return { bookingIds, clientIds, delegateIds }
+    return {
+      bookingIds: (bookingsResult.data || []).map((booking) => booking.id),
+      clientIds: (clientsResult.data || []).map((client) => client.id),
+      delegateIds: (delegatesResult.data || []).map((delegate) => delegate.id),
+    }
   }
 
   const applyInvoiceFilters = (
@@ -256,50 +243,9 @@ export default function InvoicesPage() {
       .eq('id', profile.organisation_id)
       .single()
 
-    const clientsData = await fetchPaginatedImportRecords<any>(
-      async (from, to) =>
-        await supabase
-          .from('clients')
-          .select('*')
-          .eq('organisation_id', profile.organisation_id)
-          .order('company', { ascending: true })
-          .range(from, to)
-    )
-
-    const delegatesData = await fetchPaginatedImportRecords<any>(
-      async (from, to) =>
-        await supabase
-          .from('delegates')
-          .select('*')
-          .eq('organisation_id', profile.organisation_id)
-          .order('full_name', { ascending: true })
-          .range(from, to)
-    )
-
-    const bookingDelegateLinksData = await fetchPaginatedImportRecords<any>(
-      async (from, to) =>
-        await supabase
-          .from('booking_delegates')
-          .select('*')
-          .eq('organisation_id', profile.organisation_id)
-          .range(from, to)
-    )
-
-    const bookingsData = await fetchPaginatedImportRecords<any>(
-      async (from, to) =>
-        await supabase
-          .from('bookings')
-          .select('*')
-          .eq('organisation_id', profile.organisation_id)
-          .order('date', { ascending: false })
-          .range(from, to)
-    )
-
-    const relatedIds = getMatchingRelatedIds(
+    const relatedIds = await getMatchingRelatedIds(
       searchTerm,
-      clientsData,
-      delegatesData,
-      bookingsData
+      profile.organisation_id
     )
     const from = (page - 1) * INVOICES_PAGE_SIZE
     const to = from + INVOICES_PAGE_SIZE - 1
@@ -356,11 +302,108 @@ export default function InvoicesPage() {
       .eq('organisation_id', profile.organisation_id)
       .not('secured_at', 'is', null)
 
+    const requestedBookingId = new URLSearchParams(window.location.search).get('bookingId')
+    const requestedSearch = new URLSearchParams(window.location.search).get('search')
+    const requestedStatus = new URLSearchParams(window.location.search).get('status')
+    const invoiceRows = invoicesData || []
+    const invoiceIds = invoiceRows.map((invoice) => invoice.id)
+    const invoiceBookingIds = invoiceRows
+      .map((invoice) => invoice.booking_id)
+      .filter(Boolean)
+    const bookingIds = Array.from(
+      new Set([
+        ...invoiceBookingIds,
+        requestedBookingId,
+      ].filter(Boolean))
+    )
+    const invoiceClientIds = invoiceRows
+      .map((invoice) => invoice.client_id)
+      .filter(Boolean)
+    const invoiceDelegateIds = invoiceRows
+      .map((invoice) => invoice.delegate_id)
+      .filter(Boolean)
+
+    const [
+      recentBookingsResult,
+      relatedBookingsResult,
+      bookingDelegateLinksResult,
+      directDelegatesResult,
+    ] = await Promise.all([
+      supabase
+        .from('bookings')
+        .select('*')
+        .eq('organisation_id', profile.organisation_id)
+        .order('date', { ascending: false })
+        .limit(100),
+      bookingIds.length > 0
+        ? supabase
+            .from('bookings')
+            .select('*')
+            .eq('organisation_id', profile.organisation_id)
+            .in('id', bookingIds)
+        : Promise.resolve({ data: [] }),
+      invoiceIds.length > 0
+        ? supabase
+            .from('booking_delegates')
+            .select('*')
+            .eq('organisation_id', profile.organisation_id)
+            .in('invoice_id', invoiceIds)
+        : Promise.resolve({ data: [] }),
+      invoiceDelegateIds.length > 0
+        ? supabase
+            .from('delegates')
+            .select('*')
+            .eq('organisation_id', profile.organisation_id)
+            .in('id', invoiceDelegateIds)
+        : Promise.resolve({ data: [] }),
+    ])
+    const linkedDelegateIds = (bookingDelegateLinksResult.data || [])
+      .map((link: any) => link.delegate_id)
+      .filter(Boolean)
+    const allDelegateIds = Array.from(
+      new Set([...invoiceDelegateIds, ...linkedDelegateIds])
+    )
+    const linkedDelegatesResult = allDelegateIds.length > 0
+      ? await supabase
+          .from('delegates')
+          .select('*')
+          .eq('organisation_id', profile.organisation_id)
+          .in('id', allDelegateIds)
+      : { data: [] }
+    const bookingRows = Array.from(
+      new Map([
+        ...(recentBookingsResult.data || []),
+        ...(relatedBookingsResult.data || []),
+      ].map((booking) => [booking.id, booking])).values()
+    )
+    const delegateRows = Array.from(
+      new Map([
+        ...(directDelegatesResult.data || []),
+        ...(linkedDelegatesResult.data || []),
+      ].map((delegate) => [delegate.id, delegate])).values()
+    )
+    const delegateClientIds = delegateRows
+      .map((delegate) => delegate.client_id)
+      .filter(Boolean)
+    const bookingClientIds = bookingRows
+      .map((booking) => booking.client_id)
+      .filter(Boolean)
+    const clientIds = Array.from(
+      new Set([...invoiceClientIds, ...delegateClientIds, ...bookingClientIds])
+    )
+    const clientsResult = clientIds.length > 0
+      ? await supabase
+          .from('clients')
+          .select('*')
+          .eq('organisation_id', profile.organisation_id)
+          .in('id', clientIds)
+      : { data: [] }
+
     setOrganisation(organisationData || null)
-    setClients(clientsData || [])
-    setDelegates(delegatesData || [])
-    setBookingDelegateLinks(bookingDelegateLinksData || [])
-    setBookings(bookingsData || [])
+    setClients(clientsResult.data || [])
+    setDelegates(delegateRows || [])
+    setBookingDelegateLinks(bookingDelegateLinksResult.data || [])
+    setBookings(bookingRows || [])
     setInvoices(invoicesData || [])
     setMatchingInvoices(invoicesCount || 0)
     setTotalInvoices(allCount || 0)
@@ -368,13 +411,10 @@ export default function InvoicesPage() {
     setOverdueInvoicesCount(overdueCount || 0)
     setSecuredInvoicesCount(securedCount || 0)
 
-    const requestedBookingId = new URLSearchParams(window.location.search).get('bookingId')
-    const requestedSearch = new URLSearchParams(window.location.search).get('search')
-    const requestedStatus = new URLSearchParams(window.location.search).get('status')
     const allowedStatuses = ['all', 'draft', 'sent', 'overdue', 'paid']
 
     if (requestedBookingId) {
-      selectBookingForCreate(requestedBookingId, bookingsData || [])
+      selectBookingForCreate(requestedBookingId, bookingRows || [])
     }
 
     if (requestedSearch) {
@@ -848,6 +888,26 @@ export default function InvoicesPage() {
     return booking?.course_name || 'Training course delivery'
   }
 
+  const getInvoiceLineItems = (invoice: any): InvoiceLineItem[] => {
+    const courseName = getInvoiceCourseName(invoice)
+    const linkedDelegates = bookingDelegateLinks
+      .filter((link) => link.invoice_id === invoice.id)
+      .map((link) => {
+        const delegate = getDelegateById(link.delegate_id)
+
+        return {
+          ...link,
+          full_name: delegate?.full_name || 'Delegate',
+        }
+      })
+
+    return getPublicDelegateInvoiceLineItems(
+      linkedDelegates,
+      invoice.id,
+      courseName
+    )
+  }
+
   const getInvoiceBookingLabel = (invoice: any) => {
     const booking = getBookingById(invoice.booking_id)
 
@@ -869,6 +929,11 @@ export default function InvoicesPage() {
     const paymentDetails = organisation?.invoice_payment_details || ''
 
     const courseName = getInvoiceCourseName(invoice)
+    const invoiceLineItems = getInvoiceLineItems(invoice)
+    const displayLineItems =
+      invoiceLineItems.length > 0
+        ? invoiceLineItems
+        : [{ description: courseName, amount: netAmount }]
     const billTo = getInvoiceRecipientName(invoice)
 
     const invoiceDate = invoice.created_at
@@ -947,19 +1012,42 @@ export default function InvoicesPage() {
     doc.text('VAT', 150, 140)
     doc.text('Total', 172, 140)
 
+    const visibleLineItems = displayLineItems.slice(0, 8)
+    const hiddenLineItemCount = displayLineItems.length - visibleLineItems.length
+    const lineItemHeight = Math.max(
+      20,
+      visibleLineItems.length * 10 + (hiddenLineItemCount > 0 ? 8 : 0)
+    )
+
     doc.setFillColor(255, 255, 255)
     doc.setDrawColor(229, 231, 235)
-    doc.rect(22, 144, 166, 20, 'D')
+    doc.rect(22, 144, 166, lineItemHeight, 'D')
 
     doc.setTextColor(17, 24, 39)
     doc.setFontSize(10)
 
-    const descriptionLines = doc.splitTextToSize(courseName, 88)
-    doc.text(descriptionLines, 28, 156)
+    visibleLineItems.forEach((lineItem, index) => {
+      const y = 154 + index * 10
+      const lineNet = Number(lineItem.amount || 0)
+      const lineVat = lineNet * (Number(invoice.vat_rate || 0) / 100)
+      const lineTotal = lineNet + lineVat
+      const descriptionLines = doc.splitTextToSize(lineItem.description, 88)
 
-    doc.text(`£${netAmount.toFixed(2)}`, 128, 156)
-    doc.text(`£${vatAmount.toFixed(2)}`, 150, 156)
-    doc.text(`£${totalAmount.toFixed(2)}`, 172, 156)
+      doc.text(descriptionLines.slice(0, 1), 28, y)
+      doc.text(`£${lineNet.toFixed(2)}`, 128, y)
+      doc.text(`£${lineVat.toFixed(2)}`, 150, y)
+      doc.text(`£${lineTotal.toFixed(2)}`, 172, y)
+    })
+
+    if (hiddenLineItemCount > 0) {
+      doc.setFontSize(8)
+      doc.setTextColor(107, 114, 128)
+      doc.text(
+        `+ ${hiddenLineItemCount} more delegate line(s)`,
+        28,
+        154 + visibleLineItems.length * 10
+      )
+    }
 
     doc.setFillColor(249, 250, 251)
     doc.setDrawColor(229, 231, 235)
@@ -1041,6 +1129,7 @@ export default function InvoicesPage() {
         dueDate: getFormattedDate(invoice.due_date),
         poNumber: invoice.po_number || '',
         status: getComputedInvoiceStatus(invoice),
+        lineItems: getInvoiceLineItems(invoice),
         businessName: organisation?.name || 'Hercules OS',
         businessEmail: organisation?.email || '',
         businessPhone: organisation?.phone || '',
@@ -1606,6 +1695,34 @@ export default function InvoicesPage() {
                           <p className="text-xs text-slate-500 mt-3">
                             Booking: {getInvoiceBookingLabel(invoice)}
                           </p>
+
+                          {getInvoiceLineItems(invoice).length > 0 && (
+                            <div className="mt-3 rounded-lg border border-slate-100 bg-white p-3">
+                              <p className="text-xs font-semibold text-slate-700">
+                                Public delegate lines
+                              </p>
+
+                              <div className="mt-2 space-y-1 text-xs text-slate-600">
+                                {getInvoiceLineItems(invoice).slice(0, 8).map((lineItem, index) => (
+                                  <div
+                                    key={`${invoice.id}-line-${index}`}
+                                    className="flex items-center justify-between gap-3"
+                                  >
+                                    <span>{lineItem.description}</span>
+                                    <span className="font-medium text-slate-900">
+                                      £{Number(lineItem.amount || 0).toFixed(2)}
+                                    </span>
+                                  </div>
+                                ))}
+
+                                {getInvoiceLineItems(invoice).length > 8 && (
+                                  <p className="text-slate-500">
+                                    + {getInvoiceLineItems(invoice).length - 8} more delegate line(s)
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
 
                           <div className="mt-4">
                             <input

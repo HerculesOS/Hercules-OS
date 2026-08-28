@@ -115,15 +115,22 @@ export default function CalendarPage() {
       .eq('organisation_id', profile.organisation_id)
       .order('name', { ascending: true })
 
-    const bookingsData = await fetchPaginatedImportRecords<any>(
-      async (from, to) =>
-        await supabase
-          .from('bookings')
-          .select('*, booking_sessions(*)')
-          .eq('organisation_id', profile.organisation_id)
-          .order('date', { ascending: true })
-          .range(from, to)
+    const monthStart = formatDate(currentYear, currentMonth, 1)
+    const monthEndDate = new Date(currentYear, currentMonth + 1, 0)
+    const monthEnd = formatDate(
+      currentYear,
+      currentMonth,
+      monthEndDate.getDate()
     )
+
+    const { data: bookingsData } = await supabase
+      .from('bookings')
+      .select('*, booking_sessions(*)')
+      .eq('organisation_id', profile.organisation_id)
+      .lte('date', monthEnd)
+      .or(`end_date.gte.${monthStart},end_date.is.null`)
+      .order('date', { ascending: true })
+      .limit(500)
 
     setOrganisation(organisationData || null)
     setClients(clientsData || [])
@@ -136,7 +143,7 @@ export default function CalendarPage() {
 
   useEffect(() => {
     load()
-  }, [])
+  }, [currentMonth, currentYear])
 
   const getFormattedDate = (dateValue: string | null | undefined) => {
     return formatAppDate(dateValue, organisation)
