@@ -3,6 +3,12 @@ import { describe, it } from 'node:test'
 
 const {
   buildClientInsertRecords,
+  buildBookingDelegateInsertRecord,
+  buildBookingImportPreview,
+  buildBookingInsertRecord,
+  buildBookingSessionInsertRecords,
+  buildMissingClientInsertRecordsForBookingImport,
+  buildMissingDelegateInsertRecordForBookingImport,
   buildMissingClientInsertRecords,
   buildClientImportPreview,
   buildDelegateImportPreview,
@@ -12,6 +18,36 @@ const {
   resolveImportedDelegateClientId,
   splitIntoBatches,
 } = await import('../lib/importCsv.ts')
+
+const bookingImportOptions = {
+  defaultDeliveryType: 'private',
+  createMissingClients: false,
+  createMissingDelegates: false,
+}
+
+const existingBookingClients = [
+  { id: 'client-1', company: 'Blackleaf Training', name: 'Blackleaf Training', email: 'office@blackleaf.test' },
+]
+
+const existingBookingDelegates = [
+  { id: 'delegate-1', full_name: 'Sam Learner', email: 'sam@example.com', client_id: 'client-1' },
+  { id: 'delegate-2', full_name: 'John Smith', email: 'office@school.test', client_id: 'client-1' },
+]
+
+const existingTrainers = [
+  { id: 'trainer-1', name: 'Alex Trainer', email: 'alex@example.com' },
+]
+
+const existingCourseTemplates = [
+  {
+    id: 'course-1',
+    name: 'Emergency First Aid',
+    code: 'EFA',
+    price: 125,
+    default_start_time: '09:00',
+    default_end_time: '16:30',
+  },
+]
 
 describe('CSV import helpers', () => {
   it('parses headers case-insensitively and handles quoted commas', () => {
@@ -511,5 +547,350 @@ describe('CSV import helpers', () => {
     assert.equal(preview.importableRows, 1)
     assert.equal(preview.skippedRows, 1)
     assert.match(preview.rows[1].warnings.join(' '), /Another row in this file uses this name and client/)
+  })
+
+  it('maps flexible booking headers and matches client, trainer and course template', () => {
+    const preview = buildBookingImportPreview(
+      'Training Course,Company,Trainer Name,Course Date,Start Time,End Time,Venue,Contact Email\nEmergency First Aid, blackleaftraining ,Alex Trainer,01/09/2026,9am,4:30pm,Room 1,booker@example.com\n',
+      existingBookingClients,
+      existingBookingDelegates,
+      [],
+      existingTrainers,
+      existingCourseTemplates,
+      [],
+      bookingImportOptions
+    )
+
+    assert.equal(preview.importableRows, 1)
+    assert.equal(preview.rows[0].data.course_name, 'Emergency First Aid')
+    assert.equal(preview.rows[0].data.matchedClientId, 'client-1')
+    assert.equal(preview.rows[0].data.matchedTrainerId, 'trainer-1')
+    assert.equal(preview.rows[0].data.matchedCourseTemplateId, 'course-1')
+    assert.deepEqual(preview.rows[0].data.sessions, [
+      {
+        session_date: '2026-09-01',
+        start_time: '09:00',
+        end_time: '16:30',
+        sort_order: 1,
+      },
+    ])
+  })
+
+  it('creates non-consecutive booking sessions from session columns', () => {
+    const preview = buildBookingImportPreview(
+      'Course,Client,Session 1 Date,Session 2 Date,Day 3 Date,Start Time,End Time\nEmergency First Aid,Blackleaf Training,2026-09-01,2026-09-08,2026-09-15,09:00,16:30\n',
+      existingBookingClients,
+      [],
+      [],
+      [],
+      existingCourseTemplates,
+      [],
+      bookingImportOptions
+    )
+
+    assert.equal(preview.importableRows, 1)
+    assert.deepEqual(preview.rows[0].data.sessions.map((session) => session.session_date), [
+      '2026-09-01',
+      '2026-09-08',
+      '2026-09-15',
+    ])
+
+    const sessionRecords = buildBookingSessionInsertRecords(
+      'booking-1',
+      'organisation-1',
+      preview.rows[0].data.sessions
+    )
+
+    assert.deepEqual(sessionRecords.map((session) => session.sort_order), [1, 2, 3])
+  })
+
+  it('creates consecutive booking sessions from start and end dates', () => {
+    const preview = buildBookingImportPreview(
+      'Course,Client,Start Date,End Date\nEmergency First Aid,Blackleaf Training,2026-09-01,2026-09-03\n',
+      existingBookingClients,
+      [],
+      [],
+      [],
+      existingCourseTemplates,
+      [],
+      bookingImportOptions
+    )
+
+    assert.equal(preview.importableRows, 1)
+    assert.deepEqual(preview.rows[0].data.sessions.map((session) => session.session_date), [
+      '2026-09-01',
+      '2026-09-02',
+      '2026-09-03',
+    ])
+  })
+
+  it('uses course template duration and default times when only a start date is provided', () => {
+    const preview = buildBookingImportPreview(
+      'Course,Client,Date\nEmergency First Aid,Blackleaf Training,2026-09-01\n',
+      existingBookingClients,
+      [],
+      [],
+      [],
+      [{ ...existingCourseTemplates[0], duration_days: 2 }],
+      [],
+      bookingImportOptions
+    )
+
+    assert.deepEqual(preview.rows[0].data.sessions, [
+      {
+        session_date: '2026-09-01',
+        start_time: '09:00',
+        end_time: '16:30',
+        sort_order: 1,
+      },
+      {
+        session_date: '2026-09-02',
+        start_time: '09:00',
+        end_time: '16:30',
+        sort_order: 2,
+      },
+    ])
+  })
+
+  it('skips likely duplicate booking rows', () => {
+    const existingBookings = [
+      {
+        id: 'booking-1',
+        course_name: 'Emergency First Aid',
+        course_delivery_type: 'private',
+        client_id: 'client-1',
+        location: 'Room 1',
+        date: '2026-09-01',
+      },
+    ]
+    const preview = buildBookingImportPreview(
+      'Course,Client,Date,Location\nEmergency First Aid,Blackleaf Training,2026-09-01,Room 1\n',
+      existingBookingClients,
+      [],
+      existingBookings,
+      [],
+      existingCourseTemplates,
+      [],
+      bookingImportOptions
+    )
+
+    assert.equal(preview.warningRows, 1)
+    assert.equal(preview.importableRows, 0)
+    assert.match(preview.rows[0].warnings.join(' '), /matching booking already exists/)
+  })
+
+  it('blocks private booking rows with missing clients unless creation is enabled', () => {
+    const blockedPreview = buildBookingImportPreview(
+      'Course,Client,Date\nEmergency First Aid,New School,2026-09-01\n',
+      [],
+      [],
+      [],
+      [],
+      existingCourseTemplates,
+      [],
+      bookingImportOptions
+    )
+    const createPreview = buildBookingImportPreview(
+      'Course,Client,Date\nEmergency First Aid,New School,2026-09-01\n',
+      [],
+      [],
+      [],
+      [],
+      existingCourseTemplates,
+      [],
+      { ...bookingImportOptions, createMissingClients: true }
+    )
+
+    assert.equal(blockedPreview.importableRows, 0)
+    assert.match(blockedPreview.rows[0].warnings.join(' '), /Client not found/)
+    assert.equal(createPreview.importableRows, 1)
+    assert.deepEqual(
+      buildMissingClientInsertRecordsForBookingImport(createPreview.rows, 'organisation-1', 'user-1'),
+      [
+        {
+          organisation_id: 'organisation-1',
+          user_id: 'user-1',
+          company: 'New School',
+          name: 'New School',
+          email: null,
+          phone: null,
+          address: null,
+          notes: 'Created during booking CSV import',
+        },
+      ]
+    )
+  })
+
+  it('builds booking insert records with legacy dates aligned to first and final sessions', () => {
+    const preview = buildBookingImportPreview(
+      'Course,Client,Session 1 Date,Session 2 Date,Start Time,End Time,Contact Name,Contact Email,Contact Phone,Notes\nEmergency First Aid,Blackleaf Training,2026-09-01,2026-09-08,09:00,16:30,Booker,booker@example.com,01234,Bring kit\n',
+      existingBookingClients,
+      [],
+      [],
+      existingTrainers,
+      existingCourseTemplates,
+      [],
+      bookingImportOptions
+    )
+    const record = buildBookingInsertRecord(
+      preview.rows[0],
+      'organisation-1',
+      'user-1',
+      'client-1',
+      existingCourseTemplates
+    )
+
+    assert.equal(record.date, '2026-09-01')
+    assert.equal(record.end_date, '2026-09-08')
+    assert.equal(record.start_time, '09:00')
+    assert.equal(record.end_time, '16:30')
+    assert.equal(record.course_template_id, 'course-1')
+    assert.equal(record.price, 125)
+    assert.equal(record.booking_contact_email, 'booker@example.com')
+  })
+
+  it('matches existing delegates by email when the name does not conflict', () => {
+    const preview = buildBookingImportPreview(
+      'Course,Client,Date,Delegate Name,Delegate Email\nEmergency First Aid,Blackleaf Training,2026-09-01,Sam Learner,sam@example.com\n',
+      existingBookingClients,
+      existingBookingDelegates,
+      [],
+      [],
+      existingCourseTemplates,
+      [],
+      bookingImportOptions
+    )
+
+    assert.equal(preview.importableRows, 1)
+    assert.equal(preview.rows[0].data.delegate.matchedDelegateId, 'delegate-1')
+    assert.match(preview.rows[0].data.delegate.delegatePreview, /Matched existing delegate/)
+  })
+
+  it('matches existing delegates by name and client without email', () => {
+    const preview = buildBookingImportPreview(
+      'Course,Client,Date,Delegate Name\nEmergency First Aid,Blackleaf Training,2026-09-01,Sam Learner\n',
+      existingBookingClients,
+      existingBookingDelegates,
+      [],
+      [],
+      existingCourseTemplates,
+      [],
+      bookingImportOptions
+    )
+
+    assert.equal(preview.rows[0].data.delegate.matchedDelegateId, 'delegate-1')
+  })
+
+  it('does not merge shared email delegates when names differ', () => {
+    const preview = buildBookingImportPreview(
+      'Course,Client,Date,Delegate Name,Delegate Email\nEmergency First Aid,Blackleaf Training,2026-09-01,Sarah Jones,office@school.test\n',
+      existingBookingClients,
+      existingBookingDelegates,
+      [],
+      [],
+      existingCourseTemplates,
+      [],
+      bookingImportOptions
+    )
+
+    assert.equal(preview.importableRows, 1)
+    assert.equal(preview.rows[0].data.delegate.matchedDelegateId, null)
+    assert.match(preview.rows[0].warnings.join(' '), /Ambiguous delegate match/)
+  })
+
+  it('creates missing delegates only when enabled', () => {
+    const disabledPreview = buildBookingImportPreview(
+      'Course,Client,Date,Delegate Name,Delegate Email\nEmergency First Aid,Blackleaf Training,2026-09-01,New Learner,new@example.com\n',
+      existingBookingClients,
+      existingBookingDelegates,
+      [],
+      [],
+      existingCourseTemplates,
+      [],
+      bookingImportOptions
+    )
+    const enabledPreview = buildBookingImportPreview(
+      'Course,Client,Date,Delegate Name,Delegate Email\nEmergency First Aid,Blackleaf Training,2026-09-01,New Learner,new@example.com\n',
+      existingBookingClients,
+      existingBookingDelegates,
+      [],
+      [],
+      existingCourseTemplates,
+      [],
+      { ...bookingImportOptions, createMissingDelegates: true }
+    )
+
+    assert.equal(disabledPreview.rows[0].data.delegate.shouldCreateDelegate, false)
+    assert.equal(enabledPreview.rows[0].data.delegate.shouldCreateDelegate, true)
+
+    const delegateRecord = buildMissingDelegateInsertRecordForBookingImport(
+      enabledPreview.rows[0],
+      'organisation-1',
+      'client-1'
+    )
+
+    assert.equal(delegateRecord.full_name, 'New Learner')
+    assert.equal(delegateRecord.email, 'new@example.com')
+  })
+
+  it('skips duplicate booking delegate attachments', () => {
+    const existingBookings = [
+      {
+        id: 'booking-1',
+        course_name: 'Emergency First Aid',
+        course_delivery_type: 'private',
+        client_id: 'client-1',
+        location: '',
+        date: '2026-09-01',
+      },
+    ]
+    const preview = buildBookingImportPreview(
+      'Course,Client,Date,Delegate Name,Delegate Email\nEmergency First Aid,Blackleaf Training,2026-09-01,Sam Learner,sam@example.com\n',
+      existingBookingClients,
+      existingBookingDelegates,
+      existingBookings,
+      [],
+      existingCourseTemplates,
+      [{ booking_id: 'booking-1', delegate_id: 'delegate-1' }],
+      bookingImportOptions
+    )
+
+    assert.match(preview.rows[0].warnings.join(' '), /already attached/)
+  })
+
+  it('preview samples do not limit actual booking import rows', () => {
+    const rows = Array.from(
+      { length: 150 },
+      (_, index) => `Emergency First Aid,Blackleaf Training,2026-09-${String((index % 28) + 1).padStart(2, '0')},Room ${index}`
+    )
+    const preview = buildBookingImportPreview(
+      `Course,Client,Date,Location\n${rows.join('\n')}\n`,
+      existingBookingClients,
+      [],
+      [],
+      [],
+      existingCourseTemplates,
+      [],
+      bookingImportOptions
+    )
+
+    assert.equal(preview.totalRows, 150)
+    assert.equal(getPreviewRows(preview.rows).length, 100)
+    assert.equal(preview.rows.filter((row) => row.willImport).length, 150)
+  })
+
+  it('builds booking delegate attachment records', () => {
+    assert.deepEqual(
+      buildBookingDelegateInsertRecord('booking-1', 'organisation-1', 'delegate-1', 125),
+      {
+        organisation_id: 'organisation-1',
+        booking_id: 'booking-1',
+        delegate_id: 'delegate-1',
+        attendance_status: 'not_marked',
+        result_status: 'not_assessed',
+        attendance_notes: null,
+        unit_price: 125,
+      }
+    )
   })
 })

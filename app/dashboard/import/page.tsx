@@ -5,10 +5,17 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { getOrCreateAccount } from '@/lib/account'
 import {
+  buildBookingDelegateInsertRecord,
+  buildBookingImportPreview,
+  buildBookingInsertRecord,
+  buildBookingSessionInsertRecords,
   buildClientImportPreview,
   buildClientInsertRecords,
   buildDelegateImportPreview,
   buildMissingClientInsertRecords,
+  buildMissingClientInsertRecordsForBookingImport,
+  buildMissingDelegateInsertRecordForBookingImport,
+  bookingCsvTemplate,
   clientCsvTemplate,
   delegateCsvTemplate,
   fetchPaginatedImportRecords,
@@ -16,21 +23,32 @@ import {
   IMPORT_BATCH_SIZE,
   IMPORT_PREVIEW_ROW_LIMIT,
   resolveImportedDelegateClientId,
+  resolveImportedBookingClientId,
+  resolveImportedBookingDelegateId,
   splitIntoBatches,
+  type BookingImportData,
   type ClientImportData,
   type DelegateImportData,
+  type ExistingBookingDelegateLinkForImport,
+  type ExistingBookingForImport,
   type ExistingClientForImport,
+  type ExistingCourseTemplateForImport,
   type ExistingDelegateForImport,
+  type ExistingTrainerForImport,
   type ImportPreview,
 } from '@/lib/importCsv'
 
-type ImportMode = 'clients' | 'delegates'
+type ImportMode = 'clients' | 'delegates' | 'bookings'
 
 type ImportResult = {
   totalRows: number
   rowsImported: number
   clientsCreated: number
   delegatesCreated: number
+  bookingsCreated: number
+  sessionsCreated: number
+  delegatesAttached: number
+  delegateAttachmentsSkipped: number
   missingClientsCreated: number
   rowsWithWarnings: number
   duplicatesSkipped: number
@@ -47,10 +65,16 @@ export default function ImportPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [clients, setClients] = useState<ExistingClientForImport[]>([])
   const [delegates, setDelegates] = useState<ExistingDelegateForImport[]>([])
+  const [bookings, setBookings] = useState<ExistingBookingForImport[]>([])
+  const [bookingDelegateLinks, setBookingDelegateLinks] = useState<ExistingBookingDelegateLinkForImport[]>([])
+  const [trainers, setTrainers] = useState<ExistingTrainerForImport[]>([])
+  const [courseTemplates, setCourseTemplates] = useState<ExistingCourseTemplateForImport[]>([])
   const [loading, setLoading] = useState(true)
   const [fileName, setFileName] = useState('')
   const [csvText, setCsvText] = useState('')
   const [createMissingClients, setCreateMissingClients] = useState(false)
+  const [createMissingDelegates, setCreateMissingDelegates] = useState(false)
+  const [defaultBookingType, setDefaultBookingType] = useState<'private' | 'public'>('private')
   const [importing, setImporting] = useState(false)
   const [importProgress, setImportProgress] = useState('')
   const [result, setResult] = useState<ImportResult | null>(null)
@@ -98,8 +122,50 @@ export default function ImportPage() {
             .range(from, to)
       )
 
+      const bookingsData = await fetchPaginatedImportRecords<ExistingBookingForImport>(
+        async (from, to) =>
+          await supabase
+            .from('bookings')
+            .select('id, course_name, course_delivery_type, client_id, client_name, location, date, end_date, start_time, end_time, booking_sessions(session_date, start_time, end_time, sort_order)')
+            .eq('organisation_id', profile.organisation_id)
+            .range(from, to)
+      )
+
+      const bookingDelegateLinksData = await fetchPaginatedImportRecords<ExistingBookingDelegateLinkForImport>(
+        async (from, to) =>
+          await supabase
+            .from('booking_delegates')
+            .select('booking_id, delegate_id')
+            .eq('organisation_id', profile.organisation_id)
+            .range(from, to)
+      )
+
+      const trainersData = await fetchPaginatedImportRecords<ExistingTrainerForImport>(
+        async (from, to) =>
+          await supabase
+            .from('trainers')
+            .select('id, name, email')
+            .eq('organisation_id', profile.organisation_id)
+            .order('name', { ascending: true })
+            .range(from, to)
+      )
+
+      const courseTemplatesData = await fetchPaginatedImportRecords<ExistingCourseTemplateForImport>(
+        async (from, to) =>
+          await supabase
+            .from('course_templates')
+            .select('id, name, code, price, duration_days, default_start_time, default_end_time')
+            .eq('organisation_id', profile.organisation_id)
+            .order('name', { ascending: true })
+            .range(from, to)
+      )
+
       setClients(clientsData)
       setDelegates(delegatesData)
+      setBookings(bookingsData)
+      setBookingDelegateLinks(bookingDelegateLinksData)
+      setTrainers(trainersData)
+      setCourseTemplates(courseTemplatesData)
     } catch (error: any) {
       alert(error.message || 'Could not load import data')
       setLoading(false)
@@ -116,10 +182,41 @@ export default function ImportPage() {
   const preview = useMemo(() => {
     if (!csvText.trim()) return null
 
-    return mode === 'clients'
-      ? buildClientImportPreview(csvText, clients)
-      : buildDelegateImportPreview(csvText, clients, delegates, createMissingClients)
-  }, [clients, createMissingClients, csvText, delegates, mode])
+    if (mode === 'clients') {
+      return buildClientImportPreview(csvText, clients)
+    }
+
+    if (mode === 'delegates') {
+      return buildDelegateImportPreview(csvText, clients, delegates, createMissingClients)
+    }
+
+    return buildBookingImportPreview(
+      csvText,
+      clients,
+      delegates,
+      bookings,
+      trainers,
+      courseTemplates,
+      bookingDelegateLinks,
+      {
+        defaultDeliveryType: defaultBookingType,
+        createMissingClients,
+        createMissingDelegates,
+      }
+    )
+  }, [
+    bookingDelegateLinks,
+    bookings,
+    clients,
+    courseTemplates,
+    createMissingClients,
+    createMissingDelegates,
+    csvText,
+    defaultBookingType,
+    delegates,
+    mode,
+    trainers,
+  ])
 
   const previewRows = useMemo(
     () => preview ? getPreviewRows(preview.rows as any[]) : [],
@@ -175,7 +272,15 @@ export default function ImportPage() {
     )
 
     if (clientRecords.length === 0) {
-      return { clientsCreated: 0, delegatesCreated: 0, failedBatches: 0 }
+      return {
+        clientsCreated: 0,
+        delegatesCreated: 0,
+        bookingsCreated: 0,
+        sessionsCreated: 0,
+        delegatesAttached: 0,
+        delegateAttachmentsSkipped: 0,
+        failedBatches: 0,
+      }
     }
 
     const batches = splitIntoBatches(clientRecords)
@@ -193,14 +298,30 @@ export default function ImportPage() {
       clientsCreated += batches[index].length
     }
 
-    return { clientsCreated, delegatesCreated: 0, failedBatches: 0 }
+    return {
+      clientsCreated,
+      delegatesCreated: 0,
+      bookingsCreated: 0,
+      sessionsCreated: 0,
+      delegatesAttached: 0,
+      delegateAttachmentsSkipped: 0,
+      failedBatches: 0,
+    }
   }
 
   const importDelegates = async (delegatePreview: ImportPreview<DelegateImportData>) => {
     const rowsToImport = delegatePreview.rows.filter((row) => row.willImport)
 
     if (rowsToImport.length === 0) {
-      return { clientsCreated: 0, delegatesCreated: 0, failedBatches: 0 }
+      return {
+        clientsCreated: 0,
+        delegatesCreated: 0,
+        bookingsCreated: 0,
+        sessionsCreated: 0,
+        delegatesAttached: 0,
+        delegateAttachmentsSkipped: 0,
+        failedBatches: 0,
+      }
     }
 
     const createdClientIds = new Map<string, string>()
@@ -273,6 +394,206 @@ export default function ImportPage() {
     return {
       clientsCreated: missingClientRecords.length,
       delegatesCreated,
+      bookingsCreated: 0,
+      sessionsCreated: 0,
+      delegatesAttached: 0,
+      delegateAttachmentsSkipped: 0,
+      failedBatches: 0,
+    }
+  }
+
+  const importBookings = async (bookingPreview: ImportPreview<BookingImportData>) => {
+    const rowsToImport = bookingPreview.rows.filter((row) => row.willImport)
+
+    if (rowsToImport.length === 0) {
+      return {
+        clientsCreated: 0,
+        delegatesCreated: 0,
+        bookingsCreated: 0,
+        sessionsCreated: 0,
+        delegatesAttached: 0,
+        delegateAttachmentsSkipped: 0,
+        failedBatches: 0,
+      }
+    }
+
+    const createdClientIds = new Map<string, string>()
+    const createdClientIdsForRollback: string[] = []
+    const createdDelegateIdsForRollback: string[] = []
+    const createdBookingIdsForRollback: string[] = []
+    const missingClientRecords = buildMissingClientInsertRecordsForBookingImport(
+      rowsToImport,
+      organisationId,
+      userId
+    )
+
+    if (missingClientRecords.length > 0) {
+      const missingClientBatches = splitIntoBatches(missingClientRecords)
+
+      for (let index = 0; index < missingClientBatches.length; index += 1) {
+        setImportProgress(`Creating missing booking client batch ${index + 1} of ${missingClientBatches.length}`)
+
+        const { data, error } = await supabase
+          .from('clients')
+          .insert(missingClientBatches[index])
+          .select('id, company, name')
+
+        if (error) {
+          throw new Error(`Missing client creation failed at batch ${index + 1} of ${missingClientBatches.length}: ${error.message}`)
+        }
+
+        ;(data || []).forEach((client) => {
+          createdClientIds.set(normalizeMatch(client.company), client.id)
+          createdClientIds.set(normalizeMatch(client.name), client.id)
+          createdClientIds.set(normalizeMatch(client.company).replace(/\s+/g, ''), client.id)
+          createdClientIds.set(normalizeMatch(client.name).replace(/\s+/g, ''), client.id)
+          createdClientIdsForRollback.push(client.id)
+        })
+      }
+    }
+
+    let bookingsCreated = 0
+    let sessionsCreated = 0
+    let delegatesCreated = 0
+    let delegatesAttached = 0
+    let delegateAttachmentsSkipped = 0
+
+    try {
+      for (let index = 0; index < rowsToImport.length; index += 1) {
+        const row = rowsToImport[index]
+        setImportProgress(`Importing booking ${index + 1} of ${rowsToImport.length}`)
+
+        const clientId = resolveImportedBookingClientId(row.data, createdClientIds)
+        const bookingRecord = buildBookingInsertRecord(
+          row,
+          organisationId,
+          userId,
+          clientId,
+          courseTemplates
+        )
+        const { data: bookingData, error: bookingError } = await supabase
+          .from('bookings')
+          .insert(bookingRecord)
+          .select('id')
+          .single()
+
+        if (bookingError || !bookingData) {
+          throw new Error(`Booking import failed at row ${row.rowNumber}: ${bookingError?.message || 'No booking id returned'}`)
+        }
+
+        createdBookingIdsForRollback.push(bookingData.id)
+
+        const sessionRecords = buildBookingSessionInsertRecords(
+          bookingData.id,
+          organisationId,
+          row.data.sessions
+        )
+        const { error: sessionError } = await supabase
+          .from('booking_sessions')
+          .insert(sessionRecords)
+
+        if (sessionError) {
+          await supabase
+            .from('bookings')
+            .delete()
+            .eq('organisation_id', organisationId)
+            .eq('id', bookingData.id)
+
+          throw new Error(`Course days could not be saved for row ${row.rowNumber}: ${sessionError.message}`)
+        }
+
+        bookingsCreated += 1
+        sessionsCreated += sessionRecords.length
+
+        if (!row.data.delegate) continue
+
+        let delegateId = row.data.delegate.matchedDelegateId
+
+        if (!delegateId && row.data.delegate.shouldCreateDelegate) {
+          const delegateRecord = buildMissingDelegateInsertRecordForBookingImport(
+            row,
+            organisationId,
+            clientId
+          )
+
+          if (delegateRecord) {
+            const { data: delegateData, error: delegateError } = await supabase
+              .from('delegates')
+              .insert(delegateRecord)
+              .select('id')
+              .single()
+
+            if (delegateError || !delegateData) {
+              throw new Error(`Delegate could not be created for row ${row.rowNumber}: ${delegateError?.message || 'No delegate id returned'}`)
+            }
+
+            delegateId = delegateData.id
+            createdDelegateIdsForRollback.push(delegateData.id)
+            delegatesCreated += 1
+          }
+        }
+
+        delegateId = resolveImportedBookingDelegateId(
+          row.data,
+          new Map([[row.rowNumber, delegateId || '']]),
+          row.rowNumber
+        )
+
+        if (!delegateId) {
+          delegateAttachmentsSkipped += 1
+          continue
+        }
+
+        const { error: attachError } = await supabase
+          .from('booking_delegates')
+          .insert(buildBookingDelegateInsertRecord(
+            bookingData.id,
+            organisationId,
+            delegateId,
+            Number(bookingRecord.price || 0)
+          ))
+
+        if (attachError) {
+          throw new Error(`Delegate could not be attached for row ${row.rowNumber}: ${attachError.message}`)
+        }
+
+        delegatesAttached += 1
+      }
+    } catch (error) {
+      if (createdBookingIdsForRollback.length > 0) {
+        await supabase
+          .from('bookings')
+          .delete()
+          .eq('organisation_id', organisationId)
+          .in('id', createdBookingIdsForRollback)
+      }
+
+      if (createdDelegateIdsForRollback.length > 0) {
+        await supabase
+          .from('delegates')
+          .delete()
+          .eq('organisation_id', organisationId)
+          .in('id', createdDelegateIdsForRollback)
+      }
+
+      if (createdClientIdsForRollback.length > 0) {
+        await supabase
+          .from('clients')
+          .delete()
+          .eq('organisation_id', organisationId)
+          .in('id', createdClientIdsForRollback)
+      }
+
+      throw error
+    }
+
+    return {
+      clientsCreated: missingClientRecords.length,
+      delegatesCreated,
+      bookingsCreated,
+      sessionsCreated,
+      delegatesAttached,
+      delegateAttachmentsSkipped,
       failedBatches: 0,
     }
   }
@@ -280,8 +601,15 @@ export default function ImportPage() {
   const confirmImport = async () => {
     if (!preview || !organisationId) return
 
+    const importLabel =
+      mode === 'clients'
+        ? 'clients'
+        : mode === 'delegates'
+          ? 'delegates'
+          : 'bookings'
+
     const confirmed = confirm(
-      `Import ${preview.importableRows} ${mode === 'clients' ? 'clients' : 'delegates'}? Rows with errors are skipped. Likely duplicates may be skipped, while other warnings can still import.`
+      `Import ${preview.importableRows} ${importLabel}? Rows with errors are skipped. Likely duplicates may be skipped, while other warnings can still import.`
     )
 
     if (!confirmed) return
@@ -293,13 +621,23 @@ export default function ImportPage() {
       const importCounts =
         mode === 'clients'
           ? await importClients(preview as ImportPreview<ClientImportData>)
-          : await importDelegates(preview as ImportPreview<DelegateImportData>)
+          : mode === 'delegates'
+            ? await importDelegates(preview as ImportPreview<DelegateImportData>)
+            : await importBookings(preview as ImportPreview<BookingImportData>)
 
       setResult({
         totalRows: preview.totalRows,
-        rowsImported: mode === 'clients' ? importCounts.clientsCreated : importCounts.delegatesCreated,
+        rowsImported:
+          mode === 'clients'
+            ? importCounts.clientsCreated
+            : mode === 'delegates'
+              ? importCounts.delegatesCreated
+              : importCounts.bookingsCreated,
         ...importCounts,
-        missingClientsCreated: mode === 'delegates' ? importCounts.clientsCreated : 0,
+        missingClientsCreated:
+          mode === 'delegates' || mode === 'bookings'
+            ? importCounts.clientsCreated
+            : 0,
         rowsWithWarnings: preview.warningRows,
         duplicatesSkipped: preview.rows.filter(
           (row) =>
@@ -320,6 +658,10 @@ export default function ImportPage() {
         rowsImported: 0,
         clientsCreated: 0,
         delegatesCreated: 0,
+        bookingsCreated: 0,
+        sessionsCreated: 0,
+        delegatesAttached: 0,
+        delegateAttachmentsSkipped: 0,
         missingClientsCreated: 0,
         rowsWithWarnings: preview.warningRows,
         duplicatesSkipped: preview.rows.filter((row) => !row.willImport).length,
@@ -359,7 +701,7 @@ export default function ImportPage() {
             </p>
 
             <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
-              Import clients and delegates from CSV
+              Import clients, delegates and bookings from CSV
             </h2>
 
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
@@ -381,6 +723,13 @@ export default function ImportPage() {
             >
               Download delegate CSV template
             </button>
+
+            <button
+              className={buttonSecondary}
+              onClick={() => downloadTemplate(bookingCsvTemplate, 'hercules-bookings-template.csv')}
+            >
+              Download booking CSV template
+            </button>
           </div>
         </div>
       </div>
@@ -394,7 +743,7 @@ export default function ImportPage() {
           </div>
 
           <div className="p-5 grid gap-4">
-            <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+            <div className="grid grid-cols-1 gap-2 rounded-xl bg-slate-100 p-1 sm:grid-cols-3">
               <button
                 className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
                   mode === 'clients'
@@ -416,9 +765,43 @@ export default function ImportPage() {
               >
                 Import delegates
               </button>
+
+              <button
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                  mode === 'bookings'
+                    ? 'bg-white text-slate-950 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-950'
+                }`}
+                onClick={() => switchMode('bookings')}
+              >
+                Import bookings
+              </button>
             </div>
 
-            {mode === 'delegates' && (
+            {mode === 'bookings' && (
+              <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <label className="grid gap-1">
+                  <span className="text-xs font-medium text-slate-500">
+                    Default booking type
+                  </span>
+
+                  <select
+                    className={inputClass}
+                    value={defaultBookingType}
+                    onChange={(event) => setDefaultBookingType(event.target.value as 'private' | 'public')}
+                  >
+                    <option value="private">Private bookings</option>
+                    <option value="public">Public bookings</option>
+                  </select>
+                </label>
+
+                <p className="text-xs leading-5 text-slate-500">
+                  Used only when the CSV does not include public/private or delivery type.
+                </p>
+              </div>
+            )}
+
+            {(mode === 'delegates' || mode === 'bookings') && (
               <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                 <input
                   type="checkbox"
@@ -429,6 +812,21 @@ export default function ImportPage() {
 
                 <span>
                   Create missing clients named in the CSV. Existing client matches stay limited to this organisation.
+                </span>
+              </label>
+            )}
+
+            {mode === 'bookings' && (
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={createMissingDelegates}
+                  onChange={(event) => setCreateMissingDelegates(event.target.checked)}
+                />
+
+                <span>
+                  Create missing delegates from booking rows when no safe existing delegate match is found.
                 </span>
               </label>
             )}
@@ -458,7 +856,7 @@ export default function ImportPage() {
               </p>
 
               <p className="mt-2">
-                {clients.length} clients and {delegates.length} delegates will be checked for duplicates before import.
+                {clients.length} clients, {delegates.length} delegates and {bookings.length} bookings will be checked for duplicates before import.
               </p>
 
               <p className="mt-2">
@@ -476,7 +874,7 @@ export default function ImportPage() {
               </p>
 
               <p className="mt-2">
-                Total rows: {result.totalRows} - Rows imported: {result.rowsImported} - Clients created: {result.clientsCreated} - Delegates created: {result.delegatesCreated} - Missing clients created: {result.missingClientsCreated} - Warnings: {result.rowsWithWarnings} - Duplicates skipped: {result.duplicatesSkipped} - Error rows skipped: {result.errorRowsSkipped} - Failed batches: {result.failedBatches}
+                Total rows: {result.totalRows} - Rows imported: {result.rowsImported} - Bookings created: {result.bookingsCreated} - Sessions created: {result.sessionsCreated} - Clients created: {result.clientsCreated} - Delegates created: {result.delegatesCreated} - Delegates attached: {result.delegatesAttached} - Delegate attachments skipped: {result.delegateAttachmentsSkipped} - Missing clients created: {result.missingClientsCreated} - Warnings: {result.rowsWithWarnings} - Duplicates skipped: {result.duplicatesSkipped} - Error rows skipped: {result.errorRowsSkipped} - Failed batches: {result.failedBatches}
               </p>
             </div>
           )}
@@ -564,13 +962,41 @@ export default function ImportPage() {
                         const recordName =
                           mode === 'clients'
                             ? data.client_name || 'Unnamed client'
-                            : data.full_name || 'Unnamed delegate'
+                            : mode === 'delegates'
+                              ? data.full_name || 'Unnamed delegate'
+                              : data.course_name || 'Unnamed booking'
                         const contact =
                           mode === 'clients'
                             ? [data.primary_contact, data.email, data.phone].filter(Boolean).join(' - ') || 'No contact detail'
-                            : data.email || data.clientPreview || 'No contact detail'
+                            : mode === 'delegates'
+                              ? data.email || data.clientPreview || 'No contact detail'
+                              : [
+                                  data.booking_contact_name,
+                                  data.booking_contact_email,
+                                  data.booking_contact_phone,
+                                ].filter(Boolean).join(' - ') || 'No booking contact'
                         const clientDetail = mode === 'clients'
                           ? [data.address && `Address: ${data.address}`, data.notes && `Notes: ${data.notes}`].filter(Boolean)
+                          : []
+                        const bookingDetail = mode === 'bookings'
+                          ? [
+                              `${data.course_delivery_type === 'public' ? 'Public' : 'Private'} booking`,
+                              data.clientPreview,
+                              data.sessions?.length
+                                ? `Course days: ${data.sessions.map((session: any) => session.session_date).join(', ')}`
+                                : '',
+                              data.location ? `Location: ${data.location}` : '',
+                              data.trainer_name
+                                ? data.matchedTrainerId
+                                  ? `Trainer matched: ${data.trainer_name}`
+                                  : `Trainer not matched: ${data.trainer_name}`
+                                : '',
+                              data.matchedCourseTemplateId
+                                ? 'Course template matched'
+                                : 'No course template match',
+                              data.delegate ? data.delegate.delegatePreview : '',
+                              data.notes ? `Notes: ${data.notes}` : '',
+                            ].filter(Boolean)
                           : []
 
                         return (
@@ -588,6 +1014,16 @@ export default function ImportPage() {
                                 <p className="mt-1 text-xs text-slate-500">
                                   {data.clientPreview}
                                 </p>
+                              )}
+
+                              {mode === 'bookings' && bookingDetail.length > 0 && (
+                                <div className="mt-2 grid gap-1 text-xs leading-5 text-slate-500">
+                                  {bookingDetail.map((detail: string) => (
+                                    <p key={detail}>
+                                      {detail}
+                                    </p>
+                                  ))}
+                                </div>
                               )}
 
                               {mode === 'clients' && clientDetail.length > 0 && (

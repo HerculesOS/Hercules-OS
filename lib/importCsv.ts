@@ -12,6 +12,46 @@ export type ExistingDelegateForImport = {
   client_id?: string | null
 }
 
+export type ExistingTrainerForImport = {
+  id: string
+  name?: string | null
+  email?: string | null
+}
+
+export type ExistingCourseTemplateForImport = {
+  id: string
+  name?: string | null
+  code?: string | null
+  price?: number | string | null
+  duration_days?: number | string | null
+  default_start_time?: string | null
+  default_end_time?: string | null
+}
+
+export type ExistingBookingForImport = {
+  id: string
+  course_name?: string | null
+  course_delivery_type?: string | null
+  client_id?: string | null
+  client_name?: string | null
+  location?: string | null
+  date?: string | null
+  end_date?: string | null
+  start_time?: string | null
+  end_time?: string | null
+  booking_sessions?: Array<{
+    session_date?: string | null
+    start_time?: string | null
+    end_time?: string | null
+    sort_order?: number | null
+  }> | null
+}
+
+export type ExistingBookingDelegateLinkForImport = {
+  booking_id?: string | null
+  delegate_id?: string | null
+}
+
 export type ImportStatus = 'valid' | 'warning' | 'error'
 
 export type ImportPreviewRow<T> = {
@@ -76,6 +116,45 @@ export type DelegateImportData = {
   clientPreview: string
 }
 
+export type BookingImportSessionData = {
+  session_date: string
+  start_time: string
+  end_time: string
+  sort_order: number
+}
+
+export type BookingImportDelegateData = {
+  first_name: string
+  last_name: string
+  full_name: string
+  email: string
+  phone: string
+  matchedDelegateId: string | null
+  shouldCreateDelegate: boolean
+  delegatePreview: string
+}
+
+export type BookingImportData = {
+  course_name: string
+  client_name: string
+  booking_contact_name: string
+  booking_contact_email: string
+  booking_contact_phone: string
+  location: string
+  trainer_name: string
+  status: string
+  course_delivery_type: 'private' | 'public'
+  notes: string
+  matchedClientId: string | null
+  shouldCreateClient: boolean
+  clientPreview: string
+  matchedCourseTemplateId: string | null
+  matchedTrainerId: string | null
+  sessions: BookingImportSessionData[]
+  delegate: BookingImportDelegateData | null
+  duplicateBookingId: string | null
+}
+
 export type MissingClientInsertRecord = {
   organisation_id: string
   user_id: string | null
@@ -85,6 +164,48 @@ export type MissingClientInsertRecord = {
   phone: null
   address: null
   notes: string
+}
+
+export type BookingInsertRecord = {
+  user_id: string | null
+  organisation_id: string
+  course_delivery_type: 'private' | 'public'
+  client_id: string | null
+  trainer_id: string | null
+  course_template_id: string | null
+  certificate_template_id?: string | null
+  client_name: string | null
+  course_name: string
+  date: string
+  end_date: string
+  start_time: string | null
+  end_time: string | null
+  location: string | null
+  booking_contact_name: string | null
+  booking_contact_email: string | null
+  booking_contact_phone: string | null
+  price: number | null
+  notes: string | null
+  status: string
+}
+
+export type BookingSessionInsertRecord = {
+  booking_id: string
+  organisation_id: string
+  session_date: string
+  start_time: string | null
+  end_time: string | null
+  sort_order: number
+}
+
+export type BookingDelegateInsertRecord = {
+  organisation_id: string
+  booking_id: string
+  delegate_id: string
+  attendance_status: 'not_marked'
+  result_status: 'not_assessed'
+  attendance_notes: null
+  unit_price?: number
 }
 
 export const IMPORT_BATCH_SIZE = 500
@@ -103,6 +224,9 @@ const normalizeMatch = (value?: string | null) =>
 
 export const normalizeImportName = (value?: string | null) =>
   (value || '').trim().replace(/\s+/g, ' ')
+
+const normalizeLooseMatch = (value?: string | null) =>
+  normalizeMatch(value).replace(/\s+/g, '')
 
 const getValue = (
   row: Record<string, string>,
@@ -241,6 +365,43 @@ const delegateAliases = {
   notes: clientAliases.notes,
 }
 
+const bookingAliases = {
+  courseName: ['course_name', 'course name', 'course', 'training course', 'title', 'event name'],
+  clientName: [
+    'client_name',
+    'client name',
+    'client',
+    'company',
+    'company name',
+    'organisation',
+    'organization',
+    'school',
+    'business',
+  ],
+  bookingContactName: ['contact name', 'booking contact', 'booker', 'organiser', 'organizer'],
+  bookingContactEmail: ['contact email', 'booking email', 'email'],
+  bookingContactPhone: ['contact phone', 'phone'],
+  location: ['location', 'venue', 'address', 'site', 'training location'],
+  trainerName: ['trainer', 'trainer name', 'instructor', 'tutor'],
+  date: ['date', 'course date', 'start date'],
+  endDate: ['end date'],
+  startTime: ['start time'],
+  endTime: ['end time'],
+  status: ['status', 'booking status'],
+  deliveryType: ['delivery type', 'type', 'public/private', 'booking type'],
+  notes: ['notes', 'comments', 'additional notes'],
+  delegateFullName: ['delegate name', 'full name', 'learner name', 'attendee name'],
+  delegateFirstName: ['first name'],
+  delegateLastName: ['last name'],
+  delegateEmail: ['delegate email', 'learner email', 'attendee email'],
+  delegatePhone: ['delegate phone', 'learner phone'],
+}
+
+const bookingSessionDateAliases = Array.from({ length: 5 }, (_, index) => [
+  `session ${index + 1} date`,
+  `day ${index + 1} date`,
+])
+
 const splitFullName = (fullName: string) => {
   const parts = normalizeImportName(fullName).split(' ').filter(Boolean)
 
@@ -254,6 +415,186 @@ const hasEmail = (email: string) => email.length > 0
 
 const isValidEmail = (email: string) =>
   !hasEmail(email) || emailPattern.test(email)
+
+const padNumber = (value: number) => String(value).padStart(2, '0')
+
+const isValidDateParts = (year: number, month: number, day: number) => {
+  const date = new Date(year, month - 1, day)
+
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  )
+}
+
+const normalizeDateValue = (value?: string | null) => {
+  const trimmed = normalizeValue(value || '')
+
+  if (!trimmed) return ''
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+
+  if (isoMatch) {
+    const year = Number(isoMatch[1])
+    const month = Number(isoMatch[2])
+    const day = Number(isoMatch[3])
+
+    return isValidDateParts(year, month, day)
+      ? `${year}-${padNumber(month)}-${padNumber(day)}`
+      : ''
+  }
+
+  const slashMatch = trimmed.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/)
+
+  if (slashMatch) {
+    const day = Number(slashMatch[1])
+    const month = Number(slashMatch[2])
+    const yearText = slashMatch[3]
+    const year = Number(yearText.length === 2 ? `20${yearText}` : yearText)
+
+    return isValidDateParts(year, month, day)
+      ? `${year}-${padNumber(month)}-${padNumber(day)}`
+      : ''
+  }
+
+  return ''
+}
+
+const normalizeTimeValue = (value?: string | null) => {
+  const trimmed = normalizeValue(value || '').toLowerCase()
+
+  if (!trimmed) return ''
+
+  const compact = trimmed.replace(/\s+/g, '')
+  const meridiemMatch = compact.match(/^(\d{1,2})(?::?(\d{2}))?(am|pm)$/)
+
+  if (meridiemMatch) {
+    let hours = Number(meridiemMatch[1])
+    const minutes = Number(meridiemMatch[2] || 0)
+    const meridiem = meridiemMatch[3]
+
+    if (hours < 1 || hours > 12 || minutes < 0 || minutes > 59) return ''
+    if (meridiem === 'pm' && hours < 12) hours += 12
+    if (meridiem === 'am' && hours === 12) hours = 0
+
+    return `${padNumber(hours)}:${padNumber(minutes)}`
+  }
+
+  const timeMatch = compact.match(/^(\d{1,2})(?::?(\d{2}))$/)
+
+  if (!timeMatch) return ''
+
+  const hours = Number(timeMatch[1])
+  const minutes = Number(timeMatch[2])
+
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return ''
+
+  return `${padNumber(hours)}:${padNumber(minutes)}`
+}
+
+const addDaysToImportDate = (dateValue: string, daysToAdd: number) => {
+  if (!dateValue) return ''
+
+  const [yearText, monthText, dayText] = dateValue.split('-')
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const day = Number(dayText)
+
+  if (!isValidDateParts(year, month, day)) return ''
+
+  const date = new Date(year, month - 1, day)
+  date.setDate(date.getDate() + daysToAdd)
+
+  return `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())}`
+}
+
+const normalizeDeliveryType = (
+  value: string,
+  defaultDeliveryType: 'private' | 'public'
+) => {
+  const normalized = normalizeMatch(value).replace(/[^a-z]/g, '')
+
+  if (['public', 'open', 'opencourse'].includes(normalized)) return 'public'
+  if (['private', 'inhouse', 'closed', 'client'].includes(normalized)) return 'private'
+
+  return defaultDeliveryType
+}
+
+const normalizeBookingStatus = (value: string) => {
+  const normalized = normalizeMatch(value).replace(/[^a-z]/g, '_')
+
+  if (!normalized) return 'scheduled'
+  if (['cancelled', 'canceled'].includes(normalized)) return 'cancelled'
+  if (['completed', 'complete'].includes(normalized)) return 'completed'
+  if (['draft', 'pending', 'confirmed', 'scheduled'].includes(normalized)) return 'scheduled'
+
+  return normalized
+}
+
+const buildConsecutiveImportSessions = (
+  startDate: string,
+  endDate: string,
+  startTime: string,
+  endTime: string
+) => {
+  const sessions: BookingImportSessionData[] = []
+  let nextDate = startDate
+
+  while (nextDate && nextDate <= endDate) {
+    sessions.push({
+      session_date: nextDate,
+      start_time: startTime,
+      end_time: endTime,
+      sort_order: sessions.length + 1,
+    })
+
+    const followingDate = addDaysToImportDate(nextDate, 1)
+    if (!followingDate || followingDate === nextDate) break
+    nextDate = followingDate
+  }
+
+  return sessions
+}
+
+const buildBookingImportSessions = (
+  row: Record<string, string>,
+  courseTemplate?: ExistingCourseTemplateForImport | null
+) => {
+  const startTime =
+    normalizeTimeValue(getValue(row, bookingAliases.startTime)) ||
+    normalizeTimeValue(courseTemplate?.default_start_time)
+  const endTime =
+    normalizeTimeValue(getValue(row, bookingAliases.endTime)) ||
+    normalizeTimeValue(courseTemplate?.default_end_time)
+  const explicitSessionDates = bookingSessionDateAliases
+    .map((aliases) => normalizeDateValue(getValue(row, aliases)))
+    .filter(Boolean)
+
+  if (explicitSessionDates.length > 0) {
+    return Array.from(new Set(explicitSessionDates)).map((sessionDate, index) => ({
+      session_date: sessionDate,
+      start_time: startTime,
+      end_time: endTime,
+      sort_order: index + 1,
+    }))
+  }
+
+  const startDate = normalizeDateValue(getValue(row, bookingAliases.date))
+  const templateDuration = Math.max(
+    Math.floor(Number(courseTemplate?.duration_days) || 1),
+    1
+  )
+  const endDate =
+    normalizeDateValue(getValue(row, bookingAliases.endDate)) ||
+    (templateDuration > 1
+      ? addDaysToImportDate(startDate, templateDuration - 1)
+      : startDate)
+
+  if (!startDate) return []
+
+  return buildConsecutiveImportSessions(startDate, endDate, startTime, endTime)
+}
 
 const buildClientAddress = (row: Record<string, string>) => {
   const fullAddress = getValue(row, clientAliases.address)
@@ -619,11 +960,420 @@ export const buildDelegateImportPreview = (
   )
 }
 
+const buildClientsByLooseName = (existingClients: ExistingClientForImport[]) =>
+  new Map(
+    existingClients.flatMap((client) =>
+      [client.company, client.name]
+        .map((value) => normalizeLooseMatch(value))
+        .filter(Boolean)
+        .map((value) => [value, client] as const)
+    )
+  )
+
+const findCourseTemplateForImport = (
+  courseName: string,
+  courseTemplates: ExistingCourseTemplateForImport[]
+) => {
+  const normalizedCourse = normalizeLooseMatch(courseName)
+
+  if (!normalizedCourse) return null
+
+  return courseTemplates.find((template) =>
+    [template.name, template.code]
+      .map((value) => normalizeLooseMatch(value))
+      .filter(Boolean)
+      .includes(normalizedCourse)
+  ) || null
+}
+
+const findTrainerForImport = (
+  trainerName: string,
+  trainers: ExistingTrainerForImport[]
+) => {
+  const normalizedTrainer = normalizeLooseMatch(trainerName)
+  const normalizedTrainerEmail = normalizeMatch(trainerName)
+
+  if (!normalizedTrainer) return null
+
+  return trainers.find((trainer) =>
+    normalizeLooseMatch(trainer.name) === normalizedTrainer ||
+    normalizeMatch(trainer.email) === normalizedTrainerEmail
+  ) || null
+}
+
+const getExistingBookingFirstDate = (booking: ExistingBookingForImport) => {
+  const sessions = Array.isArray(booking.booking_sessions)
+    ? booking.booking_sessions
+        .map((session) => normalizeDateValue(session.session_date))
+        .filter(Boolean)
+        .sort()
+    : []
+
+  return sessions[0] || normalizeDateValue(booking.date)
+}
+
+const getBookingDuplicateKey = (
+  courseName: string,
+  firstSessionDate: string,
+  deliveryType: 'private' | 'public',
+  clientNameOrId: string,
+  location: string
+) =>
+  [
+    normalizeLooseMatch(courseName),
+    firstSessionDate,
+    deliveryType,
+    deliveryType === 'private' ? normalizeLooseMatch(clientNameOrId) : '',
+    normalizeLooseMatch(location),
+  ].join('|')
+
+const findMatchingDelegateForBookingImport = (
+  delegateData: {
+    full_name: string
+    first_name: string
+    last_name: string
+    email: string
+  },
+  clientId: string | null,
+  existingDelegates: ExistingDelegateForImport[]
+) => {
+  const normalizedEmail = normalizeMatch(delegateData.email)
+  const normalizedFullName = normalizeMatch(delegateData.full_name)
+  const emailMatches = normalizedEmail
+    ? existingDelegates.filter((delegate) => normalizeMatch(delegate.email) === normalizedEmail)
+    : []
+
+  if (emailMatches.length === 1) {
+    const emailMatchName = normalizeMatch(emailMatches[0].full_name)
+
+    if (!emailMatchName || emailMatchName === normalizedFullName) {
+      return { delegate: emailMatches[0], ambiguous: false }
+    }
+
+    return { delegate: null, ambiguous: true }
+  }
+
+  if (emailMatches.length > 1) {
+    const sameNameEmailMatches = emailMatches.filter(
+      (delegate) => normalizeMatch(delegate.full_name) === normalizedFullName
+    )
+
+    if (sameNameEmailMatches.length === 1) {
+      return { delegate: sameNameEmailMatches[0], ambiguous: false }
+    }
+
+    return { delegate: null, ambiguous: true }
+  }
+
+  if (clientId && normalizedFullName) {
+    const nameClientMatches = existingDelegates.filter(
+      (delegate) =>
+        delegate.client_id === clientId &&
+        normalizeMatch(delegate.full_name) === normalizedFullName
+    )
+
+    if (nameClientMatches.length === 1) {
+      return { delegate: nameClientMatches[0], ambiguous: false }
+    }
+
+    if (nameClientMatches.length > 1) {
+      return { delegate: null, ambiguous: true }
+    }
+  }
+
+  if (normalizedFullName) {
+    const nameMatches = existingDelegates.filter(
+      (delegate) => normalizeMatch(delegate.full_name) === normalizedFullName
+    )
+
+    if (nameMatches.length === 1) {
+      return { delegate: nameMatches[0], ambiguous: false }
+    }
+
+    if (nameMatches.length > 1) {
+      return { delegate: null, ambiguous: true }
+    }
+  }
+
+  return { delegate: null, ambiguous: false }
+}
+
+export const buildBookingImportPreview = (
+  csvText: string,
+  existingClients: ExistingClientForImport[],
+  existingDelegates: ExistingDelegateForImport[],
+  existingBookings: ExistingBookingForImport[],
+  trainers: ExistingTrainerForImport[],
+  courseTemplates: ExistingCourseTemplateForImport[],
+  existingBookingDelegateLinks: ExistingBookingDelegateLinkForImport[],
+  options: {
+    defaultDeliveryType: 'private' | 'public'
+    createMissingClients: boolean
+    createMissingDelegates: boolean
+  }
+) => {
+  const { headers, duplicateHeaders, rows, blankRows } = parseCsv(csvText)
+  const clientsByLooseName = buildClientsByLooseName(existingClients)
+  const existingBookingKeys = new Map(
+    existingBookings.map((booking) => {
+      const deliveryType = normalizeDeliveryType(
+        booking.course_delivery_type || '',
+        'private'
+      )
+      const clientKey = booking.client_id || booking.client_name || ''
+
+      return [
+        getBookingDuplicateKey(
+          booking.course_name || '',
+          getExistingBookingFirstDate(booking),
+          deliveryType,
+          clientKey,
+          booking.location || ''
+        ),
+        booking,
+      ] as const
+    })
+  )
+  const existingLinkKeys = new Set(
+    existingBookingDelegateLinks
+      .filter((link) => link.booking_id && link.delegate_id)
+      .map((link) => `${link.booking_id}|${link.delegate_id}`)
+  )
+  const seenBookingKeys = new Set<string>()
+
+  const previewRows = rows.map<ImportPreviewRow<BookingImportData>>((row, index) => {
+    const courseName = getValue(row, bookingAliases.courseName)
+    const clientName = getValue(row, bookingAliases.clientName)
+    const deliveryType = normalizeDeliveryType(
+      getValue(row, bookingAliases.deliveryType),
+      options.defaultDeliveryType
+    )
+    const matchedClient = clientName
+      ? clientsByLooseName.get(normalizeLooseMatch(clientName))
+      : undefined
+    const shouldCreateClient = Boolean(
+      deliveryType === 'private' &&
+      clientName &&
+      !matchedClient &&
+      options.createMissingClients
+    )
+    const courseTemplate = findCourseTemplateForImport(courseName, courseTemplates)
+    const trainerName = getValue(row, bookingAliases.trainerName)
+    const trainer = findTrainerForImport(trainerName, trainers)
+    const sessions = buildBookingImportSessions(row, courseTemplate)
+    const firstSessionDate = sessions[0]?.session_date || ''
+    const duplicateKey = getBookingDuplicateKey(
+      courseName,
+      firstSessionDate,
+      deliveryType,
+      matchedClient?.id || clientName,
+      getValue(row, bookingAliases.location)
+    )
+    const duplicateBooking = existingBookingKeys.get(duplicateKey)
+    const providedDelegateFirstName = getValue(row, bookingAliases.delegateFirstName)
+    const providedDelegateLastName = getValue(row, bookingAliases.delegateLastName)
+    const providedDelegateFullName = getValue(row, bookingAliases.delegateFullName)
+    const splitDelegateName =
+      !providedDelegateFirstName && !providedDelegateLastName && providedDelegateFullName
+        ? splitFullName(providedDelegateFullName)
+        : { firstName: '', lastName: '' }
+    const delegateFirstName = providedDelegateFirstName || splitDelegateName.firstName
+    const delegateLastName = providedDelegateLastName || splitDelegateName.lastName
+    const delegateFullName =
+      providedDelegateFullName ||
+      [delegateFirstName, delegateLastName].filter(Boolean).join(' ')
+    const delegateEmail = getValue(row, bookingAliases.delegateEmail)
+    const delegatePhone = getValue(row, bookingAliases.delegatePhone)
+    const hasDelegateData = Boolean(
+      delegateFullName || delegateFirstName || delegateLastName || delegateEmail || delegatePhone
+    )
+    const effectiveClientId = matchedClient?.id || null
+    const delegateMatch = hasDelegateData
+      ? findMatchingDelegateForBookingImport(
+          {
+            full_name: delegateFullName,
+            first_name: delegateFirstName,
+            last_name: delegateLastName,
+            email: delegateEmail,
+          },
+          effectiveClientId,
+          existingDelegates
+        )
+      : { delegate: null, ambiguous: false }
+    const shouldCreateDelegate = Boolean(
+      hasDelegateData &&
+      !delegateMatch.delegate &&
+      !delegateMatch.ambiguous &&
+      options.createMissingDelegates
+    )
+    const delegatePreview = !hasDelegateData
+      ? 'No delegate in row'
+      : delegateMatch.delegate
+        ? `Matched existing delegate: ${delegateMatch.delegate.full_name || delegateFullName}`
+        : delegateMatch.ambiguous
+          ? 'Ambiguous delegate match, will skip delegate attachment'
+          : shouldCreateDelegate
+            ? `Will create delegate: ${delegateFullName || delegateEmail}`
+            : 'Delegate not found, will skip unless create missing delegates is ticked'
+
+    const data: BookingImportData = {
+      course_name: courseName,
+      client_name: clientName,
+      booking_contact_name: getValue(row, bookingAliases.bookingContactName),
+      booking_contact_email: getValue(row, bookingAliases.bookingContactEmail),
+      booking_contact_phone: getValue(row, bookingAliases.bookingContactPhone),
+      location: getValue(row, bookingAliases.location),
+      trainer_name: trainerName,
+      status: normalizeBookingStatus(getValue(row, bookingAliases.status)),
+      course_delivery_type: deliveryType,
+      notes: getValue(row, bookingAliases.notes),
+      matchedClientId: matchedClient?.id || null,
+      shouldCreateClient,
+      clientPreview: clientName
+        ? matchedClient
+          ? `Matched existing client: ${matchedClient.company || matchedClient.name || clientName}`
+          : shouldCreateClient
+            ? `Will create client: ${clientName}`
+            : 'Client not found, row will skip unless create missing clients is ticked'
+        : deliveryType === 'private'
+          ? 'Client required for private booking'
+          : 'No client',
+      matchedCourseTemplateId: courseTemplate?.id || null,
+      matchedTrainerId: trainer?.id || null,
+      sessions,
+      delegate: hasDelegateData
+        ? {
+            first_name: delegateFirstName,
+            last_name: delegateLastName,
+            full_name: delegateFullName,
+            email: delegateEmail,
+            phone: delegatePhone,
+            matchedDelegateId: delegateMatch.delegate?.id || null,
+            shouldCreateDelegate,
+            delegatePreview,
+          }
+        : null,
+      duplicateBookingId: duplicateBooking?.id || null,
+    }
+
+    const errors: string[] = []
+    const warnings: string[] = []
+
+    if (!data.course_name) errors.push('course_name is required')
+    if (!firstSessionDate) errors.push('first session date is required')
+    if (data.booking_contact_email && !isValidEmail(data.booking_contact_email)) {
+      errors.push('Booking contact email is not valid')
+    }
+
+    if (hasDelegateData) {
+      if (!delegateFullName) {
+        errors.push('delegate name is required when delegate fields are provided')
+      }
+
+      if (providedDelegateFirstName && !delegateLastName && !providedDelegateFullName) {
+        errors.push('delegate last name is required')
+      }
+
+      if (
+        providedDelegateFullName &&
+        !providedDelegateFirstName &&
+        !providedDelegateLastName &&
+        !delegateLastName
+      ) {
+        errors.push('delegate name must include first and last name')
+      }
+
+      if (!isValidEmail(delegateEmail)) errors.push('Delegate email is not valid')
+      warnings.push(delegatePreview)
+    }
+
+    if (deliveryType === 'private' && !clientName) {
+      errors.push('client_name is required for private bookings')
+    }
+
+    if (deliveryType === 'private' && clientName && !matchedClient && !options.createMissingClients) {
+      warnings.push(data.clientPreview)
+    }
+
+    if (deliveryType === 'private' && matchedClient) {
+      warnings.push(data.clientPreview)
+    }
+
+    if (deliveryType === 'private' && shouldCreateClient) {
+      warnings.push(data.clientPreview)
+    }
+
+    if (courseName && !courseTemplate) {
+      warnings.push('No matching course template; booking will use the course name from the CSV')
+    }
+
+    if (trainerName && !trainer) {
+      warnings.push('Trainer not found; booking will import without a trainer')
+    }
+
+    if (duplicateBooking) {
+      warnings.push('A likely matching booking already exists')
+    }
+
+    if (seenBookingKeys.has(duplicateKey)) {
+      warnings.push('Another row in this file looks like the same booking')
+    }
+
+    if (duplicateKey) seenBookingKeys.add(duplicateKey)
+
+    if (
+      duplicateBooking &&
+      data.delegate?.matchedDelegateId &&
+      existingLinkKeys.has(`${duplicateBooking.id}|${data.delegate.matchedDelegateId}`)
+    ) {
+      warnings.push('This delegate is already attached to the matching booking')
+    }
+
+    const hasBlockingMissingClient = Boolean(
+      deliveryType === 'private' &&
+      clientName &&
+      !matchedClient &&
+      !options.createMissingClients
+    )
+    const hasDuplicateBooking = Boolean(duplicateBooking || seenBookingKeys.has(duplicateKey) && warnings.includes('Another row in this file looks like the same booking'))
+    const willImport = errors.length === 0 && !hasBlockingMissingClient && !hasDuplicateBooking
+
+    return {
+      rowNumber: index + 2,
+      data,
+      status: errors.length > 0 ? 'error' : warnings.length > 0 ? 'warning' : 'valid',
+      errors,
+      warnings,
+      willImport,
+    }
+  })
+
+  const hasCourseHeader = hasAnyHeader(headers, bookingAliases.courseName)
+  const hasDateHeader =
+    hasAnyHeader(headers, bookingAliases.date) ||
+    bookingSessionDateAliases.some((aliases) => hasAnyHeader(headers, aliases))
+
+  return buildPreview(
+    ['course_name', 'date or session 1 date'],
+    headers,
+    duplicateHeaders,
+    previewRows,
+    blankRows,
+    [
+      ...(hasCourseHeader ? [] : ['course_name']),
+      ...(hasDateHeader ? [] : ['date or session 1 date']),
+    ]
+  )
+}
+
 export const clientCsvTemplate =
   'client_name,primary_contact,email,phone,address,notes\nAcme Training Ltd,Jordan Smith,jordan@example.com,01234 567890,"1 High Street, London",Key account\n'
 
 export const delegateCsvTemplate =
   'first_name,last_name,email,phone,client_name,notes\nSam,Learner,sam@example.com,07123 456789,Acme Training Ltd,Requires renewal reminder\n'
+
+export const bookingCsvTemplate =
+  'course_name,client_name,delivery type,contact name,contact email,contact phone,location,trainer,date,start time,end time,session 2 date,session 3 date,delegate name,delegate email,delegate phone,notes\nEmergency First Aid,Acme Training Ltd,Private,Jordan Smith,jordan@example.com,01234 567890,"Training Room, Leeds",Alex Trainer,2026-09-01,09:00,16:30,2026-09-08,2026-09-15,Sam Learner,sam@example.com,07123 456789,Imported booking\n'
 
 export const buildClientInsertRecords = (
   rows: ImportPreviewRow<ClientImportData>[],
@@ -683,3 +1433,164 @@ export const resolveImportedDelegateClientId = (
   delegate.matchedClientId ||
   createdClientIdsByName.get(normalizeMatch(delegate.client_name)) ||
   null
+
+export const getMissingClientNamesForBookingImport = (
+  rows: ImportPreviewRow<BookingImportData>[]
+) =>
+  Array.from(
+    new Set(
+      rows
+        .filter((row) => row.willImport && row.data.shouldCreateClient)
+        .map((row) => normalizeImportName(row.data.client_name))
+        .filter(Boolean)
+    )
+  )
+
+export const buildMissingClientInsertRecordsForBookingImport = (
+  rows: ImportPreviewRow<BookingImportData>[],
+  organisationId: string,
+  userId: string | null
+): MissingClientInsertRecord[] =>
+  getMissingClientNamesForBookingImport(rows).map((clientName) => ({
+    organisation_id: organisationId,
+    user_id: userId,
+    company: clientName,
+    name: clientName,
+    email: null,
+    phone: null,
+    address: null,
+    notes: 'Created during booking CSV import',
+  }))
+
+export const resolveImportedBookingClientId = (
+  booking: BookingImportData,
+  createdClientIdsByName: Map<string, string>
+) =>
+  booking.matchedClientId ||
+  createdClientIdsByName.get(normalizeMatch(booking.client_name)) ||
+  createdClientIdsByName.get(normalizeLooseMatch(booking.client_name)) ||
+  null
+
+const getCourseTemplatePrice = (
+  courseTemplate: ExistingCourseTemplateForImport | null | undefined
+) => {
+  if (!courseTemplate?.price && courseTemplate?.price !== 0) return null
+
+  const parsed = Number(courseTemplate.price)
+
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+export const buildBookingInsertRecord = (
+  row: ImportPreviewRow<BookingImportData>,
+  organisationId: string,
+  userId: string | null,
+  clientId: string | null,
+  courseTemplates: ExistingCourseTemplateForImport[]
+): BookingInsertRecord => {
+  const firstSession = row.data.sessions[0]
+  const finalSession = row.data.sessions[row.data.sessions.length - 1] || firstSession
+  const courseTemplate = row.data.matchedCourseTemplateId
+    ? courseTemplates.find((template) => template.id === row.data.matchedCourseTemplateId)
+    : null
+
+  return {
+    user_id: userId,
+    organisation_id: organisationId,
+    course_delivery_type: row.data.course_delivery_type,
+    client_id: clientId,
+    trainer_id: row.data.matchedTrainerId,
+    course_template_id: row.data.matchedCourseTemplateId,
+    client_name:
+      row.data.course_delivery_type === 'public' && !clientId
+        ? 'Public course'
+        : row.data.client_name || null,
+    course_name: row.data.course_name,
+    date: firstSession.session_date,
+    end_date: finalSession.session_date,
+    start_time: firstSession.start_time || null,
+    end_time: finalSession.end_time || null,
+    location: row.data.location || null,
+    booking_contact_name:
+      row.data.course_delivery_type === 'private'
+        ? row.data.booking_contact_name || null
+        : null,
+    booking_contact_email:
+      row.data.course_delivery_type === 'private'
+        ? row.data.booking_contact_email || null
+        : null,
+    booking_contact_phone:
+      row.data.course_delivery_type === 'private'
+        ? row.data.booking_contact_phone || null
+        : null,
+    price: getCourseTemplatePrice(courseTemplate),
+    notes: row.data.notes || null,
+    status: row.data.status || 'scheduled',
+  }
+}
+
+export const buildBookingSessionInsertRecords = (
+  bookingId: string,
+  organisationId: string,
+  sessions: BookingImportSessionData[]
+): BookingSessionInsertRecord[] =>
+  sessions.map((session, index) => ({
+    booking_id: bookingId,
+    organisation_id: organisationId,
+    session_date: session.session_date,
+    start_time: session.start_time || null,
+    end_time: session.end_time || null,
+    sort_order: index + 1,
+  }))
+
+export const getMissingDelegateRowsForBookingImport = (
+  rows: ImportPreviewRow<BookingImportData>[]
+) =>
+  rows.filter(
+    (row) =>
+      row.willImport &&
+      row.data.delegate &&
+      row.data.delegate.shouldCreateDelegate
+  )
+
+export const buildMissingDelegateInsertRecordForBookingImport = (
+  row: ImportPreviewRow<BookingImportData>,
+  organisationId: string,
+  clientId: string | null
+) => {
+  if (!row.data.delegate) return null
+
+  return {
+    organisation_id: organisationId,
+    client_id: clientId,
+    booking_id: null,
+    full_name: row.data.delegate.full_name,
+    email: row.data.delegate.email || null,
+    phone: row.data.delegate.phone || null,
+    notes: 'Created during booking CSV import',
+  }
+}
+
+export const resolveImportedBookingDelegateId = (
+  booking: BookingImportData,
+  createdDelegateIdsByRowNumber: Map<number, string>,
+  rowNumber: number
+) =>
+  booking.delegate?.matchedDelegateId ||
+  createdDelegateIdsByRowNumber.get(rowNumber) ||
+  null
+
+export const buildBookingDelegateInsertRecord = (
+  bookingId: string,
+  organisationId: string,
+  delegateId: string,
+  unitPrice = 0
+): BookingDelegateInsertRecord => ({
+  organisation_id: organisationId,
+  booking_id: bookingId,
+  delegate_id: delegateId,
+  attendance_status: 'not_marked',
+  result_status: 'not_assessed',
+  attendance_notes: null,
+  unit_price: unitPrice,
+})
